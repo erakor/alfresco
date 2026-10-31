@@ -1,0 +1,25 @@
+{
+  "workflows": [
+    {
+      "keywords": ["pr"],
+      "title": "GitHub PR",
+      "url": "https://github.com/your-org/your-repo/pull/{query}",
+      "transforms": ["stripPrefix:#"]
+    },
+    {
+      "keywords": ["jira"],
+      "title": "Jira",
+      "url": "https://understood.atlassian.net/browse/{query}",
+      "transforms": ["uppercase"]
+    },
+    {
+      "keywords": ["cf"],
+      "title": "Contentful entry",
+      "url": "https://app.contentful.com/spaces/p0qf7j048i0q/entries/{query}"
+    }
+  ],
+  "fallback": {
+    "title": "Search Google",
+    "url": "https://www.google.com/search?q={query}"
+  }
+}

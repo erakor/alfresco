@@ -19,11 +19,22 @@ type a command, hit Enter, and the URL opens in your default browser.
 
 ## Workflows
 
-A workflow maps a keyword to a URL. They live in
-`~/.config/alfresco/workflows.json`, which is created with the defaults above on
-first launch. Open it from the menu bar icon (**Edit Workflows…**) or any
-editor. Changes apply the next time you open the launcher; no rebuild or
+A workflow maps a keyword to a URL. They live in [`workflows.json`](workflows.json)
+at the root of this repo. Open it from the menu bar icon (**Edit Workflows…**)
+or any editor. Changes apply the next time you open the launcher; no rebuild or
 restart needed.
+
+`build.sh` records the absolute path of the repo's `workflows.json` in the app,
+so the installed `Launcher.app` keeps reading it from the repo. If you move the
+repo, rebuild.
+
+The app looks for the file in this order:
+
+1. The `ALFRESCO_WORKFLOWS` environment variable, if set.
+2. The path `build.sh` recorded in `Launcher.app`.
+3. `workflows.json` next to the executable (a plain binary built in the repo).
+4. `~/.config/alfresco/workflows.json`, created with just the Google fallback
+   if nothing else is found.
 
 ```json
 {
@@ -55,9 +66,8 @@ restart needed.
 | `transforms` | Optional, applied in order to the argument: `uppercase`, `lowercase`, `trim`, `stripPrefix:<text>`, `stripSuffix:<text>`. |
 | `fallback`   | Optional. Used when nothing matches; its `url` must contain `{query}`.      |
 
-If the file has a mistake, the launcher keeps using the last good version and
-shows the error in the hint area (hover it for the full message). Delete the
-file to get the defaults back.
+If the file has a mistake or is missing, the launcher keeps using the last good
+version and shows the error in the hint area (hover it for the full message).
 
 ## Configure
 
@@ -66,8 +76,7 @@ Edit the `Config` enum at the top of `Launcher.swift`, then rebuild:
 - `hotKey`: `.commandShiftSpace` (default) or `.optionSpace`. macOS 15+ rejects
   Option-only hotkeys, so `.optionSpace` only works on macOS 14 and earlier.
 - `showMenuBarIcon`: set to `false` for a fully invisible agent.
-- `workflowsFile` / `defaultWorkflowsJSON`: where workflows are stored and what
-  a fresh file contains.
+- `workflowsSource`: how the workflows file is found (see above).
 
 ## Build
 
@@ -99,6 +108,9 @@ Then System Settings > General > Login Items > **Open at Login** > `+` and pick
 
 **Option B: LaunchAgent (works with the plain binary or the .app)**
 
+Run this from the repo folder: `$PWD` in the plist points the agent at this
+repo's `workflows.json`.
+
 ```bash
 mkdir -p ~/Applications ~/Library/LaunchAgents
 swiftc -O -parse-as-library Launcher.swift -o ~/Applications/Launcher
@@ -114,6 +126,11 @@ cat > ~/Library/LaunchAgents/local.launcher.plist <<PLIST
     <array>
         <string>$HOME/Applications/Launcher</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ALFRESCO_WORKFLOWS</key>
+        <string>$PWD/workflows.json</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

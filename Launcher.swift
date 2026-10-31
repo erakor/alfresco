@@ -7,7 +7,7 @@
 // - Runs as an accessory agent (no Dock icon). A small menu bar icon offers
 //   "Open", "Edit Workflows…" and "Quit"; turn it off with
 //   Config.showMenuBarIcon.
-// - Workflows (keyword -> URL) live in ~/.config/alfresco/workflows.json and
+// - Workflows (keyword -> URL) live in workflows.json next to this file and
 //   are reloaded automatically, so adding one needs no rebuild.
 //
 // Build:  swiftc -O -parse-as-library Launcher.swift -o Launcher
@@ -43,34 +43,35 @@ enum Config {
     static let hotKey = HotKey.commandShiftSpace
     static let showMenuBarIcon = true
 
-    /// Workflows live in this JSON file, not in the source, so you can add or
-    /// change them without rebuilding. It is created with the defaults below
-    /// on first launch and re-read whenever it changes.
-    static let workflowsFile = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".config/alfresco/workflows.json")
+    /// Where workflows.json is read from, first match wins:
+    /// 1. the `ALFRESCO_WORKFLOWS` environment variable;
+    /// 2. the `AlfrescoWorkflowsFile` Info.plist key, which build.sh sets to
+    ///    the repo's workflows.json;
+    /// 3. workflows.json next to the executable (a plain binary built in the
+    ///    repo);
+    /// 4. ~/.config/alfresco/workflows.json, created on first launch.
+    /// The file is re-read whenever it changes, so no rebuild is needed.
+    static let workflowsSource: (url: URL, isFallback: Bool) = {
+        let fileManager = FileManager.default
+        if let path = ProcessInfo.processInfo.environment["ALFRESCO_WORKFLOWS"], !path.isEmpty {
+            return (URL(fileURLWithPath: (path as NSString).expandingTildeInPath), false)
+        }
+        if let path = Bundle.main.object(forInfoDictionaryKey: "AlfrescoWorkflowsFile") as? String, !path.isEmpty {
+            return (URL(fileURLWithPath: (path as NSString).expandingTildeInPath), false)
+        }
+        if let executable = Bundle.main.executableURL?.resolvingSymlinksInPath() {
+            let sibling = executable.deletingLastPathComponent().appendingPathComponent("workflows.json")
+            if fileManager.fileExists(atPath: sibling.path) { return (sibling, false) }
+        }
+        let home = fileManager.homeDirectoryForCurrentUser
+        return (home.appendingPathComponent(".config/alfresco/workflows.json"), true)
+    }()
 
-    /// Seed for workflows.json. Also used if the file can never be read.
+    /// Used until workflows.json loads, and to seed the ~/.config fallback.
+    /// The real workflows live in the repo's workflows.json.
     static let defaultWorkflowsJSON = #"""
         {
-          "workflows": [
-            {
-              "keywords": ["pr"],
-              "title": "GitHub PR",
-              "url": "https://github.com/your-org/your-repo/pull/{query}",
-              "transforms": ["stripPrefix:#"]
-            },
-            {
-              "keywords": ["jira"],
-              "title": "Jira",
-              "url": "https://understood.atlassian.net/browse/{query}",
-              "transforms": ["uppercase"]
-            },
-            {
-              "keywords": ["cf"],
-              "title": "Contentful entry",
-              "url": "https://app.contentful.com/spaces/p0qf7j048i0q/entries/{query}"
-            }
-          ],
+          "workflows": [],
           "fallback": {
             "title": "Search Google",
             "url": "https://www.google.com/search?q={query}"
@@ -195,25 +196,29 @@ struct WorkflowSet: Decodable, Sendable {
     }
 }
 
-/// Owns workflows.json: creates it, reloads it when its modification date
+/// Owns workflows.json: finds it, reloads it when its modification date
 /// changes, and keeps the last good version if an edit breaks it. Only used
 /// from the main thread.
 final class WorkflowStore {
     let fileURL: URL
+    /// Only the ~/.config fallback is created when missing; a configured path
+    /// that has gone missing is reported instead of silently recreated.
+    private let createsMissingFile: Bool
     private(set) var current = WorkflowSet.builtIn
     /// Why the file on disk could not be used, if it could not.
     private(set) var loadError: String?
     private var loadedModificationDate: Date?
 
-    init(fileURL: URL = Config.workflowsFile) {
+    init(fileURL: URL = Config.workflowsSource.url, createsMissingFile: Bool = Config.workflowsSource.isFallback) {
         self.fileURL = fileURL
+        self.createsMissingFile = createsMissingFile
         reloadIfNeeded()
     }
 
-    /// Writes the default file if it does not exist yet.
+    /// Writes the default file if it is the ~/.config fallback and missing.
     func ensureFileExists() {
         let fileManager = FileManager.default
-        guard !fileManager.fileExists(atPath: fileURL.path) else { return }
+        guard createsMissingFile, !fileManager.fileExists(atPath: fileURL.path) else { return }
         do {
             try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data(Config.defaultWorkflowsJSON.utf8).write(to: fileURL, options: .atomic)

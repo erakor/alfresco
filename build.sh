@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Compiles Launcher.swift and wraps it in a minimal, ad-hoc signed .app bundle
-# (LSUIElement, so it never shows a Dock icon) at build/Launcher.app.
+# (LSUIElement, so it never shows a Dock icon) at build/Launcher.app. The app
+# reads workflows from this repo's workflows.json.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -33,6 +34,10 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+# Point the app at this repo's workflows.json, so edits to it apply without
+# rebuilding. Rebuild if you move the repo.
+/usr/libexec/PlistBuddy -c "Add :AlfrescoWorkflowsFile string $PWD/workflows.json" "$APP/Contents/Info.plist"
 
 codesign --force --sign - "$APP"
 echo "Built $APP"
