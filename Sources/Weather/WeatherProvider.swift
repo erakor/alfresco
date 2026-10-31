@@ -56,6 +56,13 @@ final class WeatherProvider {
             let place = parts[1].trimmingCharacters(in: .whitespaces)
             if !place.isEmpty { return .place(place.lowercased()) }
         }
+        return homeQuery()
+    }
+
+    /// Where the bare keyword (and the idle launcher) looks: the home place,
+    /// or the IP address. nil without an API key.
+    func homeQuery() -> WeatherQuery? {
+        guard apiKey != nil else { return nil }
         if let home = Config.weatherHomePlace { return .place(home.lowercased()) }
         return .here
     }

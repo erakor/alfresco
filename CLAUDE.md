@@ -48,7 +48,7 @@ The forecast area under the launcher input, shown while the input is `Config.wea
 - `WeatherProvider.swift`: main actor. Turns input into a `WeatherQuery`, debounces typed places (400 ms), runs one load at a time, caches results per query (`Config.weatherCacheLifetime`, failures 30 s), and calls `onUpdate`.
 - `WeatherView.swift`: the `NSView` (loading, error and forecast states; SF Symbols for WeatherAPI condition codes; the "Powered by WeatherAPI.com" link the free plan requires). Labels are French.
 
-`LauncherController.updateWeather` shows or hides it and resizes the panel with `FloatingPanelController.setHeight`; while it is shown, the one-line hint `preview` is not fetched.
+`LauncherController.updateWeather` shows or hides it and resizes the panel with `FloatingPanelController.setHeight`; while it is shown, the one-line hint `preview` is not fetched. When the input is empty and `Config.weatherWhenIdle` is on, it requests `WeatherProvider.homeQuery()` instead, and `updateHint` shows the current temperature and city (with the condition symbol as a text attachment) in place of "esc to close".
 
 ### Shared/HotKeys.swift
 

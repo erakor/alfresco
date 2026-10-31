@@ -24,7 +24,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         super.init(size: NSSize(width: 680, height: LauncherController.rowHeight), verticalOffset: 0.15)
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
-        weather.onUpdate = { [weak self] in self?.updateWeather() }
+        weather.onUpdate = { [weak self] in
+            self?.updateHint()
+            self?.updateWeather()
+        }
     }
 
     override var initialFirstResponder: NSResponder? { textField }
@@ -100,19 +103,62 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         } else if let error = store.loadError {
             hintLabel.stringValue = "⚠ workflows.json: \(error)"
             hintLabel.toolTip = "\(store.fileURL.path)\n\(error)"
+        } else if let forecast = idleForecast() {
+            showIdleWeather(forecast)
         } else {
             hintLabel.stringValue = "esc to close"
             hintLabel.toolTip = nil
         }
     }
 
+    /// The home query when the input is empty and Config.weatherWhenIdle is
+    /// on (and a WeatherAPI key is set).
+    private func idleWeatherQuery() -> WeatherQuery? {
+        guard Config.weatherWhenIdle,
+              textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return weather.homeQuery()
+    }
+
+    private func idleForecast() -> Forecast? {
+        guard let query = idleWeatherQuery(), case .loaded(let forecast) = weather.state(for: query) else { return nil }
+        return forecast
+    }
+
+    /// "☀️ 14°  Paris" in the hint, with the colored condition symbol.
+    private func showIdleWeather(_ forecast: Forecast) {
+        let font = hintLabel.font ?? .systemFont(ofSize: 13)
+        let text = NSMutableAttributedString()
+        if let image = WeatherView.symbol(for: forecast.condition, pointSize: 14) {
+            let attachment = NSTextAttachment()
+            attachment.image = image
+            // Sits on the text's baseline like a capital letter.
+            attachment.bounds = NSRect(
+                x: 0, y: (font.capHeight - image.size.height) / 2,
+                width: image.size.width, height: image.size.height
+            )
+            text.append(NSAttributedString(attachment: attachment))
+            text.append(NSAttributedString(string: " "))
+        }
+        let city = forecast.place.split(separator: ",").first.map(String.init) ?? forecast.place
+        text.append(NSAttributedString(string: "\(WeatherView.degrees(forecast.temperature))  \(city)"))
+        text.addAttributes(
+            [.font: font, .foregroundColor: NSColor.secondaryLabelColor],
+            range: NSRange(location: 0, length: text.length)
+        )
+        hintLabel.attributedStringValue = text
+        var tooltip = "\(forecast.description), \(forecast.place)"
+        if forecast.isApproximate { tooltip += " (position approximative)" }
+        hintLabel.toolTip = tooltip + "\nType \"\(Config.weatherKeyword)\" for the forecast · esc to close"
+    }
+
     /// Shows the forecast below the input while it reads `weather [place]`
     /// (and a WeatherAPI key is set), and hides it otherwise.
     private func updateWeather() {
         guard let query = weather.query(for: textField.stringValue) else {
-            weather.cancel()
             weatherView.isHidden = true
             setHeight(Self.rowHeight)
+            // The empty launcher still wants the weather for its hint.
+            if let idle = idleWeatherQuery() { weather.request(idle) } else { weather.cancel() }
             return
         }
         weatherView.show(weather.state(for: query), for: query)

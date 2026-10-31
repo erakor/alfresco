@@ -90,6 +90,9 @@ enum Config {
     static let weatherKeyword = "weather"
     /// WeatherAPI's language for condition text, also used for day names.
     static let weatherLanguage = "fr"
+    /// The empty launcher shows the current weather at home (or where the
+    /// IP address says you are) in its hint, instead of "esc to close".
+    static let weatherWhenIdle = true
     /// Days shown, today included. The free plan returns at most 3.
     static let weatherDays = 3
     /// Place used for the bare keyword, e.g. "Paris, France". nil locates

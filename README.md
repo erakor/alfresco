@@ -101,6 +101,12 @@ workflow's page.
 Without a key the launcher behaves as before, with the one-line `preview` in
 the hint.
 
+With a key, the empty launcher also shows the current weather where you are
+in place of "esc to close" (e.g. "☀️ 14°  Paris"; hover it for details). It
+shares the 10-minute cache with `weather`, so opening the launcher often costs
+at most one request every 10 minutes. Turn it off with
+`Config.weatherWhenIdle = false`.
+
 - `weather paris`, `weather lyon`, `weather 75011`, `weather cdg`: WeatherAPI
   accepts city names, postal codes, airport codes and `lat,lon`. The place is
   looked up after you pause typing.
