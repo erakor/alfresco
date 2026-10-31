@@ -203,6 +203,15 @@ struct WorkflowSet: Decodable, Sendable {
         let keyword = keyword.lowercased()
         return workflows.first { $0.keywords.contains(keyword) }
     }
+
+    /// The workflow whose keyword is the whole input, when it still needs an
+    /// argument (e.g. just "pr"). Enter does nothing then, and the hint shows
+    /// the workflow's help instead.
+    func workflowAwaitingArgument(_ input: String) -> Workflow? {
+        let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let workflow = workflow(for: input), workflow.takesArgument else { return nil }
+        return workflow
+    }
 }
 
 /// Owns workflows.json: finds it, reloads it when its modification date
@@ -519,6 +528,8 @@ final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate 
     }
 
     private func execute() {
+        // Keyword typed without its argument: keep the bar open and wait.
+        if store.current.workflowAwaitingArgument(textField.stringValue) != nil { return }
         guard let command = CommandParser.parse(textField.stringValue, using: store.current) else {
             hide()
             return
@@ -529,10 +540,10 @@ final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate 
     }
 
     private func updateHint() {
-        let input = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let workflow = store.current.workflow(for: input), workflow.takesArgument {
+        if let workflow = store.current.workflowAwaitingArgument(textField.stringValue) {
             // The keyword is typed but its argument is not: show its help.
-            let help = workflow.help ?? "\(workflow.title): type a value after \"\(input.lowercased())\""
+            let keyword = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let help = workflow.help ?? "\(workflow.title): type a value after \"\(keyword)\""
             hintLabel.stringValue = help
             hintLabel.toolTip = help
         } else if let command = CommandParser.parse(textField.stringValue, using: store.current) {

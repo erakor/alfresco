@@ -63,7 +63,7 @@ The app looks for the file in this order:
 | ------------ | -------------------------------------------------------------------------- |
 | `keywords`   | One or more single words, matched case-insensitively. First match wins.     |
 | `title`      | Shown in the hint as you type.                                              |
-| `description` | Optional help text. Shown in the hint when you type the keyword without its argument, and under the workflow in the menu bar's **Workflows** submenu. |
+| `description` | Optional help text. Shown in the hint when you type the keyword without its argument (Enter does nothing until you add one), and under the workflow in the menu bar's **Workflows** submenu. |
 | `url`        | `{query}` is replaced with the percent-encoded argument. Without `{query}`, typing the keyword alone opens the URL. |
 | `transforms` | Optional, applied in order to the argument: `uppercase`, `lowercase`, `trim`, `stripPrefix:<text>`, `stripSuffix:<text>`. |
 | `fallback`   | Optional. Used when nothing matches; its `url` must contain `{query}`.      |
