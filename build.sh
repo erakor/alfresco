@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compiles Launcher.swift and wraps it in a minimal, ad-hoc signed .app bundle
+# Compiles the Swift sources and wraps it in a minimal, ad-hoc signed .app bundle
 # (LSUIElement, so it never shows a Dock icon) at build/Launcher.app.
 set -euo pipefail
 
@@ -9,7 +9,7 @@ APP="build/Launcher.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 
-swiftc -O -parse-as-library Launcher.swift -o "$APP/Contents/MacOS/Launcher"
+swiftc -O -parse-as-library *.swift -o "$APP/Contents/MacOS/Launcher"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
