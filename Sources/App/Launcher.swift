@@ -161,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.informativeText = """
             Another app may already use \(hotKeys.count == 1 ? "this shortcut" : "these shortcuts"), \
             or macOS rejected \(hotKeys.count == 1 ? "it" : "them"). Change Config.hotKey or \
-            Config.clipboardHotKey in Launcher.swift and rebuild.
+            Config.clipboardHotKey in Sources/App/Config.swift and rebuild.
             """
         if #available(macOS 14.0, *) {
             NSApp.activate()
