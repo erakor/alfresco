@@ -458,6 +458,8 @@ private func fourCharCode(_ string: String) -> FourCharCode {
 /// so the app you were in stays frontmost (like Spotlight).
 final class LauncherPanel: NSPanel {
     var onCancel: (@MainActor () -> Void)?
+    /// Gets first look at key equivalents; returns true when it handled one.
+    var onKeyEquivalent: (@MainActor (NSEvent) -> Bool)?
 
     /// Accessory apps have no Edit menu, so the standard editing shortcuts
     /// would otherwise do nothing in the text field.
@@ -477,6 +479,9 @@ final class LauncherPanel: NSPanel {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if onKeyEquivalent?(event) == true {
+            return true
+        }
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            let key = event.charactersIgnoringModifiers?.lowercased(),
            let action = Self.editActions[key],
@@ -548,6 +553,10 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
 
     /// Runs once `initialFirstResponder` has focus.
     func didFocus() {}
+
+    /// A ⌘ shortcut pressed in the panel, before the standard editing ones.
+    /// Return true when it was handled.
+    func handleKeyEquivalent(_ event: NSEvent) -> Bool { false }
 
     // MARK: Showing and hiding
 
@@ -634,6 +643,7 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.delegate = self
         panel.onCancel = { [weak self] in self?.hide() }
+        panel.onKeyEquivalent = { [weak self] event in self?.handleKeyEquivalent(event) ?? false }
     }
 
     private func buildBackground() {
