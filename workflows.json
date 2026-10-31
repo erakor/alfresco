@@ -3,7 +3,7 @@
     {
       "keywords": ["pr"],
       "title": "GitHub PR",
-      "url": "https://github.com/your-org/your-repo/pull/{query}",
+      "url": "https://github.com/erakor/alfresco/pull/{query}",
       "transforms": ["stripPrefix:#"]
     },
     {
