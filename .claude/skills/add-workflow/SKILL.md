@@ -58,14 +58,14 @@ must contain `{query}`.
 ```
 
 The script compiles the real `Workflow`/`WorkflowSet`/`CommandParser` code from
-`Launcher.swift`, so its verdict matches the app's. It prints:
+`Sources/Launcher/Workflows.swift`, so its verdict matches the app's. It prints:
 - `INVALID: …` (exit 1) with the same message the app shows in its hint area;
 - a warning for any keyword used twice;
 - for each sample input, the label and final URL, or "Enter does nothing".
 
 Try the realistic inputs (with the `#`, the lowercase key, and so on) and make
-sure the URLs are exactly right. If it prints "MARK sections … changed", the
-source layout moved; fix the `awk` ranges in the script.
+sure the URLs are exactly right. If it prints "… not found" or "… changed", the
+source layout moved; fix the paths or the `awk` range in the script.
 
 ## 4. Report
 
