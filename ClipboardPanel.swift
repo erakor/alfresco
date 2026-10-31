@@ -32,13 +32,27 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     private let hintLabel = FloatingPanelController.makeHintLabel()
     private let preview = ClipPreviewView()
 
-    /// Row thumbnails, app icons and previews. Emptied when the panel closes,
-    /// so edited files and uninstalled apps show up fresh next time.
+    /// Row thumbnails, icons and previews, costed by decoded size so a run of
+    /// large previews can't pile up. Emptied when the panel closes, so edited
+    /// files and uninstalled apps show up fresh next time.
     private let imageCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
-        cache.countLimit = 300
+        cache.totalCostLimit = 128 * 1024 * 1024
         return cache
     }()
+
+    /// Whether each copied file still exists, looked up once per panel
+    /// opening rather than on every row redraw (a network volume can be
+    /// slow). Emptied when the panel closes.
+    private var fileStates: [String: FileState] = [:]
+
+    private enum FileState {
+        case missing, file, folder
+    }
+
+    /// Set while reload() selects a row, which would otherwise rebuild the
+    /// preview once for the selection change and again at the end.
+    private var isReloading = false
 
     /// The store's items that match the search field, newest first.
     private var visibleItems: [ClipItem] = []
@@ -82,6 +96,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     override func didHide() {
         searchField.stringValue = ""
         imageCache.removeAllObjects()
+        fileStates.removeAll()
     }
 
     // MARK: Data
@@ -93,14 +108,16 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         visibleItems = query.isEmpty
             ? store.items
             : store.items.filter { $0.content.matches(query) }
+        isReloading = true
         tableView.reloadData()
 
         let row = selectedID.flatMap { id in visibleItems.firstIndex { $0.id == id } } ?? 0
         select(row: row)
+        isReloading = false
 
         updateLabels(query: query)
-        // Selecting the same row again posts no selection change, but the
-        // item in it may be a different one.
+        // Always, since selecting the same row again posts no selection
+        // change but the item in it may be a different one.
         updatePreview()
     }
 
@@ -267,10 +284,9 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             details.append(Self.byteCount(image.byteCount))
 
         case .files(let paths):
-            cell.title.stringValue = Self.title(ofFiles: paths)
+            cell.title.stringValue = title(ofFiles: paths)
             cell.icon.image = fileIcon(paths)
-            let existing = paths.filter { FileManager.default.fileExists(atPath: $0) }
-            if existing.isEmpty {
+            if paths.allSatisfy({ fileState($0) == .missing }) {
                 details.append(paths.count == 1 ? "no longer there" : "none are still there")
             } else {
                 details.append(Self.abbreviated((paths[0] as NSString).deletingLastPathComponent))
@@ -282,6 +298,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !isReloading else { return }
         updatePreview()
     }
 
@@ -313,7 +330,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
                 ? Self.abbreviated(paths[0])
                 : "\(Self.abbreviated(paths[0])) and \(paths.count - 1) more"
             preview.showImage(filePreview(paths), path: location)
-            let missing = paths.filter { !FileManager.default.fileExists(atPath: $0) }.count
+            let missing = paths.filter { fileState($0) == .missing }.count
             if missing > 0 {
                 info.append(paths.count == 1 ? "no longer there" : "\(missing) no longer there")
             }
@@ -332,9 +349,20 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
                 return image
             }
         }
-        let icon = fileIcon(paths)
+        // A copy: the cached icon is also used, at its own size, by the row.
+        let icon = fileIcon(paths).copy() as? NSImage ?? NSImage()
         icon.size = NSSize(width: 256, height: 256)
         return icon
+    }
+
+    private func fileState(_ path: String) -> FileState {
+        if let state = fileStates[path] { return state }
+        var isDirectory: ObjCBool = false
+        let state: FileState = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+            ? (isDirectory.boolValue ? .folder : .file)
+            : .missing
+        fileStates[path] = state
+        return state
     }
 
     // MARK: Images
@@ -354,10 +382,13 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     }
 
     private func fileIcon(_ paths: [String]) -> NSImage {
-        // Not cached: callers resize it.
-        paths.count == 1
-            ? NSWorkspace.shared.icon(forFile: paths[0])
-            : NSWorkspace.shared.icon(forFiles: paths) ?? NSWorkspace.shared.icon(for: .data)
+        let icon = cachedImage(key: "icon:\(paths.joined(separator: "\n"))") { () -> NSImage? in
+            if paths.count == 1 {
+                return NSWorkspace.shared.icon(forFile: paths[0])
+            }
+            return NSWorkspace.shared.icon(forFiles: paths)
+        }
+        return icon ?? NSWorkspace.shared.icon(for: .data)
     }
 
     private func appIcon(bundleID: String) -> NSImage? {
@@ -370,8 +401,16 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     private func cachedImage(key: String, make: () -> NSImage?) -> NSImage? {
         if let image = imageCache.object(forKey: key as NSString) { return image }
         guard let image = make() else { return nil }
-        imageCache.setObject(image, forKey: key as NSString)
+        imageCache.setObject(image, forKey: key as NSString, cost: Self.decodedSize(of: image))
         return image
+    }
+
+    /// Roughly the memory the image takes once drawn: its largest
+    /// representation at 4 bytes per pixel. Icons report no pixel size;
+    /// they are counted as 256 × 256.
+    private static func decodedSize(of image: NSImage) -> Int {
+        let pixels = image.representations.map { $0.pixelsWide * $0.pixelsHigh }.max() ?? 0
+        return max(pixels, 256 * 256) * 4
     }
 
     // MARK: Formatting
@@ -383,14 +422,12 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             .joined(separator: " ")
     }
 
-    private static func title(ofFiles paths: [String]) -> String {
-        let names = paths.map { (($0 as NSString).lastPathComponent) }
+    private func title(ofFiles paths: [String]) -> String {
+        let names = paths.map { ($0 as NSString).lastPathComponent }
         guard paths.count == 1 else {
             return "\(paths.count) files: \(names.joined(separator: ", "))"
         }
-        var isDirectory: ObjCBool = false
-        let isFolder = FileManager.default.fileExists(atPath: paths[0], isDirectory: &isDirectory) && isDirectory.boolValue
-        return "\(isFolder ? "Folder" : "File"): \(names[0])"
+        return "\(fileState(paths[0]) == .folder ? "Folder" : "File"): \(names[0])"
     }
 
     private static func abbreviated(_ path: String) -> String {
@@ -674,8 +711,14 @@ private final class ClipPreviewView: NSView {
         textView?.string = ""
         pathLabel.isHidden = path == nil
         pathLabel.stringValue = path ?? ""
-        imageAtTop.isActive = path == nil
-        imageBelowPath.isActive = path != nil
+        // Deactivate before activating, so the two never conflict.
+        if path == nil {
+            imageBelowPath.isActive = false
+            imageAtTop.isActive = true
+        } else {
+            imageAtTop.isActive = false
+            imageBelowPath.isActive = true
+        }
         imageView.isHidden = false
         imageView.image = image
     }

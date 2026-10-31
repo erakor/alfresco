@@ -62,6 +62,9 @@ enum Config {
     static let clipboardMaxTextBytes = 256 * 1024
     /// Images larger than this, once encoded as PNG, are not recorded.
     static let clipboardMaxImageBytes = 20 * 1024 * 1024
+    /// Images with more pixels than this are turned away before they are
+    /// decoded (40 MP is a bit more than an 8K image).
+    static let clipboardMaxImagePixels = 40_000_000
     /// macOS has no clipboard-change notification, so the clipboard's change
     /// counter is checked this often (in seconds). The check itself is cheap.
     static let clipboardPollInterval: TimeInterval = 0.5
