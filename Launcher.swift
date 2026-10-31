@@ -151,16 +151,22 @@ enum ArgumentTransform: Decodable, Sendable {
 
 /// A keyword that expands into a URL. `{query}` in `url` is replaced with the
 /// percent-encoded argument; a `url` without `{query}` is opened by typing
-/// the keyword alone.
+/// the keyword alone. `description` is optional help text.
 struct Workflow: Decodable, Sendable {
     let keywords: [String]
     let title: String
     let url: String
+    /// Shown while the keyword is typed without its argument, and in the
+    /// menu bar's Workflows submenu. Written as "description" in JSON.
+    let help: String?
     let transforms: [ArgumentTransform]
 
     var takesArgument: Bool { url.contains("{query}") }
 
-    private enum CodingKeys: String, CodingKey { case keywords, title, url, transforms }
+    private enum CodingKeys: String, CodingKey {
+        case keywords, title, url, transforms
+        case help = "description"
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -168,6 +174,9 @@ struct Workflow: Decodable, Sendable {
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? []
         title = try container.decode(String.self, forKey: .title)
         url = try container.decode(String.self, forKey: .url)
+        help = try container.decodeIfPresent(String.self, forKey: .help)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
         transforms = try container.decodeIfPresent([ArgumentTransform].self, forKey: .transforms) ?? []
 
         if keywords.contains(where: { $0.isEmpty || $0.contains(where: \.isWhitespace) }) {
@@ -214,6 +223,15 @@ struct WorkflowSet: Decodable, Sendable {
     func workflow(for keyword: String) -> Workflow? {
         let keyword = keyword.lowercased()
         return workflows.first { $0.keywords.contains(keyword) }
+    }
+
+    /// The workflow whose keyword is the whole input, when it still needs an
+    /// argument (e.g. just "pr"). Enter does nothing then, and the hint shows
+    /// the workflow's help instead.
+    func workflowAwaitingArgument(_ input: String) -> Workflow? {
+        let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let workflow = workflow(for: input), workflow.takesArgument else { return nil }
+        return workflow
     }
 }
 
@@ -523,6 +541,9 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
     /// Receives keyboard focus when the panel appears.
     var initialFirstResponder: NSResponder? { nil }
 
+    /// Runs once `initialFirstResponder` has focus.
+    func didFocus() {}
+
     // MARK: Showing and hiding
 
     var isShown: Bool { panel.isVisible && !isHiding }
@@ -545,6 +566,7 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
         panel.setFrame(target.offsetBy(dx: 0, dy: -8), display: false)
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(initialFirstResponder)
+        didFocus()
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.16
@@ -674,6 +696,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let store: WorkflowStore
     private let textField = NSTextField()
     private let hintLabel = FloatingPanelController.makeHintLabel()
+    /// Text to start with on the next show(prefill:).
+    private var pendingPrefill = ""
 
     init(store: WorkflowStore) {
         self.store = store
@@ -683,11 +707,23 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     override var initialFirstResponder: NSResponder? { textField }
 
+    /// Opens the bar, optionally with text already typed (cursor at the end).
+    func show(prefill: String) {
+        pendingPrefill = prefill
+        show()
+    }
+
     override func prepareToShow() {
         store.reloadIfNeeded()
         textField.placeholderString = placeholder()
-        textField.stringValue = ""
+        textField.stringValue = pendingPrefill
+        pendingPrefill = ""
         updateHint()
+    }
+
+    override func didFocus() {
+        let end = (textField.stringValue as NSString).length
+        textField.currentEditor()?.selectedRange = NSRange(location: end, length: 0)
     }
 
     override func didHide() {
@@ -695,6 +731,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     private func execute() {
+        // Keyword typed without its argument: keep the bar open and wait.
+        if store.current.workflowAwaitingArgument(textField.stringValue) != nil { return }
         guard let command = CommandParser.parse(textField.stringValue, using: store.current) else {
             hide()
             return
@@ -705,7 +743,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     private func updateHint() {
-        if let command = CommandParser.parse(textField.stringValue, using: store.current) {
+        if let workflow = store.current.workflowAwaitingArgument(textField.stringValue) {
+            // The keyword is typed but its argument is not: show its help.
+            let keyword = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let help = workflow.help ?? "\(workflow.title): type a value after \"\(keyword)\""
+            hintLabel.stringValue = help
+            hintLabel.toolTip = help
+        } else if let command = CommandParser.parse(textField.stringValue, using: store.current) {
             hintLabel.stringValue = "↩ \(command.label)"
             hintLabel.toolTip = nil
         } else if let error = store.loadError {
@@ -771,7 +815,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             hintLabel.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 12),
             hintLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             hintLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            hintLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 260),
+            hintLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 340),
         ])
     }
 }
@@ -779,7 +823,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 // MARK: - App
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let workflowStore = WorkflowStore()
     private var launcher: LauncherController?
     private var clipboardStore: ClipboardStore?
@@ -832,6 +876,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem("Clipboard History (\(Config.clipboardHotKey.display))", #selector(openClipboardHistory)))
         menu.addItem(menuItem("Clear Clipboard History", #selector(clearClipboardHistory)))
         menu.addItem(.separator())
+        let workflows = NSMenuItem(title: "Workflows", action: nil, keyEquivalent: "")
+        let workflowsMenu = NSMenu(title: "Workflows")
+        workflowsMenu.delegate = self
+        workflows.submenu = workflowsMenu
+        menu.addItem(workflows)
         menu.addItem(menuItem("Edit Workflows…", #selector(editWorkflows)))
         menu.addItem(menuItem("Show Workflows in Finder", #selector(revealWorkflows)))
         menu.addItem(.separator())
@@ -857,6 +906,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func clearClipboardHistory() {
         clipboardStore?.clear()
+    }
+
+    // MARK: NSMenuDelegate
+
+    /// Rebuilds the Workflows submenu each time it opens, so it always
+    /// matches workflows.json.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        workflowStore.reloadIfNeeded()
+        menu.removeAllItems()
+
+        let workflows = workflowStore.current.workflows
+        if workflows.isEmpty {
+            let empty = NSMenuItem(title: "No workflows yet", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+        }
+        for workflow in workflows {
+            let item = NSMenuItem(
+                title: "\(workflow.keywords.joined(separator: ", "))  \(workflow.title)",
+                action: #selector(startWorkflow(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = workflow.keywords.first
+            if let help = workflow.help {
+                if #available(macOS 14.4, *) {
+                    item.subtitle = help
+                } else {
+                    item.toolTip = help
+                }
+            }
+            menu.addItem(item)
+        }
+    }
+
+    /// Opens the launcher with the workflow's keyword already typed.
+    @objc private func startWorkflow(_ sender: NSMenuItem) {
+        guard let keyword = sender.representedObject as? String else { return }
+        let takesArgument = workflowStore.current.workflow(for: keyword)?.takesArgument ?? false
+        launcher?.show(prefill: takesArgument ? keyword + " " : keyword)
     }
 
     /// Opens workflows.json in the default editor for JSON files. Changes are
