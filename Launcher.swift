@@ -6,8 +6,10 @@
 // - Global hotkeys via Carbon's RegisterEventHotKey: no Accessibility or
 //   Screen Recording permission is required.
 // - Runs as an accessory agent (no Dock icon). A small menu bar icon offers
-//   "Open", "Clipboard History" and "Quit"; turn it off with
-//   Config.showMenuBarIcon.
+//   "Open", "Clipboard History", "Edit Workflows…" and "Quit"; turn it off
+//   with Config.showMenuBarIcon.
+// - Workflows (keyword -> URL) live in workflows.json next to this file and
+//   are reloaded automatically, so adding one needs no rebuild.
 //
 // Build:  swiftc -O -parse-as-library *.swift -o Launcher
 // Run:    ./Launcher
@@ -46,19 +48,7 @@ struct HotKey: Sendable {
     )
 }
 
-/// A keyword that expands into a URL. `{query}` in the template is replaced
-/// with the percent-encoded argument.
-struct Shortcut: Sendable {
-    let keywords: [String]
-    let title: String
-    let urlTemplate: String
-    var transform: @Sendable (String) -> String = { $0 }
-}
-
 enum Config {
-    static let githubOwner = "your-org"
-    static let githubRepo = "your-repo"
-
     static let hotKey = HotKey.commandShiftSpace
     static let showMenuBarIcon = true
 
@@ -74,33 +64,232 @@ enum Config {
     /// counter is checked this often (in seconds). The check itself is cheap.
     static let clipboardPollInterval: TimeInterval = 0.5
 
-    /// Add new commands here. Keywords are matched case-insensitively.
-    static let shortcuts: [Shortcut] = [
-        Shortcut(
-            keywords: ["pr"],
-            title: "GitHub PR",
-            urlTemplate: "https://github.com/\(githubOwner)/\(githubRepo)/pull/{query}",
-            transform: { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
-        ),
-        Shortcut(
-            keywords: ["jira"],
-            title: "Jira",
-            urlTemplate: "https://understood.atlassian.net/browse/{query}",
-            transform: { $0.uppercased() }
-        ),
-        Shortcut(
-            keywords: ["cf"],
-            title: "Contentful entry",
-            urlTemplate: "https://app.contentful.com/spaces/p0qf7j048i0q/entries/{query}"
-        ),
-    ]
+    /// Where workflows.json is read from, first match wins:
+    /// 1. the `ALFRESCO_WORKFLOWS` environment variable;
+    /// 2. the `AlfrescoWorkflowsFile` Info.plist key, which build.sh sets to
+    ///    the repo's workflows.json;
+    /// 3. workflows.json next to the executable (a plain binary built in the
+    ///    repo);
+    /// 4. ~/.config/alfresco/workflows.json, created on first launch.
+    /// The file is re-read whenever it changes, so no rebuild is needed.
+    static let workflowsSource: (url: URL, isFallback: Bool) = {
+        let fileManager = FileManager.default
+        if let path = ProcessInfo.processInfo.environment["ALFRESCO_WORKFLOWS"], !path.isEmpty {
+            return (URL(fileURLWithPath: (path as NSString).expandingTildeInPath), false)
+        }
+        if let path = Bundle.main.object(forInfoDictionaryKey: "AlfrescoWorkflowsFile") as? String, !path.isEmpty {
+            return (URL(fileURLWithPath: (path as NSString).expandingTildeInPath), false)
+        }
+        if let executable = Bundle.main.executableURL?.resolvingSymlinksInPath() {
+            let sibling = executable.deletingLastPathComponent().appendingPathComponent("workflows.json")
+            if fileManager.fileExists(atPath: sibling.path) { return (sibling, false) }
+        }
+        let home = fileManager.homeDirectoryForCurrentUser
+        return (home.appendingPathComponent(".config/alfresco/workflows.json"), true)
+    }()
 
-    /// Used when no keyword matches, or a keyword is typed without an argument.
-    static let fallback = Shortcut(
-        keywords: [],
-        title: "Search Google",
-        urlTemplate: "https://www.google.com/search?q={query}"
-    )
+    /// Used until workflows.json loads, and to seed the ~/.config fallback.
+    /// The real workflows live in the repo's workflows.json.
+    static let defaultWorkflowsJSON = #"""
+        {
+          "workflows": [],
+          "fallback": {
+            "title": "Search Google",
+            "url": "https://www.google.com/search?q={query}"
+          }
+        }
+
+        """#
+}
+
+// MARK: - Workflows
+
+/// A step applied to the argument before it is put into the URL. Written in
+/// JSON as a string: "uppercase", "lowercase", "trim",
+/// "stripPrefix:<text>" or "stripSuffix:<text>".
+enum ArgumentTransform: Decodable, Sendable {
+    case uppercase
+    case lowercase
+    case trim
+    case stripPrefix(String)
+    case stripSuffix(String)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        var name = raw
+        var value = ""
+        if let colon = raw.firstIndex(of: ":") {
+            name = String(raw[..<colon])
+            value = String(raw[raw.index(after: colon)...])
+        }
+
+        switch (name, value.isEmpty) {
+        case ("uppercase", true): self = .uppercase
+        case ("lowercase", true): self = .lowercase
+        case ("trim", true): self = .trim
+        case ("stripPrefix", false): self = .stripPrefix(value)
+        case ("stripSuffix", false): self = .stripSuffix(value)
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "unknown transform \"\(raw)\" (use uppercase, lowercase, trim, stripPrefix:<text> or stripSuffix:<text>)"
+            )
+        }
+    }
+
+    func apply(to value: String) -> String {
+        switch self {
+        case .uppercase: return value.uppercased()
+        case .lowercase: return value.lowercased()
+        case .trim: return value.trimmingCharacters(in: .whitespaces)
+        case .stripPrefix(let prefix): return value.hasPrefix(prefix) ? String(value.dropFirst(prefix.count)) : value
+        case .stripSuffix(let suffix): return value.hasSuffix(suffix) ? String(value.dropLast(suffix.count)) : value
+        }
+    }
+}
+
+/// A keyword that expands into a URL. `{query}` in `url` is replaced with the
+/// percent-encoded argument; a `url` without `{query}` is opened by typing
+/// the keyword alone.
+struct Workflow: Decodable, Sendable {
+    let keywords: [String]
+    let title: String
+    let url: String
+    let transforms: [ArgumentTransform]
+
+    var takesArgument: Bool { url.contains("{query}") }
+
+    private enum CodingKeys: String, CodingKey { case keywords, title, url, transforms }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        keywords = try container.decodeIfPresent([String].self, forKey: .keywords)?
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? []
+        title = try container.decode(String.self, forKey: .title)
+        url = try container.decode(String.self, forKey: .url)
+        transforms = try container.decodeIfPresent([ArgumentTransform].self, forKey: .transforms) ?? []
+
+        if keywords.contains(where: { $0.isEmpty || $0.contains(where: \.isWhitespace) }) {
+            throw DecodingError.dataCorruptedError(
+                forKey: .keywords, in: container,
+                debugDescription: "keywords must be single words"
+            )
+        }
+    }
+
+    func prepare(_ argument: String) -> String {
+        transforms.reduce(argument) { $1.apply(to: $0) }
+    }
+}
+
+struct WorkflowSet: Decodable, Sendable {
+    let workflows: [Workflow]
+    let fallback: Workflow
+
+    private enum CodingKeys: String, CodingKey { case workflows, fallback }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        workflows = try container.decode([Workflow].self, forKey: .workflows)
+        fallback = try container.decodeIfPresent(Workflow.self, forKey: .fallback) ?? Self.builtIn.fallback
+
+        if let index = workflows.firstIndex(where: { $0.keywords.isEmpty }) {
+            throw DecodingError.dataCorruptedError(
+                forKey: .workflows, in: container,
+                debugDescription: "workflow #\(index + 1) (\(workflows[index].title)) has no keywords"
+            )
+        }
+        if !fallback.takesArgument {
+            throw DecodingError.dataCorruptedError(
+                forKey: .fallback, in: container,
+                debugDescription: "fallback url must contain {query}"
+            )
+        }
+    }
+
+    // swiftlint:disable:next force_try
+    static let builtIn = try! JSONDecoder().decode(WorkflowSet.self, from: Data(Config.defaultWorkflowsJSON.utf8))
+
+    func workflow(for keyword: String) -> Workflow? {
+        let keyword = keyword.lowercased()
+        return workflows.first { $0.keywords.contains(keyword) }
+    }
+}
+
+/// Owns workflows.json: finds it, reloads it when its modification date
+/// changes, and keeps the last good version if an edit breaks it. Only used
+/// from the main thread.
+final class WorkflowStore {
+    let fileURL: URL
+    /// Only the ~/.config fallback is created when missing; a configured path
+    /// that has gone missing is reported instead of silently recreated.
+    private let createsMissingFile: Bool
+    private(set) var current = WorkflowSet.builtIn
+    /// Why the file on disk could not be used, if it could not.
+    private(set) var loadError: String?
+    private var loadedModificationDate: Date?
+
+    init(fileURL: URL = Config.workflowsSource.url, createsMissingFile: Bool = Config.workflowsSource.isFallback) {
+        self.fileURL = fileURL
+        self.createsMissingFile = createsMissingFile
+        reloadIfNeeded()
+    }
+
+    /// Writes the default file if it is the ~/.config fallback and missing.
+    func ensureFileExists() {
+        let fileManager = FileManager.default
+        guard createsMissingFile, !fileManager.fileExists(atPath: fileURL.path) else { return }
+        do {
+            try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(Config.defaultWorkflowsJSON.utf8).write(to: fileURL, options: .atomic)
+        } catch {
+            NSLog("Launcher: could not create %@: %@", fileURL.path, error.localizedDescription)
+        }
+    }
+
+    /// Cheap enough to call every time the launcher opens: it only parses the
+    /// file when its modification date differs from the last load.
+    func reloadIfNeeded() {
+        ensureFileExists()
+        let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        let modified = attributes?[.modificationDate] as? Date
+        guard modified == nil || modified != loadedModificationDate else { return }
+        loadedModificationDate = modified
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            current = try JSONDecoder().decode(WorkflowSet.self, from: data)
+            loadError = nil
+        } catch {
+            loadError = Self.describe(error)
+            NSLog("Launcher: ignoring %@: %@", fileURL.path, loadError ?? "")
+        }
+    }
+
+    private static func describe(_ error: Error) -> String {
+        guard let error = error as? DecodingError else { return error.localizedDescription }
+        func location(_ context: DecodingError.Context) -> String {
+            let path = context.codingPath.map { key in
+                key.intValue.map { "[\($0)]" } ?? ".\(key.stringValue)"
+            }.joined()
+            return path.isEmpty ? "" : " at \(path)"
+        }
+        switch error {
+        case .keyNotFound(let key, let context):
+            return "missing \"\(key.stringValue)\"\(location(context))"
+        case .typeMismatch(_, let context), .valueNotFound(_, let context):
+            return "\(context.debugDescription)\(location(context))"
+        case .dataCorrupted(let context):
+            if let underlying = context.underlyingError as NSError?,
+               let detail = underlying.userInfo[NSDebugDescriptionErrorKey] as? String {
+                return detail
+            }
+            return "\(context.debugDescription)\(location(context))"
+        @unknown default:
+            return error.localizedDescription
+        }
+    }
 }
 
 // MARK: - Command parsing
@@ -116,22 +305,25 @@ enum CommandParser {
         charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
     )
 
-    /// Parses `<keyword> <argument>`, falling back to a Google search.
-    static func parse(_ raw: String) -> Command? {
+    /// Parses `<keyword> [argument]`, falling back to the fallback workflow.
+    static func parse(_ raw: String, using set: WorkflowSet) -> Command? {
         let input = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return nil }
 
         let parts = input.split(maxSplits: 1, whereSeparator: \.isWhitespace)
-        if parts.count == 2,
-           let shortcut = Config.shortcuts.first(where: { $0.keywords.contains(parts[0].lowercased()) }) {
-            let argument = shortcut.transform(parts[1].trimmingCharacters(in: .whitespaces))
-            if !argument.isEmpty, let url = expand(shortcut.urlTemplate, with: argument) {
-                return Command(url: url, label: "\(shortcut.title) \(argument)")
+        if let workflow = set.workflow(for: String(parts[0])) {
+            if workflow.takesArgument, parts.count == 2 {
+                let argument = workflow.prepare(parts[1].trimmingCharacters(in: .whitespaces))
+                if !argument.isEmpty, let url = expand(workflow.url, with: argument) {
+                    return Command(url: url, label: "\(workflow.title) \(argument)")
+                }
+            } else if !workflow.takesArgument, parts.count == 1, let url = URL(string: workflow.url) {
+                return Command(url: url, label: workflow.title)
             }
         }
 
-        guard let url = expand(Config.fallback.urlTemplate, with: input) else { return nil }
-        return Command(url: url, label: Config.fallback.title)
+        guard let url = expand(set.fallback.url, with: set.fallback.prepare(input)) else { return nil }
+        return Command(url: url, label: set.fallback.title)
     }
 
     private static func expand(_ template: String, with argument: String) -> URL? {
@@ -139,7 +331,6 @@ enum CommandParser {
         return URL(string: template.replacingOccurrences(of: "{query}", with: encoded))
     }
 }
-
 
 // MARK: - Global hotkeys (Carbon)
 
@@ -480,10 +671,12 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
 
 @MainActor
 final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
+    private let store: WorkflowStore
     private let textField = NSTextField()
     private let hintLabel = FloatingPanelController.makeHintLabel()
 
-    init() {
+    init(store: WorkflowStore) {
+        self.store = store
         super.init(size: NSSize(width: 680, height: 60), verticalOffset: 0.15)
         buildContent()
     }
@@ -491,6 +684,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     override var initialFirstResponder: NSResponder? { textField }
 
     override func prepareToShow() {
+        store.reloadIfNeeded()
+        textField.placeholderString = placeholder()
         textField.stringValue = ""
         updateHint()
     }
@@ -500,7 +695,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     private func execute() {
-        guard let command = CommandParser.parse(textField.stringValue) else {
+        guard let command = CommandParser.parse(textField.stringValue, using: store.current) else {
             hide()
             return
         }
@@ -510,11 +705,23 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     private func updateHint() {
-        if let command = CommandParser.parse(textField.stringValue) {
+        if let command = CommandParser.parse(textField.stringValue, using: store.current) {
             hintLabel.stringValue = "↩ \(command.label)"
+            hintLabel.toolTip = nil
+        } else if let error = store.loadError {
+            hintLabel.stringValue = "⚠ workflows.json: \(error)"
+            hintLabel.toolTip = "\(store.fileURL.path)\n\(error)"
         } else {
             hintLabel.stringValue = "esc to close"
+            hintLabel.toolTip = nil
         }
+    }
+
+    private func placeholder() -> String {
+        let set = store.current
+        let keywords = set.workflows.compactMap(\.keywords.first).prefix(4)
+        guard !keywords.isEmpty else { return set.fallback.title }
+        return "\(set.fallback.title), or type \(keywords.joined(separator: ", "))…"
     }
 
     // MARK: NSTextFieldDelegate
@@ -541,7 +748,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private func buildContent() {
         let icon = Self.makeIcon(symbolName: "magnifyingglass")
 
-        Self.styleSearchField(textField, placeholder: "Search Google, or type pr, jira, cf…")
+        Self.styleSearchField(textField, placeholder: placeholder())
         textField.delegate = self
 
         hintLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
@@ -573,6 +780,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let workflowStore = WorkflowStore()
     private var launcher: LauncherController?
     private var clipboardStore: ClipboardStore?
     private var clipboardMonitor: ClipboardMonitor?
@@ -581,7 +789,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let launcher = LauncherController()
+        let launcher = LauncherController(store: workflowStore)
         self.launcher = launcher
 
         let store = ClipboardStore()
@@ -624,6 +832,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem("Clipboard History (\(Config.clipboardHotKey.display))", #selector(openClipboardHistory)))
         menu.addItem(menuItem("Clear Clipboard History", #selector(clearClipboardHistory)))
         menu.addItem(.separator())
+        menu.addItem(menuItem("Edit Workflows…", #selector(editWorkflows)))
+        menu.addItem(menuItem("Show Workflows in Finder", #selector(revealWorkflows)))
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Launcher", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
 
@@ -646,6 +857,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func clearClipboardHistory() {
         clipboardStore?.clear()
+    }
+
+    /// Opens workflows.json in the default editor for JSON files. Changes are
+    /// picked up the next time the launcher opens.
+    @objc private func editWorkflows() {
+        workflowStore.ensureFileExists()
+        NSWorkspace.shared.open(workflowStore.fileURL)
+    }
+
+    @objc private func revealWorkflows() {
+        workflowStore.ensureFileExists()
+        NSWorkspace.shared.activateFileViewerSelecting([workflowStore.fileURL])
     }
 
     private func showHotKeyError(_ hotKeys: [HotKey]) {

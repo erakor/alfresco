@@ -5,7 +5,8 @@ type a command, hit Enter, and the URL opens in your default browser. It also
 keeps a 24-hour clipboard history on a second hotkey.
 
 - Hotkeys via Carbon `RegisterEventHotKey`: **no Accessibility or Screen Recording permission**.
-- Accessory agent: no Dock icon (optional menu bar icon with Open / Clipboard History / Quit).
+- Accessory agent: no Dock icon (optional menu bar icon with Open / Clipboard History / Edit Workflows / Quit).
+- Workflows live in a JSON file and reload automatically: no rebuild to add one.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
 - `Esc`, clicking outside, or pressing the hotkey again dismisses it.
 - `⌘X/C/V/A/Z` work in the input even though the app has no menu bar.
@@ -16,6 +17,58 @@ keeps a 24-hour clipboard history on a second hotkey.
 | `jira abc-42`  | `https://understood.atlassian.net/browse/ABC-42`                  |
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
 | anything else  | `https://www.google.com/search?q=...`                             |
+
+## Workflows
+
+A workflow maps a keyword to a URL. They live in [`workflows.json`](workflows.json)
+at the root of this repo. Open it from the menu bar icon (**Edit Workflows…**)
+or any editor. Changes apply the next time you open the launcher; no rebuild or
+restart needed.
+
+`build.sh` records the absolute path of the repo's `workflows.json` in the app,
+so the installed `Launcher.app` keeps reading it from the repo. If you move the
+repo, rebuild.
+
+The app looks for the file in this order:
+
+1. The `ALFRESCO_WORKFLOWS` environment variable, if set.
+2. The path `build.sh` recorded in `Launcher.app`.
+3. `workflows.json` next to the executable (a plain binary built in the repo).
+4. `~/.config/alfresco/workflows.json`, created with just the Google fallback
+   if nothing else is found.
+
+```json
+{
+  "workflows": [
+    {
+      "keywords": ["pr"],
+      "title": "GitHub PR",
+      "url": "https://github.com/your-org/your-repo/pull/{query}",
+      "transforms": ["stripPrefix:#"]
+    },
+    {
+      "keywords": ["gh", "github"],
+      "title": "GitHub notifications",
+      "url": "https://github.com/notifications"
+    }
+  ],
+  "fallback": {
+    "title": "Search Google",
+    "url": "https://www.google.com/search?q={query}"
+  }
+}
+```
+
+| Field        | Meaning                                                                    |
+| ------------ | -------------------------------------------------------------------------- |
+| `keywords`   | One or more single words, matched case-insensitively. First match wins.     |
+| `title`      | Shown in the hint as you type.                                              |
+| `url`        | `{query}` is replaced with the percent-encoded argument. Without `{query}`, typing the keyword alone opens the URL. |
+| `transforms` | Optional, applied in order to the argument: `uppercase`, `lowercase`, `trim`, `stripPrefix:<text>`, `stripSuffix:<text>`. |
+| `fallback`   | Optional. Used when nothing matches; its `url` must contain `{query}`.      |
+
+If the file has a mistake or is missing, the launcher keeps using the last good
+version and shows the error in the hint area (hover it for the full message).
 
 ## Clipboard history
 
@@ -47,22 +100,19 @@ Notes:
 
 ## Configure
 
-Edit the `Config` enum at the top of `Launcher.swift`:
+Edit the `Config` enum at the top of `Launcher.swift`, then rebuild:
 
-- `githubOwner` / `githubRepo`: fill these in for the `pr` command.
 - `hotKey`: `.commandShiftSpace` (default) or `.optionSpace`. macOS 15+ rejects
   Option-only hotkeys, so `.optionSpace` only works on macOS 14 and earlier.
-- `shortcuts`: append a `Shortcut(keywords:title:urlTemplate:)`; `{query}` is
-  replaced with the percent-encoded argument. An optional `transform` lets you
-  normalize the argument (the Jira one uppercases it).
 - `showMenuBarIcon`: set to `false` for a fully invisible agent.
+- `workflowsSource`: how the workflows file is found (see above).
 - `clipboardHotKey`: the history shortcut, `.commandOptionC` (`⌘⌥C`) by default.
   Define your own `HotKey(keyCode:modifiers:display:)` with any `kVK_` key code.
 - `clipboardRetention` (24 h), `clipboardMaxItems` (500),
   `clipboardMaxTextBytes` (256 KB), `clipboardPollInterval` (0.5 s).
 
-The source is split into `Launcher.swift` (config, hotkeys, panels, URL
-launcher, app), `ClipboardHistory.swift` (clipboard model, storage, watcher)
+The source is split into `Launcher.swift` (config, workflows, hotkeys, panels,
+URL launcher, app), `ClipboardHistory.swift` (clipboard model, storage, watcher)
 and `ClipboardPanel.swift` (history panel).
 
 ## Build
@@ -95,6 +145,9 @@ Then System Settings > General > Login Items > **Open at Login** > `+` and pick
 
 **Option B: LaunchAgent (works with the plain binary or the .app)**
 
+Run this from the repo folder: `$PWD` in the plist points the agent at this
+repo's `workflows.json`.
+
 ```bash
 mkdir -p ~/Applications ~/Library/LaunchAgents
 swiftc -O -parse-as-library *.swift -o ~/Applications/Launcher
@@ -110,6 +163,11 @@ cat > ~/Library/LaunchAgents/local.launcher.plist <<PLIST
     <array>
         <string>$HOME/Applications/Launcher</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ALFRESCO_WORKFLOWS</key>
+        <string>$PWD/workflows.json</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
