@@ -34,7 +34,11 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 ### Launcher/Workflows.swift
 
 - **Workflows** — `Workflow` / `WorkflowSet` are `Decodable` models of `workflows.json`; `ArgumentTransform` parses string transforms like `"stripPrefix:#"`. `WorkflowStore` re-reads the file only when its modification date changes (checked each time the launcher opens) and keeps the last good `WorkflowSet` when a reload fails, exposing `loadError` for the UI.
-- **Command parsing** — `CommandParser.parse` splits input into `<keyword> [argument]`. A workflow whose `url` contains `{query}` requires an argument; one without `{query}` matches only the bare keyword. `WorkflowSet.workflow(for:withArgument:)` picks the first workflow of the right form, so one keyword can have both (e.g. `weather` and `weather paris`). Anything else goes to `fallback`. Arguments are percent-encoded with the RFC 3986 unreserved set.
+- **Command parsing** — `CommandParser.parse` splits input into `<keyword> [argument]`. A workflow whose `url` contains `{query}` requires an argument; one without `{query}` matches only the bare keyword. `WorkflowSet.workflow(for:withArgument:)` picks the first workflow of the right form, so one keyword can have both (e.g. `weather` and `weather paris`). Anything else goes to `fallback`. Arguments are percent-encoded with the RFC 3986 unreserved set. An optional `preview` URL template is expanded the same way into `Command.preview`.
+
+### Launcher/PreviewFetcher.swift
+
+`PreviewFetcher` (main actor) fetches `Command.preview` for the launcher hint: debounced 400 ms, one request in flight (a new URL cancels the old one, and so does input that no longer has a preview or hiding the panel), 5 s timeout, keeps the first non-empty line of a 2xx non-HTML answer for 10 minutes. Failures are silent. `LauncherController.updateHint` shows `"<text>  ↩ <label>"` once it's cached.
 
 ### Shared/HotKeys.swift
 

@@ -11,6 +11,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let store: WorkflowStore
     private let textField = NSTextField()
     private let hintLabel = FloatingPanelController.makeHintLabel()
+    private let previews = PreviewFetcher()
     /// Text to start with on the next show(prefill:).
     private var pendingPrefill = ""
 
@@ -18,6 +19,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         self.store = store
         super.init(size: NSSize(width: 680, height: 60), verticalOffset: 0.15)
         buildContent()
+        previews.onUpdate = { [weak self] in self?.updateHint() }
     }
 
     override var initialFirstResponder: NSResponder? { textField }
@@ -43,6 +45,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     override func didHide() {
         textField.stringValue = ""
+        previews.cancel()
     }
 
     private func execute() {
@@ -58,6 +61,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     private func updateHint() {
+        // A preview to fetch; anything pending is cancelled when this stays nil.
+        var missingPreview: URL?
+        defer {
+            if let missingPreview { previews.fetch(missingPreview) } else { previews.cancel() }
+        }
+
         if let workflow = store.current.workflowAwaitingArgument(textField.stringValue) {
             // The keyword is typed but its argument is not: show its help.
             let keyword = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -67,6 +76,15 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         } else if let command = CommandParser.parse(textField.stringValue, using: store.current) {
             hintLabel.stringValue = "↩ \(command.label)"
             hintLabel.toolTip = nil
+            if let preview = command.preview {
+                if let text = previews.cachedText(for: preview) {
+                    // e.g. "paris: ☀️ +14°C ↙11km/h  ↩ Weather in paris"
+                    hintLabel.stringValue = "\(text)  ↩ \(command.label)"
+                    hintLabel.toolTip = text
+                } else {
+                    missingPreview = preview
+                }
+            }
         } else if let error = store.loadError {
             hintLabel.stringValue = "⚠ workflows.json: \(error)"
             hintLabel.toolTip = "\(store.fileURL.path)\n\(error)"

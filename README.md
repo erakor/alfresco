@@ -16,7 +16,7 @@ keeps a 24-hour clipboard history on a second hotkey.
 | `pr 123`       | `https://github.com/<owner>/<repo>/pull/123` (`pr #123` works too) |
 | `jira abc-42`  | `https://understood.atlassian.net/browse/ABC-42`                  |
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
-| `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric)   |
+| `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
 | `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
 | anything else  | `https://www.google.com/search?q=...`                             |
 
@@ -68,6 +68,7 @@ The app looks for the file in this order:
 | `title`      | Shown in the hint as you type.                                              |
 | `description` | Optional help text. Shown in the hint when you type the keyword without its argument (Enter does nothing until you add one), and under the workflow in the menu bar's **Workflows** submenu. |
 | `url`        | `{query}` is replaced with the percent-encoded argument. Without `{query}`, typing the keyword alone opens the URL. |
+| `preview`    | Optional http(s) URL, filled in like `url` (`{query}` only if `url` has it). While the input matches the workflow, the launcher fetches it and shows the first line of the plain-text answer in the hint, e.g. the weather. It waits until you pause typing and keeps answers for 10 minutes; if the request fails, the hint just shows the title. What you type after the keyword is sent to that server. Not allowed on `fallback`. |
 | `transforms` | Optional, applied in order to the argument: `uppercase`, `lowercase`, `trim`, `stripPrefix:<text>`, `stripSuffix:<text>`. |
 | `fallback`   | Optional. Used when nothing matches; its `url` must contain `{query}`.      |
 

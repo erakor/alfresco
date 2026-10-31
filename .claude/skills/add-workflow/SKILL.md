@@ -45,6 +45,11 @@ reference is the table under "Workflows" in `README.md`.
   jira abc-42"). It's the only help shown while typing and in the menu bar's
   Workflows submenu.
 - **`title`**: short. It's shown as "<title> <argument>" in the hint.
+- **`preview`** (optional): an http(s) URL returning one short line of plain
+  text, shown in the hint before Enter (the `weather` workflows use wttr.in's
+  `?format=`). Same `{query}` rules as `url`. Pre-encode literal `%` as `%25`
+  (`format=%25t`), since a bare `%t` is not a valid URL. Only add one when the
+  user wants it: the typed argument is sent to that server while typing.
 
 If the user gave only a URL or a site name, find a real example URL to pin down
 where the ID goes rather than guessing the path. Ask when it's ambiguous.

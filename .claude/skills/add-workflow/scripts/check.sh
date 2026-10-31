@@ -60,6 +60,7 @@ for input in args.dropFirst(2) {
         print("\(input)  ->  (Enter does nothing; hint: \(w.help ?? w.title))")
     } else if let command = CommandParser.parse(input, using: set) {
         print("\(input)  ->  \(command.label)  ->  \(command.url.absoluteString)")
+        if let preview = command.preview { print("    preview: \(preview.absoluteString)") }
     } else {
         print("\(input)  ->  (nothing)")
     }
