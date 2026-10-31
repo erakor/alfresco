@@ -85,32 +85,34 @@ enum Config {
     // MARK: Weather
 
     /// `weather` or `weather <place>` in the launcher shows the forecast
-    /// under the input, once an OpenWeather key is set. Enter still opens
+    /// under the input, once a WeatherAPI.com key is set. Enter still opens
     /// whatever workflows.json maps the keyword to.
     static let weatherKeyword = "weather"
-    /// OpenWeather's language for descriptions, also used for day names.
+    /// WeatherAPI's language for condition text, also used for day names.
     static let weatherLanguage = "fr"
-    /// Place used for the bare keyword, e.g. "Paris,FR". nil looks up the
-    /// public IP address with ipinfo.io, which can be off by a city.
+    /// Days shown, today included. The free plan returns at most 3.
+    static let weatherDays = 3
+    /// Place used for the bare keyword, e.g. "Paris, France". nil locates
+    /// the public IP address (WeatherAPI's auto:ip), which can be off by a city.
     static let weatherHomePlace: String? = nil
     /// Forecasts are reused for this long before being fetched again.
     static let weatherCacheLifetime: TimeInterval = 10 * 60
 
-    /// The OpenWeather API key (free plan): the `ALFRESCO_OPENWEATHER_KEY`
+    /// The WeatherAPI.com key (free plan): the `ALFRESCO_WEATHERAPI_KEY`
     /// environment variable, else the first line of
-    /// ~/.config/alfresco/openweather-key. Re-read each time the launcher
+    /// ~/.config/alfresco/weatherapi-key. Re-read each time the launcher
     /// opens. nil turns the weather panel off.
-    static func openWeatherAPIKey() -> String? {
+    static func weatherAPIKey() -> String? {
         func clean(_ value: String?) -> String? {
             let line = value?.split(whereSeparator: \.isNewline).first
             let key = line?.trimmingCharacters(in: .whitespaces) ?? ""
             return key.isEmpty ? nil : key
         }
-        if let key = clean(ProcessInfo.processInfo.environment["ALFRESCO_OPENWEATHER_KEY"]) {
+        if let key = clean(ProcessInfo.processInfo.environment["ALFRESCO_WEATHERAPI_KEY"]) {
             return key
         }
         let file = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/alfresco/openweather-key")
+            .appendingPathComponent(".config/alfresco/weatherapi-key")
         return clean(try? String(contentsOf: file, encoding: .utf8))
     }
 

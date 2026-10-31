@@ -42,11 +42,11 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 
 ### Weather/
 
-The forecast area under the launcher input, shown while the input is `Config.weatherKeyword` alone or followed by a place, and only when an OpenWeather key is set (`Config.openWeatherAPIKey()`: `ALFRESCO_OPENWEATHER_KEY`, else `~/.config/alfresco/openweather-key`; nil turns the feature off entirely). Enter is unaffected: it still runs the workflow from `workflows.json`.
+The forecast area under the launcher input, shown while the input is `Config.weatherKeyword` alone or followed by a place, and only when a WeatherAPI.com key is set (`Config.weatherAPIKey()`: `ALFRESCO_WEATHERAPI_KEY`, else `~/.config/alfresco/weatherapi-key`; nil turns the feature off entirely). Enter is unaffected: it still runs the workflow from `workflows.json`.
 
-- `OpenWeather.swift`: not main-actor. `WeatherLoader.load` resolves the place (OpenWeather geocoding, or ipinfo.io for the bare keyword unless `Config.weatherHomePlace` is set), then fetches `data/2.5/weather` and `data/2.5/forecast` (free plan only; no One Call) in parallel and builds a `Forecast`, grouping the 3-hour slots into days in the place's time zone. Errors are `WeatherError`, whose `message` is shown in the panel.
+- `WeatherAPI.swift`: not main-actor. `WeatherLoader.load` makes one `v1/forecast.json` request (`q` is the typed place, `Config.weatherHomePlace`, or `auto:ip` for the bare keyword; `days` is `Config.weatherDays`, at most 3 on the free plan) and builds a `Forecast`. Error bodies' codes map to `WeatherError` (1006 unknown place, 2007 quota, 1002/2006/2008 key), whose `message` is shown in the panel.
 - `WeatherProvider.swift`: main actor. Turns input into a `WeatherQuery`, debounces typed places (400 ms), runs one load at a time, caches results per query (`Config.weatherCacheLifetime`, failures 30 s), and calls `onUpdate`.
-- `WeatherView.swift`: the `NSView` (loading, error and forecast states; SF Symbols for OpenWeather icon codes). Labels are French.
+- `WeatherView.swift`: the `NSView` (loading, error and forecast states; SF Symbols for WeatherAPI condition codes; the "Powered by WeatherAPI.com" link the free plan requires). Labels are French.
 
 `LauncherController.updateWeather` shows or hides it and resizes the panel with `FloatingPanelController.setHeight`; while it is shown, the one-line hint `preview` is not fetched.
 

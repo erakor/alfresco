@@ -80,43 +80,42 @@ picking one opens the launcher with its keyword already typed.
 
 ## Weather
 
-With an [OpenWeather](https://openweathermap.org/price) API key (the free
-plan is enough, no card needed), typing `weather` or `weather <place>` opens
-a forecast under the input: current conditions (temperature, feels-like,
-humidity, wind, chance of rain in the next 3 hours) and five days with
-high / low and chance of rain. Enter still opens the `weather` workflow's
-page.
+With a [WeatherAPI.com](https://www.weatherapi.com/pricing.aspx) key (the
+free plan is enough, no card needed), typing `weather` or `weather <place>`
+opens a forecast under the input: current conditions (temperature,
+feels-like, humidity, wind, chance of rain this hour) and three days with
+high / low and chance of rain or snow. Enter still opens the `weather`
+workflow's page.
 
-1. Create a free account at openweathermap.org and copy your API key. A new
-   key can take a couple of hours to start working; until then the panel says
-   the key was refused.
-2. Save it, alone on the first line, in `~/.config/alfresco/openweather-key`:
+1. Create a free account at weatherapi.com and copy your API key from the
+   dashboard.
+2. Save it, alone on the first line, in `~/.config/alfresco/weatherapi-key`:
 
    ```bash
-   mkdir -p ~/.config/alfresco && pbpaste > ~/.config/alfresco/openweather-key && chmod 600 ~/.config/alfresco/openweather-key
+   mkdir -p ~/.config/alfresco && pbpaste > ~/.config/alfresco/weatherapi-key && chmod 600 ~/.config/alfresco/weatherapi-key
    ```
 
-   Or set `ALFRESCO_OPENWEATHER_KEY` in the launcher's environment. The key
-   is read each time the launcher opens, so no restart is needed.
+   Or set `ALFRESCO_WEATHERAPI_KEY` in the launcher's environment. The key is
+   read each time the launcher opens, so no restart is needed.
 
 Without a key the launcher behaves as before, with the one-line `preview` in
 the hint.
 
-- `weather paris`, `weather lyon,fr`, `weather new york`: the place is looked
-  up with OpenWeather's geocoding, after you pause typing.
-- `weather` alone uses your public IP address (via ipinfo.io), shown as
+- `weather paris`, `weather lyon`, `weather 75011`, `weather cdg`: WeatherAPI
+  accepts city names, postal codes, airport codes and `lat,lon`. The place is
+  looked up after you pause typing.
+- `weather` alone is located from your public IP address (`auto:ip`), shown as
   "position approximative" since it can be off by a city. Set
-  `Config.weatherHomePlace` (e.g. `"Paris,FR"`) and rebuild to use a fixed
-  place instead.
+  `Config.weatherHomePlace` (e.g. `"Paris, France"`) and rebuild to use a
+  fixed place instead.
 - Text is in French, metric units (`Config.weatherLanguage` sets the language
-  of OpenWeather's descriptions and the day names; the panel's own labels are
-  French).
-- Each place is fetched at most once every 10 minutes
-  (`Config.weatherCacheLifetime`), three requests each time, far below the
-  free plan's limits.
-- The free plan's forecast comes in 3-hour steps, so a day's high and low are
-  the extremes of its eight slots (today's also counts the current
-  temperature), and its icon is the one around 13:00.
+  of WeatherAPI's condition text and the day names; the panel's own labels
+  are French).
+- One request per place, reused for 10 minutes (`Config.weatherCacheLifetime`),
+  far below the free plan's monthly quota. The free plan forecasts 3 days
+  (`Config.weatherDays`).
+- "Powered by WeatherAPI.com" in the corner is the link back the free plan
+  asks for.
 
 ## Clipboard history
 

@@ -1,6 +1,6 @@
 // WeatherProvider.swift
 //
-// Main-actor side of the weather panel: reads the OpenWeather key, turns
+// Main-actor side of the weather panel: reads the WeatherAPI key, turns
 // launcher input into a WeatherQuery, and runs WeatherLoader with a debounce,
 // one request at a time, caching results for Config.weatherCacheLifetime.
 
@@ -37,7 +37,7 @@ final class WeatherProvider {
     /// Re-reads the key, so adding or changing it needs no restart. Cheap;
     /// called each time the launcher opens.
     func reloadKey() {
-        let key = Config.openWeatherAPIKey()
+        let key = Config.weatherAPIKey()
         if key != apiKey {
             apiKey = key
             results.removeAll()

@@ -1,7 +1,7 @@
 // WeatherView.swift
 //
 // The forecast area under the launcher field: current conditions on top,
-// five days below, plus loading and error states. Labels are in French, to
+// Config.weatherDays days below, plus loading and error states. Labels are in French, to
 // match Config.weatherLanguage's default.
 
 import Cocoa
@@ -28,7 +28,8 @@ final class WeatherView: NSView {
     private let statusIcon = NSImageView()
     private let statusStack = NSStackView()
 
-    private let attribution = NSTextField(labelWithString: "Données : OpenWeather")
+    /// The free plan asks for a link back to WeatherAPI.com.
+    private let attribution = NSButton(title: "Powered by WeatherAPI.com", target: nil, action: nil)
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -70,7 +71,7 @@ final class WeatherView: NSView {
     }
 
     private func fill(with forecast: Forecast) {
-        icon.image = Self.symbol(for: forecast.icon, pointSize: 40)
+        icon.image = Self.symbol(for: forecast.condition, pointSize: 40)
         temperatureLabel.stringValue = Self.degrees(forecast.temperature)
         descriptionLabel.stringValue = forecast.description.prefix(1).uppercased() + forecast.description.dropFirst()
         placeLabel.stringValue = forecast.isApproximate
@@ -80,7 +81,7 @@ final class WeatherView: NSView {
         var wind = "Vent \(Int(forecast.windKmh.rounded())) km/h"
         if let degrees = forecast.windDegrees { wind += " \(Self.windArrow(from: degrees))" }
         var second = [wind]
-        if let rain = forecast.rainChance { second.append("Pluie \(Self.percent(rain)) d'ici 3 h") }
+        if let rain = forecast.rainChance { second.append("Pluie \(Self.percent(rain)) cette heure-ci") }
         detailsLabel.stringValue = [
             "Ressenti \(Self.degrees(forecast.feelsLike)) · Humidité \(Int(forecast.humidity.rounded())) %",
             second.joined(separator: " · "),
@@ -113,26 +114,39 @@ final class WeatherView: NSView {
         return arrows[(index + 8) % 8]
     }
 
-    /// SF Symbol for an OpenWeather icon code ("01d", "10n", ...), in color.
-    static func symbol(for code: String, pointSize: CGFloat) -> NSImage? {
-        let night = code.hasSuffix("n")
+    /// SF Symbol for a WeatherAPI condition code, in color.
+    /// https://www.weatherapi.com/docs/weather_conditions.json lists the codes.
+    static func symbol(for condition: WeatherCondition, pointSize: CGFloat) -> NSImage? {
+        let day = condition.isDay
         let name: String
-        switch code.prefix(2) {
-        case "01": name = night ? "moon.stars.fill" : "sun.max.fill"
-        case "02": name = night ? "cloud.moon.fill" : "cloud.sun.fill"
-        case "03": name = "cloud.fill"
-        case "04": name = "smoke.fill"
-        case "09": name = "cloud.drizzle.fill"
-        case "10": name = night ? "cloud.moon.rain.fill" : "cloud.sun.rain.fill"
-        case "11": name = "cloud.bolt.rain.fill"
-        case "13": name = "cloud.snow.fill"
-        case "50": name = "cloud.fog.fill"
+        switch condition.code {
+        case 1000: name = day ? "sun.max.fill" : "moon.stars.fill"
+        case 1003: name = day ? "cloud.sun.fill" : "cloud.moon.fill"
+        case 1006: name = "cloud.fill"
+        case 1009: name = "smoke.fill"
+        case 1030, 1135, 1147: name = "cloud.fog.fill"
+        case 1063, 1180, 1240: name = day ? "cloud.sun.rain.fill" : "cloud.moon.rain.fill"
+        case 1072, 1150, 1153, 1168, 1171: name = "cloud.drizzle.fill"
+        case 1183, 1186, 1189: name = "cloud.rain.fill"
+        case 1192, 1195, 1243, 1246: name = "cloud.heavyrain.fill"
+        case 1069, 1198, 1201, 1204, 1207, 1249, 1252: name = "cloud.sleet.fill"
+        case 1237, 1261, 1264: name = "cloud.hail.fill"
+        case 1066, 1210, 1213, 1216, 1219, 1222, 1225, 1255, 1258: name = "cloud.snow.fill"
+        case 1114, 1117: name = "wind.snow"
+        case 1087, 1273, 1276: name = "cloud.bolt.rain.fill"
+        case 1279, 1282: name = "cloud.bolt.fill"
         default: name = "cloud.fill"
         }
         let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
             .applying(.preferringMulticolor())
         return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)
+    }
+
+    @objc private func openAttribution() {
+        if let url = URL(string: "https://www.weatherapi.com/") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: Setup
@@ -150,8 +164,11 @@ final class WeatherView: NSView {
         detailsLabel.textColor = .secondaryLabelColor
         detailsLabel.alignment = .right
         detailsLabel.maximumNumberOfLines = 2
+        attribution.isBordered = false
         attribution.font = .systemFont(ofSize: 10)
-        attribution.textColor = .tertiaryLabelColor
+        attribution.contentTintColor = .tertiaryLabelColor
+        attribution.target = self
+        attribution.action = #selector(openAttribution)
         for label in [descriptionLabel, placeLabel, detailsLabel] {
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
@@ -169,7 +186,7 @@ final class WeatherView: NSView {
         daysStack.orientation = .horizontal
         daysStack.distribution = .fillEqually
         daysStack.spacing = 8
-        dayColumns = (0..<5).map { _ in DayColumn(frame: .zero) }
+        dayColumns = (0..<Config.weatherDays).map { _ in DayColumn(frame: .zero) }
         for column in dayColumns { daysStack.addArrangedSubview(column) }
 
         spinner.style = .spinning
@@ -261,7 +278,7 @@ private final class DayColumn: NSStackView {
 
     func fill(with day: Forecast.Day) {
         nameLabel.stringValue = day.name
-        icon.image = WeatherView.symbol(for: day.icon, pointSize: 20)
+        icon.image = WeatherView.symbol(for: day.condition, pointSize: 20)
         rangeLabel.stringValue = "\(WeatherView.degrees(day.high)) / \(WeatherView.degrees(day.low))"
         // Kept in the layout (blank) so the columns stay aligned.
         rainLabel.stringValue = day.rainChance >= 0.2 ? "💧 \(WeatherView.percent(day.rainChance))" : " "

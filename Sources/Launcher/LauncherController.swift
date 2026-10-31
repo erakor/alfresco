@@ -107,7 +107,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     /// Shows the forecast below the input while it reads `weather [place]`
-    /// (and an OpenWeather key is set), and hides it otherwise.
+    /// (and a WeatherAPI key is set), and hides it otherwise.
     private func updateWeather() {
         guard let query = weather.query(for: textField.stringValue) else {
             weather.cancel()
