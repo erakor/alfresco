@@ -83,6 +83,8 @@ browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the histor
 
 - Type to filter, `↑` / `↓` to choose, `↩` (or double-click) to put the item
   back on the clipboard. The panel closes; paste it with `⌘V`.
+- `⌘1` to `⌘9` do the same for the first nine rows of the (filtered) list,
+  without arrowing down. Each of those rows shows its shortcut on the right.
 - `⌘⌫` deletes the selected item. The menu bar icon has **Clear Clipboard History**.
 - Each row shows the app it was copied from and how long ago. Images show a
   thumbnail, files their icon.

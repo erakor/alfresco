@@ -42,7 +42,7 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Shared/FloatingPanel.swift
 
-`LauncherPanel` is a borderless non-activating `NSPanel`, so the previously frontmost app stays frontmost. `FloatingPanelController` is the shared base for both panels: frosted background, positioning on the screen under the mouse, fade in/out, dismissal on Esc / click-away / hotkey. Subclasses override hooks (`prepareToShow`, `didHide`, `initialFirstResponder`, `didFocus`) and add views to `contentView`; it also provides shared view factories like `makeHintLabel()`.
+`LauncherPanel` is a borderless non-activating `NSPanel`, so the previously frontmost app stays frontmost. `FloatingPanelController` is the shared base for both panels: frosted background, positioning on the screen under the mouse, fade in/out, dismissal on Esc / click-away / hotkey. Subclasses override hooks (`prepareToShow`, `didHide`, `initialFirstResponder`, `didFocus`, and `handleKeyEquivalent`, which sees ⌘ shortcuts before the panel's standard editing ones) and add views to `contentView`; it also provides shared view factories like `makeHintLabel()`.
 
 ### Launcher/LauncherController.swift
 
@@ -60,7 +60,7 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Clipboard/ClipboardPanel.swift
 
-`ClipboardController` (a `FloatingPanelController`) shows the history: search field + `NSTableView` (left) filtered via `ClipContent.matches`, and `ClipPreviewView` (right) showing the selected item in full. Row icons are the source app's icon (text), an ImageIO-downsampled thumbnail (images) or the Finder icon (files), cached in an `NSCache` that is emptied when the panel hides. Picking an item writes it back to the clipboard and moves it to the top; it does not paste. Restoring beeps and leaves the clipboard alone if the image file or every referenced file is gone.
+`ClipboardController` (a `FloatingPanelController`) shows the history: search field + `NSTableView` (left) filtered via `ClipContent.matches`, and `ClipPreviewView` (right) showing the selected item in full. Row icons are the source app's icon (text), an ImageIO-downsampled thumbnail (images) or the Finder icon (files), cached in an `NSCache` that is emptied when the panel hides. Picking an item (↩, double-click, or ⌘1 to ⌘9 for the first nine rows, matched by key code so other keyboard layouts work) writes it back to the clipboard and moves it to the top; it does not paste. Restoring beeps and leaves the clipboard alone if the image file or every referenced file is gone.
 
 ## Conventions
 

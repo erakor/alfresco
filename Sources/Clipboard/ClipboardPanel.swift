@@ -2,9 +2,11 @@
 //
 // The clipboard history panel (Config.clipboardHotKey). Type to filter,
 // ↑/↓ to choose, ↩ (or double-click) to put the item back on the clipboard,
-// then paste with ⌘V as usual. ⌘⌫ deletes the selected item. The selected
-// item is shown in full on the right: text, the image, or the file.
+// then paste with ⌘V as usual. ⌘1 to ⌘9 do the same for the first nine
+// rows. ⌘⌫ deletes the selected item. The selected item is shown in full on
+// the right: text, the image, or the file.
 
+import Carbon.HIToolbox
 import Cocoa
 import ImageIO
 import UniformTypeIdentifiers
@@ -151,8 +153,21 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
         hintLabel.stringValue = visibleItems.isEmpty
             ? "esc to close"
-            : "↩ copy · ⌘⌫ delete · esc close"
+            : "↩ copy · ⌘1–9 pick · ⌘⌫ delete · esc close"
     }
+
+    /// Rows reachable with ⌘1 to ⌘9; each shows its shortcut.
+    private static let numberedRows = 9
+
+    /// Key codes rather than characters, so the shortcuts also work on
+    /// layouts like AZERTY where the top row types symbols without Shift.
+    private static let digitKeyCodes: [Int: Int] = [
+        kVK_ANSI_1: 1, kVK_ANSI_2: 2, kVK_ANSI_3: 3, kVK_ANSI_4: 4, kVK_ANSI_5: 5,
+        kVK_ANSI_6: 6, kVK_ANSI_7: 7, kVK_ANSI_8: 8, kVK_ANSI_9: 9,
+        kVK_ANSI_Keypad1: 1, kVK_ANSI_Keypad2: 2, kVK_ANSI_Keypad3: 3,
+        kVK_ANSI_Keypad4: 4, kVK_ANSI_Keypad5: 5, kVK_ANSI_Keypad6: 6,
+        kVK_ANSI_Keypad7: 7, kVK_ANSI_Keypad8: 8, kVK_ANSI_Keypad9: 9,
+    ]
 
     // MARK: Actions
 
@@ -208,6 +223,21 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             pasteboard.clearContents()
             pasteboard.writeObjects(items)
         }
+        return true
+    }
+
+    /// ⌘1 to ⌘9: copy the Nth row of the (filtered) list.
+    override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            .subtracting([.numericPad, .function])
+        guard modifiers == .command,
+              let number = Self.digitKeyCodes[Int(event.keyCode)] else { return false }
+        guard number <= visibleItems.count else {
+            NSSound.beep()
+            return true
+        }
+        select(row: number - 1)
+        copySelected()
         return true
     }
 
@@ -294,6 +324,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         }
 
         cell.detail.stringValue = details.joined(separator: " · ")
+        cell.shortcut.stringValue = row < Self.numberedRows ? "⌘\(row + 1)" : ""
         return cell
     }
 
@@ -553,6 +584,8 @@ private final class ClipCellView: NSTableCellView {
     let icon = NSImageView()
     let title = NSTextField(labelWithString: "")
     let detail = NSTextField(labelWithString: "")
+    /// "⌘1" on the first nine rows, empty on the rest.
+    let shortcut = NSTextField(labelWithString: "")
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -575,7 +608,13 @@ private final class ClipCellView: NSTableCellView {
         detail.maximumNumberOfLines = 1
         detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        for view in [icon, title, detail] {
+        shortcut.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        shortcut.textColor = .tertiaryLabelColor
+        shortcut.alignment = .right
+        shortcut.setContentHuggingPriority(.required, for: .horizontal)
+        shortcut.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        for view in [icon, title, detail, shortcut] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
@@ -587,12 +626,15 @@ private final class ClipCellView: NSTableCellView {
             icon.heightAnchor.constraint(equalToConstant: 28),
 
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
-            title.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            title.trailingAnchor.constraint(equalTo: shortcut.leadingAnchor, constant: -8),
             title.topAnchor.constraint(equalTo: topAnchor, constant: 5),
 
             detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
             detail.trailingAnchor.constraint(equalTo: title.trailingAnchor),
             detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
+
+            shortcut.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            shortcut.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
 
@@ -603,9 +645,13 @@ private final class ClipCellView: NSTableCellView {
 
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
-            detail.textColor = backgroundStyle == .emphasized
+            let emphasized = backgroundStyle == .emphasized
+            detail.textColor = emphasized
                 ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.75)
                 : .secondaryLabelColor
+            shortcut.textColor = emphasized
+                ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.6)
+                : .tertiaryLabelColor
         }
     }
 }
