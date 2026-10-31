@@ -22,13 +22,17 @@ reference is the table under "Workflows" in `README.md`.
 ```
 
 - **`keywords`**: single lowercase words (the decoder lowercases and rejects
-  spaces). Short, easy to type, and not already in the file. If a keyword is
-  listed twice, the first workflow wins and the second is unreachable.
+  spaces). Short, easy to type, and not already in the file. A keyword may be
+  listed twice only as one workflow with `{query}` and one without (the bare
+  keyword opens the second, the keyword plus an argument the first, as
+  `weather` does). Two of the same form: the first wins, the second is
+  unreachable.
 - **`url`**: does it take an argument?
   - With `{query}`, the keyword needs an argument. Typed alone, Enter does
     nothing and the hint shows `description`.
   - Without `{query}`, only the bare keyword matches. `kw something` goes to the
-    fallback search instead.
+    fallback search instead, unless the same keyword also has a `{query}`
+    workflow.
   - The argument is percent-encoded with the RFC 3986 unreserved set, so `/`,
     `?`, `#` and spaces are encoded too. Put `{query}` where a single encoded
     path segment or query value belongs, not where the user's text should
@@ -60,7 +64,8 @@ must contain `{query}`.
 The script compiles the real `Workflow`/`WorkflowSet`/`CommandParser` code from
 `Sources/Launcher/Workflows.swift`, so its verdict matches the app's. It prints:
 - `INVALID: …` (exit 1) with the same message the app shows in its hint area;
-- a warning for any keyword used twice;
+- a warning for any keyword used twice in the same form (both with `{query}`
+  or both without);
 - for each sample input, the label and final URL, or "Enter does nothing".
 
 Try the realistic inputs (with the `#`, the lowercase key, and so on) and make

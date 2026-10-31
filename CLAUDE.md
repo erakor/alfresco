@@ -34,7 +34,7 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 ### Launcher/Workflows.swift
 
 - **Workflows** — `Workflow` / `WorkflowSet` are `Decodable` models of `workflows.json`; `ArgumentTransform` parses string transforms like `"stripPrefix:#"`. `WorkflowStore` re-reads the file only when its modification date changes (checked each time the launcher opens) and keeps the last good `WorkflowSet` when a reload fails, exposing `loadError` for the UI.
-- **Command parsing** — `CommandParser.parse` splits input into `<keyword> [argument]`. A workflow whose `url` contains `{query}` requires an argument; one without `{query}` matches only the bare keyword. Anything else goes to `fallback`. Arguments are percent-encoded with the RFC 3986 unreserved set.
+- **Command parsing** — `CommandParser.parse` splits input into `<keyword> [argument]`. A workflow whose `url` contains `{query}` requires an argument; one without `{query}` matches only the bare keyword. `WorkflowSet.workflow(for:withArgument:)` picks the first workflow of the right form, so one keyword can have both (e.g. `weather` and `weather paris`). Anything else goes to `fallback`. Arguments are percent-encoded with the RFC 3986 unreserved set.
 
 ### Shared/HotKeys.swift
 

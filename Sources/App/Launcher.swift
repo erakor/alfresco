@@ -123,7 +123,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 keyEquivalent: ""
             )
             item.target = self
-            item.representedObject = workflow.keywords.first
+            // What to type: "pr " for a workflow that needs an argument,
+            // the bare keyword otherwise.
+            item.representedObject = workflow.keywords.first.map { workflow.takesArgument ? $0 + " " : $0 }
             if let help = workflow.help {
                 if #available(macOS 14.4, *) {
                     item.subtitle = help
@@ -137,9 +139,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Opens the launcher with the workflow's keyword already typed.
     @objc private func startWorkflow(_ sender: NSMenuItem) {
-        guard let keyword = sender.representedObject as? String else { return }
-        let takesArgument = workflowStore.current.workflow(for: keyword)?.takesArgument ?? false
-        launcher?.show(prefill: takesArgument ? keyword + " " : keyword)
+        guard let prefill = sender.representedObject as? String else { return }
+        launcher?.show(prefill: prefill)
     }
 
     /// Opens workflows.json in the default editor for JSON files. Changes are

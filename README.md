@@ -16,6 +16,8 @@ keeps a 24-hour clipboard history on a second hotkey.
 | `pr 123`       | `https://github.com/<owner>/<repo>/pull/123` (`pr #123` works too) |
 | `jira abc-42`  | `https://understood.atlassian.net/browse/ABC-42`                  |
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
+| `weather`      | `https://wttr.in/` (forecast for where you are)                   |
+| `weather paris` | `https://wttr.in/paris`                                          |
 | anything else  | `https://www.google.com/search?q=...`                             |
 
 ## Workflows
@@ -62,7 +64,7 @@ The app looks for the file in this order:
 
 | Field        | Meaning                                                                    |
 | ------------ | -------------------------------------------------------------------------- |
-| `keywords`   | One or more single words, matched case-insensitively. First match wins.     |
+| `keywords`   | One or more single words, matched case-insensitively. First match wins. A keyword can be used by two workflows, one with `{query}` and one without: the keyword alone opens the second, the keyword plus an argument the first. |
 | `title`      | Shown in the hint as you type.                                              |
 | `description` | Optional help text. Shown in the hint when you type the keyword without its argument (Enter does nothing until you add one), and under the workflow in the menu bar's **Workflows** submenu. |
 | `url`        | `{query}` is replaced with the percent-encoded argument. Without `{query}`, typing the keyword alone opens the URL. |
