@@ -59,7 +59,7 @@ final class WeatherProvider {
         return homeQuery()
     }
 
-    /// Where the bare keyword (and the idle launcher) looks: the home place,
+    /// Where the bare keyword (and the weather strip) looks: the home place,
     /// or the IP address. nil without an API key.
     func homeQuery() -> WeatherQuery? {
         guard apiKey != nil else { return nil }
@@ -71,6 +71,12 @@ final class WeatherProvider {
     func state(for query: WeatherQuery) -> WeatherState {
         guard let entry = results[query], isFresh(entry) else { return .loading }
         return entry.state
+    }
+
+    /// Whether a result (or a recent failure) for `query` is cached.
+    func hasFreshResult(for query: WeatherQuery) -> Bool {
+        guard let entry = results[query] else { return false }
+        return isFresh(entry)
     }
 
     /// Fetches `query` unless a fresh result is cached or it is already on its

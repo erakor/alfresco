@@ -14,6 +14,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let previews = PreviewFetcher()
     private let weather = WeatherProvider()
     private let weatherView = WeatherView(frame: .zero)
+    private let weatherStrip = WeatherStripView(frame: .zero)
+    /// The input row (icon, field, hint); moves down when the strip is shown.
+    private let rowGuide = NSLayoutGuide()
+    private var rowTop: NSLayoutConstraint?
     /// Height of the input row, which is the whole panel without the weather.
     private static let rowHeight: CGFloat = 60
     /// Text to start with on the next show(prefill:).
@@ -24,10 +28,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         super.init(size: NSSize(width: 680, height: LauncherController.rowHeight), verticalOffset: 0.15)
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
-        weather.onUpdate = { [weak self] in
-            self?.updateHint()
-            self?.updateWeather()
-        }
+        weather.onUpdate = { [weak self] in self?.updateWeather() }
     }
 
     override var initialFirstResponder: NSResponder? { textField }
@@ -58,7 +59,6 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         previews.cancel()
         weather.cancel()
         weatherView.isHidden = true
-        setHeight(Self.rowHeight)
     }
 
     private func execute() {
@@ -103,68 +103,41 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         } else if let error = store.loadError {
             hintLabel.stringValue = "⚠ workflows.json: \(error)"
             hintLabel.toolTip = "\(store.fileURL.path)\n\(error)"
-        } else if let forecast = idleForecast() {
-            showIdleWeather(forecast)
         } else {
             hintLabel.stringValue = "esc to close"
             hintLabel.toolTip = nil
         }
     }
 
-    /// The home query when the input is empty and Config.weatherWhenIdle is
-    /// on (and a WeatherAPI key is set).
-    private func idleWeatherQuery() -> WeatherQuery? {
-        guard Config.weatherWhenIdle,
-              textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        return weather.homeQuery()
-    }
-
-    private func idleForecast() -> Forecast? {
-        guard let query = idleWeatherQuery(), case .loaded(let forecast) = weather.state(for: query) else { return nil }
-        return forecast
-    }
-
-    /// "☀️ 14°  Paris" in the hint, with the colored condition symbol.
-    private func showIdleWeather(_ forecast: Forecast) {
-        let font = hintLabel.font ?? .systemFont(ofSize: 13)
-        let text = NSMutableAttributedString()
-        if let image = WeatherView.symbol(for: forecast.condition, pointSize: 14) {
-            let attachment = NSTextAttachment()
-            attachment.image = image
-            // Sits on the text's baseline like a capital letter.
-            attachment.bounds = NSRect(
-                x: 0, y: (font.capHeight - image.size.height) / 2,
-                width: image.size.width, height: image.size.height
-            )
-            text.append(NSAttributedString(attachment: attachment))
-            text.append(NSAttributedString(string: " "))
-        }
-        let city = forecast.place.split(separator: ",").first.map(String.init) ?? forecast.place
-        text.append(NSAttributedString(string: "\(WeatherView.degrees(forecast.temperature))  \(city)"))
-        text.addAttributes(
-            [.font: font, .foregroundColor: NSColor.secondaryLabelColor],
-            range: NSRange(location: 0, length: text.length)
-        )
-        hintLabel.attributedStringValue = text
-        var tooltip = "\(forecast.description), \(forecast.place)"
-        if forecast.isApproximate { tooltip += " (position approximative)" }
-        hintLabel.toolTip = tooltip + "\nType \"\(Config.weatherKeyword)\" for the forecast · esc to close"
-    }
-
-    /// Shows the forecast below the input while it reads `weather [place]`
-    /// (and a WeatherAPI key is set), and hides it otherwise.
+    /// Lays out and fills the weather strip above the input (always, while
+    /// Config.weatherStrip is on and a WeatherAPI key is set) and the
+    /// forecast below it (while the input reads `weather [place]`), resizes
+    /// the panel to fit, and asks for whatever is missing.
     private func updateWeather() {
-        guard let query = weather.query(for: textField.stringValue) else {
-            weatherView.isHidden = true
-            setHeight(Self.rowHeight)
-            // The empty launcher still wants the weather for its hint.
-            if let idle = idleWeatherQuery() { weather.request(idle) } else { weather.cancel() }
-            return
+        let homeQuery = Config.weatherStrip ? weather.homeQuery() : nil
+        let panelQuery = weather.query(for: textField.stringValue)
+
+        if let homeQuery {
+            weatherStrip.show(weather.state(for: homeQuery))
         }
-        weatherView.show(weather.state(for: query), for: query)
-        weatherView.isHidden = false
-        setHeight(Self.rowHeight + WeatherView.height)
-        weather.request(query)
+        weatherStrip.isHidden = homeQuery == nil
+        let stripHeight = homeQuery == nil ? 0 : WeatherStripView.height
+        rowTop?.constant = stripHeight
+
+        if let panelQuery {
+            weatherView.show(weather.state(for: panelQuery), for: panelQuery)
+        }
+        weatherView.isHidden = panelQuery == nil
+        setHeight(stripHeight + Self.rowHeight + (panelQuery == nil ? 0 : WeatherView.height))
+
+        // One request at a time: what the input asks for first, then home.
+        if let panelQuery, !weather.hasFreshResult(for: panelQuery) {
+            weather.request(panelQuery)
+        } else if let next = homeQuery ?? panelQuery {
+            weather.request(next)
+        } else {
+            weather.cancel()
+        }
     }
 
     private func placeholder() -> String {
@@ -206,27 +179,41 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         hintLabel.setContentHuggingPriority(.required, for: .horizontal)
 
         weatherView.isHidden = true
+        weatherStrip.isHidden = true
 
-        for view in [icon, textField, hintLabel, weatherView] {
+        for view in [weatherStrip, icon, textField, hintLabel, weatherView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
+        contentView.addLayoutGuide(rowGuide)
+        let rowTop = rowGuide.topAnchor.constraint(equalTo: contentView.topAnchor)
+        self.rowTop = rowTop
 
         NSLayoutConstraint.activate([
+            weatherStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
+            weatherStrip.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            weatherStrip.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            weatherStrip.heightAnchor.constraint(equalToConstant: WeatherStripView.height),
+
+            rowTop,
+            rowGuide.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            rowGuide.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            rowGuide.heightAnchor.constraint(equalToConstant: Self.rowHeight),
+
             icon.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            icon.centerYAnchor.constraint(equalTo: contentView.topAnchor, constant: Self.rowHeight / 2),
+            icon.centerYAnchor.constraint(equalTo: rowGuide.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 24),
             icon.heightAnchor.constraint(equalToConstant: 24),
 
             textField.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
-            textField.centerYAnchor.constraint(equalTo: contentView.topAnchor, constant: Self.rowHeight / 2),
+            textField.centerYAnchor.constraint(equalTo: rowGuide.centerYAnchor),
 
             hintLabel.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 12),
             hintLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            hintLabel.centerYAnchor.constraint(equalTo: contentView.topAnchor, constant: Self.rowHeight / 2),
+            hintLabel.centerYAnchor.constraint(equalTo: rowGuide.centerYAnchor),
             hintLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 340),
 
-            weatherView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Self.rowHeight),
+            weatherView.topAnchor.constraint(equalTo: rowGuide.bottomAnchor),
             weatherView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             weatherView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             weatherView.heightAnchor.constraint(equalToConstant: WeatherView.height),
