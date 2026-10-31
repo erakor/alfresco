@@ -130,16 +130,22 @@ enum ArgumentTransform: Decodable, Sendable {
 
 /// A keyword that expands into a URL. `{query}` in `url` is replaced with the
 /// percent-encoded argument; a `url` without `{query}` is opened by typing
-/// the keyword alone.
+/// the keyword alone. `description` is optional help text.
 struct Workflow: Decodable, Sendable {
     let keywords: [String]
     let title: String
     let url: String
+    /// Shown while the keyword is typed without its argument, and in the
+    /// menu bar's Workflows submenu. Written as "description" in JSON.
+    let help: String?
     let transforms: [ArgumentTransform]
 
     var takesArgument: Bool { url.contains("{query}") }
 
-    private enum CodingKeys: String, CodingKey { case keywords, title, url, transforms }
+    private enum CodingKeys: String, CodingKey {
+        case keywords, title, url, transforms
+        case help = "description"
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -147,6 +153,9 @@ struct Workflow: Decodable, Sendable {
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? []
         title = try container.decode(String.self, forKey: .title)
         url = try container.decode(String.self, forKey: .url)
+        help = try container.decodeIfPresent(String.self, forKey: .help)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
         transforms = try container.decodeIfPresent([ArgumentTransform].self, forKey: .transforms) ?? []
 
         if keywords.contains(where: { $0.isEmpty || $0.contains(where: \.isWhitespace) }) {
@@ -463,19 +472,21 @@ final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate 
         }
     }
 
-    func show() {
+    /// Opens the bar, optionally with text already typed (cursor at the end).
+    func show(prefill: String = "") {
         isHiding = false
         let target = targetFrame()
 
         store.reloadIfNeeded()
         textField.placeholderString = placeholder()
-        textField.stringValue = ""
+        textField.stringValue = prefill
         updateHint()
 
         panel.alphaValue = 0
         panel.setFrame(target.offsetBy(dx: 0, dy: -8), display: false)
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(textField)
+        textField.currentEditor()?.selectedRange = NSRange(location: (prefill as NSString).length, length: 0)
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.16
@@ -518,7 +529,13 @@ final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate 
     }
 
     private func updateHint() {
-        if let command = CommandParser.parse(textField.stringValue, using: store.current) {
+        let input = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let workflow = store.current.workflow(for: input), workflow.takesArgument {
+            // The keyword is typed but its argument is not: show its help.
+            let help = workflow.help ?? "\(workflow.title): type a value after \"\(input.lowercased())\""
+            hintLabel.stringValue = help
+            hintLabel.toolTip = help
+        } else if let command = CommandParser.parse(textField.stringValue, using: store.current) {
             hintLabel.stringValue = "↩ \(command.label)"
             hintLabel.toolTip = nil
         } else if let error = store.loadError {
@@ -650,7 +667,7 @@ final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate 
             hintLabel.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 12),
             hintLabel.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -20),
             hintLabel.centerYAnchor.constraint(equalTo: background.centerYAnchor),
-            hintLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 260),
+            hintLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 340),
         ])
     }
 }
@@ -658,7 +675,7 @@ final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate 
 // MARK: - App
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let store = WorkflowStore()
     private var launcher: LauncherController?
     private var hotKeyManager: HotKeyManager?
@@ -692,6 +709,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         open.target = self
         menu.addItem(open)
         menu.addItem(.separator())
+        let workflows = NSMenuItem(title: "Workflows", action: nil, keyEquivalent: "")
+        let workflowsMenu = NSMenu(title: "Workflows")
+        workflowsMenu.delegate = self
+        workflows.submenu = workflowsMenu
+        menu.addItem(workflows)
         let edit = NSMenuItem(title: "Edit Workflows…", action: #selector(editWorkflows), keyEquivalent: "")
         edit.target = self
         menu.addItem(edit)
@@ -707,6 +729,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openLauncher() {
         launcher?.show()
+    }
+
+    // MARK: NSMenuDelegate
+
+    /// Rebuilds the Workflows submenu each time it opens, so it always
+    /// matches workflows.json.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        store.reloadIfNeeded()
+        menu.removeAllItems()
+
+        let workflows = store.current.workflows
+        if workflows.isEmpty {
+            let empty = NSMenuItem(title: "No workflows yet", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+        }
+        for workflow in workflows {
+            let item = NSMenuItem(
+                title: "\(workflow.keywords.joined(separator: ", "))  \(workflow.title)",
+                action: #selector(startWorkflow(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = workflow.keywords.first
+            if let help = workflow.help {
+                if #available(macOS 14.4, *) {
+                    item.subtitle = help
+                } else {
+                    item.toolTip = help
+                }
+            }
+            menu.addItem(item)
+        }
+    }
+
+    /// Opens the launcher with the workflow's keyword already typed.
+    @objc private func startWorkflow(_ sender: NSMenuItem) {
+        guard let keyword = sender.representedObject as? String else { return }
+        let takesArgument = store.current.workflow(for: keyword)?.takesArgument ?? false
+        launcher?.show(prefill: takesArgument ? keyword + " " : keyword)
     }
 
     /// Opens workflows.json in the default editor for JSON files. Changes are

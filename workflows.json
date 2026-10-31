@@ -3,18 +3,21 @@
     {
       "keywords": ["pr"],
       "title": "GitHub PR",
+      "description": "erakor/alfresco PR by number, e.g. pr 12",
       "url": "https://github.com/erakor/alfresco/pull/{query}",
       "transforms": ["stripPrefix:#"]
     },
     {
       "keywords": ["jira"],
       "title": "Jira",
+      "description": "Jira issue by key, e.g. jira abc-42",
       "url": "https://understood.atlassian.net/browse/{query}",
       "transforms": ["uppercase"]
     },
     {
       "keywords": ["cf"],
       "title": "Contentful entry",
+      "description": "Contentful entry by ID, e.g. cf 5KsDBWseXY",
       "url": "https://app.contentful.com/spaces/p0qf7j048i0q/entries/{query}"
     }
   ],

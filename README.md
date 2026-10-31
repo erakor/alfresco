@@ -42,6 +42,7 @@ The app looks for the file in this order:
     {
       "keywords": ["pr"],
       "title": "GitHub PR",
+      "description": "PR by number, e.g. pr 12",
       "url": "https://github.com/your-org/your-repo/pull/{query}",
       "transforms": ["stripPrefix:#"]
     },
@@ -62,12 +63,16 @@ The app looks for the file in this order:
 | ------------ | -------------------------------------------------------------------------- |
 | `keywords`   | One or more single words, matched case-insensitively. First match wins.     |
 | `title`      | Shown in the hint as you type.                                              |
+| `description` | Optional help text. Shown in the hint when you type the keyword without its argument, and under the workflow in the menu bar's **Workflows** submenu. |
 | `url`        | `{query}` is replaced with the percent-encoded argument. Without `{query}`, typing the keyword alone opens the URL. |
 | `transforms` | Optional, applied in order to the argument: `uppercase`, `lowercase`, `trim`, `stripPrefix:<text>`, `stripSuffix:<text>`. |
 | `fallback`   | Optional. Used when nothing matches; its `url` must contain `{query}`.      |
 
 If the file has a mistake or is missing, the launcher keeps using the last good
 version and shows the error in the hint area (hover it for the full message).
+
+The menu bar's **Workflows** submenu lists every workflow with its description;
+picking one opens the launcher with its keyword already typed.
 
 ## Configure
 
