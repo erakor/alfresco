@@ -1,16 +1,17 @@
 // Launcher.swift
 //
-// A lightweight, Spotlight-style URL launcher for macOS.
+// A lightweight, Spotlight-style URL launcher for macOS, with a 24-hour
+// clipboard history (ClipboardHistory.swift, ClipboardPanel.swift).
 //
-// - Global hotkey via Carbon's RegisterEventHotKey: no Accessibility or
+// - Global hotkeys via Carbon's RegisterEventHotKey: no Accessibility or
 //   Screen Recording permission is required.
 // - Runs as an accessory agent (no Dock icon). A small menu bar icon offers
-//   "Open", "Edit Workflows…" and "Quit"; turn it off with
-//   Config.showMenuBarIcon.
+//   "Open", "Clipboard History", "Edit Workflows…" and "Quit"; turn it off
+//   with Config.showMenuBarIcon.
 // - Workflows (keyword -> URL) live in workflows.json next to this file and
 //   are reloaded automatically, so adding one needs no rebuild.
 //
-// Build:  swiftc -O -parse-as-library Launcher.swift -o Launcher
+// Build:  swiftc -O -parse-as-library *.swift -o Launcher
 // Run:    ./Launcher
 
 import Cocoa
@@ -37,11 +38,31 @@ struct HotKey: Sendable {
         modifiers: UInt32(optionKey),
         display: "⌥Space"
     )
+
+    /// Overrides ⌘⌥C inside apps while the launcher runs (Finder's "Copy as
+    /// Pathname", the browsers' web inspector).
+    static let commandOptionC = HotKey(
+        keyCode: UInt32(kVK_ANSI_C),
+        modifiers: UInt32(cmdKey | optionKey),
+        display: "⌘⌥C"
+    )
 }
 
 enum Config {
     static let hotKey = HotKey.commandShiftSpace
     static let showMenuBarIcon = true
+
+    /// Opens the clipboard history panel.
+    static let clipboardHotKey = HotKey.commandOptionC
+    /// Copied items older than this are deleted, from memory and from disk.
+    static let clipboardRetention: TimeInterval = 24 * 60 * 60
+    /// Oldest items are dropped beyond this count.
+    static let clipboardMaxItems = 500
+    /// Larger copies are not recorded.
+    static let clipboardMaxTextBytes = 256 * 1024
+    /// macOS has no clipboard-change notification, so the clipboard's change
+    /// counter is checked this often (in seconds). The check itself is cheap.
+    static let clipboardPollInterval: TimeInterval = 0.5
 
     /// Where workflows.json is read from, first match wins:
     /// 1. the `ALFRESCO_WORKFLOWS` environment variable;
@@ -329,60 +350,96 @@ enum CommandParser {
     }
 }
 
-// MARK: - Global hotkey (Carbon)
+// MARK: - Global hotkeys (Carbon)
 
-/// Registers one system-wide hotkey. Carbon hotkeys are delivered through the
+/// Registers system-wide hotkeys. Carbon hotkeys are delivered through the
 /// app's own event loop, so no privacy permission is involved.
 final class HotKeyManager {
-    private var hotKeyRef: EventHotKeyRef?
-    private var handlerRef: EventHandlerRef?
-    private let onPress: @MainActor @Sendable () -> Void
+    typealias Action = @MainActor @Sendable () -> Void
 
-    init(onPress: @escaping @MainActor @Sendable () -> Void) {
-        self.onPress = onPress
-    }
+    private static let signature = fourCharCode("LNCH")
+
+    private var handlerRef: EventHandlerRef?
+    private var hotKeyRefs: [EventHotKeyRef] = []
+    private var actions: [UInt32: Action] = [:]
+    private var nextID: UInt32 = 1
 
     deinit {
-        if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
+        for hotKeyRef in hotKeyRefs { UnregisterEventHotKey(hotKeyRef) }
         if let handlerRef { RemoveEventHandler(handlerRef) }
     }
 
-    func register(_ hotKey: HotKey) -> Bool {
+    /// Returns false when macOS refuses the shortcut (usually because another
+    /// app already registered it).
+    func register(_ hotKey: HotKey, action: @escaping Action) -> Bool {
+        guard installHandlerIfNeeded() else { return false }
+
+        let id = nextID
+        nextID += 1
+
+        var hotKeyRef: EventHotKeyRef?
+        let status = RegisterEventHotKey(
+            hotKey.keyCode,
+            hotKey.modifiers,
+            EventHotKeyID(signature: Self.signature, id: id),
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+        guard status == OSStatus(noErr), let hotKeyRef else { return false }
+
+        hotKeyRefs.append(hotKeyRef)
+        actions[id] = action
+        return true
+    }
+
+    /// One Carbon handler serves every hotkey; it tells them apart by the
+    /// EventHotKeyID each one was registered with.
+    private func installHandlerIfNeeded() -> Bool {
+        if handlerRef != nil { return true }
+
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
         let context = Unmanaged.passUnretained(self).toOpaque()
 
-        let installStatus = InstallEventHandler(
+        let status = InstallEventHandler(
             GetApplicationEventTarget(),
-            { _, _, userData in
-                guard let userData else { return OSStatus(eventNotHandledErr) }
-                Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue().handlePress()
-                return OSStatus(noErr)
+            { _, event, userData in
+                guard let event, let userData else { return OSStatus(eventNotHandledErr) }
+
+                var hotKeyID = EventHotKeyID()
+                let status = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+                guard status == OSStatus(noErr) else { return status }
+
+                let manager = Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue()
+                return manager.handlePress(hotKeyID)
+                    ? OSStatus(noErr)
+                    : OSStatus(eventNotHandledErr)
             },
             1,
             &eventType,
             context,
             &handlerRef
         )
-        guard installStatus == OSStatus(noErr) else { return false }
-
-        let hotKeyID = EventHotKeyID(signature: fourCharCode("LNCH"), id: 1)
-        let registerStatus = RegisterEventHotKey(
-            hotKey.keyCode,
-            hotKey.modifiers,
-            hotKeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotKeyRef
-        )
-        return registerStatus == OSStatus(noErr)
+        return status == OSStatus(noErr)
     }
 
-    private func handlePress() {
-        let onPress = self.onPress
-        Task { @MainActor in onPress() }
+    private func handlePress(_ hotKeyID: EventHotKeyID) -> Bool {
+        guard hotKeyID.signature == Self.signature, let action = actions[hotKeyID.id] else {
+            return false
+        }
+        Task { @MainActor in action() }
+        return true
     }
 }
 
@@ -439,63 +496,77 @@ private func roundedMaskImage(radius: CGFloat) -> NSImage {
     return image
 }
 
-// MARK: - Launcher window
+// MARK: - Floating panel controller
 
+/// Shared behavior for the launcher bar and the clipboard history panel: a
+/// frosted, non-activating panel on the screen under the mouse, with fade
+/// animations, dismissed by Esc, by clicking elsewhere, or by its hotkey.
+/// Subclasses add their views to `contentView`.
 @MainActor
-final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate {
-    private enum Layout {
-        static let width: CGFloat = 680
-        static let height: CGFloat = 60
-        static let cornerRadius: CGFloat = 14
-        /// How far above the screen's vertical center the bar sits, as a
-        /// fraction of the screen height. Set to 0 for dead center.
-        static let verticalOffset: CGFloat = 0.15
-    }
+class FloatingPanelController: NSObject, NSWindowDelegate {
+    static let cornerRadius: CGFloat = 14
 
-    private let panel: LauncherPanel
-    private let store: WorkflowStore
-    private let textField = NSTextField()
-    private let hintLabel = NSTextField(labelWithString: "")
+    let panel: LauncherPanel
+    /// Host for the subclass's views (the frosted background).
+    let contentView = NSVisualEffectView()
+
+    private let size: NSSize
+    /// How far above the screen's vertical center the panel sits, as a
+    /// fraction of the screen height. 0 is dead center.
+    private let verticalOffset: CGFloat
     private var isHiding = false
 
-    init(store: WorkflowStore) {
-        self.store = store
+    init(size: NSSize, verticalOffset: CGFloat) {
+        self.size = size
+        self.verticalOffset = verticalOffset
         panel = LauncherPanel(
-            contentRect: NSRect(x: 0, y: 0, width: Layout.width, height: Layout.height),
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         super.init()
         configurePanel()
-        buildContent()
+        buildBackground()
     }
+
+    // MARK: Subclass hooks
+
+    /// Reset the content before the panel appears.
+    func prepareToShow() {}
+
+    /// Clean up after the panel has faded out.
+    func didHide() {}
+
+    /// Receives keyboard focus when the panel appears.
+    var initialFirstResponder: NSResponder? { nil }
+
+    /// Runs once `initialFirstResponder` has focus.
+    func didFocus() {}
 
     // MARK: Showing and hiding
 
+    var isShown: Bool { panel.isVisible && !isHiding }
+
     func toggle() {
-        if panel.isVisible && !isHiding {
+        if isShown {
             hide()
         } else {
             show()
         }
     }
 
-    /// Opens the bar, optionally with text already typed (cursor at the end).
-    func show(prefill: String = "") {
+    func show() {
         isHiding = false
         let target = targetFrame()
 
-        store.reloadIfNeeded()
-        textField.placeholderString = placeholder()
-        textField.stringValue = prefill
-        updateHint()
+        prepareToShow()
 
         panel.alphaValue = 0
         panel.setFrame(target.offsetBy(dx: 0, dy: -8), display: false)
         panel.makeKeyAndOrderFront(nil)
-        panel.makeFirstResponder(textField)
-        textField.currentEditor()?.selectedRange = NSRange(location: (prefill as NSString).length, length: 0)
+        panel.makeFirstResponder(initialFirstResponder)
+        didFocus()
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.16
@@ -524,6 +595,138 @@ final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate 
         isHiding = false
         panel.orderOut(nil)
         panel.alphaValue = 1
+        didHide()
+    }
+
+    /// Centers the panel on the screen that holds the mouse pointer.
+    private func targetFrame() -> NSRect {
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let x = visible.midX - size.width / 2
+        let y = visible.midY - size.height / 2 + visible.height * verticalOffset
+        return NSRect(x: x, y: y, width: size.width, height: size.height).integral
+    }
+
+    // MARK: NSWindowDelegate
+
+    /// Clicking anywhere outside the panel moves key focus elsewhere.
+    func windowDidResignKey(_ notification: Notification) {
+        hide()
+    }
+
+    // MARK: Setup
+
+    private func configurePanel() {
+        panel.level = .floating
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.isMovableByWindowBackground = false
+        panel.isReleasedWhenClosed = false
+        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        panel.delegate = self
+        panel.onCancel = { [weak self] in self?.hide() }
+    }
+
+    private func buildBackground() {
+        // .popover adapts to light and dark mode; try .hudWindow for an
+        // always-dark panel or .fullScreenUI for a thinner, more see-through one.
+        contentView.material = .popover
+        contentView.blendingMode = .behindWindow
+        contentView.state = .active
+        contentView.maskImage = roundedMaskImage(radius: Self.cornerRadius)
+        panel.contentView = contentView
+
+        // Hairline edge, added first so it never intercepts clicks.
+        let border = NSView()
+        border.wantsLayer = true
+        border.layer?.cornerRadius = Self.cornerRadius
+        border.layer?.cornerCurve = .continuous
+        border.layer?.borderWidth = 1
+        border.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+        border.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(border)
+
+        NSLayoutConstraint.activate([
+            border.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            border.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            border.topAnchor.constraint(equalTo: contentView.topAnchor),
+            border.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
+    }
+
+    // MARK: Shared views
+
+    static func makeIcon(symbolName: String) -> NSImageView {
+        let icon = NSImageView()
+        icon.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 20, weight: .regular)
+        icon.contentTintColor = .secondaryLabelColor
+        return icon
+    }
+
+    static func styleSearchField(_ field: NSTextField, placeholder: String) {
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.font = .systemFont(ofSize: 24, weight: .light)
+        field.placeholderString = placeholder
+        field.cell?.usesSingleLineMode = true
+        field.cell?.wraps = false
+        field.cell?.isScrollable = true
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+    }
+
+    static func makeHintLabel() -> NSTextField {
+        let label = NSTextField(labelWithString: "")
+        label.font = .systemFont(ofSize: 13)
+        label.textColor = .tertiaryLabelColor
+        label.lineBreakMode = .byTruncatingTail
+        return label
+    }
+}
+
+// MARK: - Launcher window
+
+@MainActor
+final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
+    private let store: WorkflowStore
+    private let textField = NSTextField()
+    private let hintLabel = FloatingPanelController.makeHintLabel()
+    /// Text to start with on the next show(prefill:).
+    private var pendingPrefill = ""
+
+    init(store: WorkflowStore) {
+        self.store = store
+        super.init(size: NSSize(width: 680, height: 60), verticalOffset: 0.15)
+        buildContent()
+    }
+
+    override var initialFirstResponder: NSResponder? { textField }
+
+    /// Opens the bar, optionally with text already typed (cursor at the end).
+    func show(prefill: String) {
+        pendingPrefill = prefill
+        show()
+    }
+
+    override func prepareToShow() {
+        store.reloadIfNeeded()
+        textField.placeholderString = placeholder()
+        textField.stringValue = pendingPrefill
+        pendingPrefill = ""
+        updateHint()
+    }
+
+    override func didFocus() {
+        let end = (textField.stringValue as NSString).length
+        textField.currentEditor()?.selectedRange = NSRange(location: end, length: 0)
+    }
+
+    override func didHide() {
         textField.stringValue = ""
     }
 
@@ -565,23 +768,6 @@ final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate 
         return "\(set.fallback.title), or type \(keywords.joined(separator: ", "))…"
     }
 
-    /// Centers the bar on the screen that holds the mouse pointer.
-    private func targetFrame() -> NSRect {
-        let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let x = visible.midX - Layout.width / 2
-        let y = visible.midY - Layout.height / 2 + visible.height * Layout.verticalOffset
-        return NSRect(x: x, y: y, width: Layout.width, height: Layout.height).integral
-    }
-
-    // MARK: NSWindowDelegate
-
-    /// Clicking anywhere outside the panel moves key focus elsewhere.
-    func windowDidResignKey(_ notification: Notification) {
-        hide()
-    }
-
     // MARK: NSTextFieldDelegate
 
     func controlTextDidChange(_ obj: Notification) {
@@ -603,81 +789,32 @@ final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate 
 
     // MARK: Setup
 
-    private func configurePanel() {
-        panel.level = .floating
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.isMovableByWindowBackground = false
-        panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-        panel.delegate = self
-        panel.onCancel = { [weak self] in self?.hide() }
-    }
-
     private func buildContent() {
-        // .popover adapts to light and dark mode; try .hudWindow for an
-        // always-dark bar or .fullScreenUI for a thinner, more see-through one.
-        let background = NSVisualEffectView()
-        background.material = .popover
-        background.blendingMode = .behindWindow
-        background.state = .active
-        background.maskImage = roundedMaskImage(radius: Layout.cornerRadius)
-        panel.contentView = background
+        let icon = Self.makeIcon(symbolName: "magnifyingglass")
 
-        // Hairline edge, added first so it never intercepts clicks.
-        let border = NSView()
-        border.wantsLayer = true
-        border.layer?.cornerRadius = Layout.cornerRadius
-        border.layer?.cornerCurve = .continuous
-        border.layer?.borderWidth = 1
-        border.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
-
-        let icon = NSImageView()
-        icon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
-        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 20, weight: .regular)
-        icon.contentTintColor = .secondaryLabelColor
-
-        textField.isBordered = false
-        textField.drawsBackground = false
-        textField.focusRingType = .none
-        textField.font = .systemFont(ofSize: 24, weight: .light)
-        textField.cell?.usesSingleLineMode = true
-        textField.cell?.wraps = false
-        textField.cell?.isScrollable = true
+        Self.styleSearchField(textField, placeholder: placeholder())
         textField.delegate = self
-        textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        hintLabel.font = .systemFont(ofSize: 13)
-        hintLabel.textColor = .tertiaryLabelColor
-        hintLabel.lineBreakMode = .byTruncatingTail
         hintLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         hintLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-        for view in [border, icon, textField, hintLabel] {
+        for view in [icon, textField, hintLabel] {
             view.translatesAutoresizingMaskIntoConstraints = false
-            background.addSubview(view)
+            contentView.addSubview(view)
         }
 
         NSLayoutConstraint.activate([
-            border.leadingAnchor.constraint(equalTo: background.leadingAnchor),
-            border.trailingAnchor.constraint(equalTo: background.trailingAnchor),
-            border.topAnchor.constraint(equalTo: background.topAnchor),
-            border.bottomAnchor.constraint(equalTo: background.bottomAnchor),
-
-            icon.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 20),
-            icon.centerYAnchor.constraint(equalTo: background.centerYAnchor),
+            icon.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            icon.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 24),
             icon.heightAnchor.constraint(equalToConstant: 24),
 
             textField.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
-            textField.centerYAnchor.constraint(equalTo: background.centerYAnchor),
+            textField.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
             hintLabel.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 12),
-            hintLabel.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -20),
-            hintLabel.centerYAnchor.constraint(equalTo: background.centerYAnchor),
+            hintLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            hintLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             hintLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 340),
         ])
     }
@@ -687,24 +824,47 @@ final class LauncherController: NSObject, NSWindowDelegate, NSTextFieldDelegate 
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private let store = WorkflowStore()
+    private let workflowStore = WorkflowStore()
     private var launcher: LauncherController?
+    private var clipboardStore: ClipboardStore?
+    private var clipboardMonitor: ClipboardMonitor?
+    private var clipboardPanel: ClipboardController?
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let launcher = LauncherController(store: store)
+        let launcher = LauncherController(store: workflowStore)
         self.launcher = launcher
 
-        let manager = HotKeyManager { [weak launcher] in launcher?.toggle() }
-        hotKeyManager = manager
+        let store = ClipboardStore()
+        let monitor = ClipboardMonitor(store: store)
+        let clipboardPanel = ClipboardController(store: store, monitor: monitor)
+        clipboardStore = store
+        clipboardMonitor = monitor
+        self.clipboardPanel = clipboardPanel
+        monitor.start()
 
         if Config.showMenuBarIcon {
             setUpStatusItem()
         }
-        if !manager.register(Config.hotKey) {
-            showHotKeyError()
+
+        let manager = HotKeyManager()
+        hotKeyManager = manager
+
+        var failed: [HotKey] = []
+        if !manager.register(Config.hotKey, action: { [weak launcher] in launcher?.toggle() }) {
+            failed.append(Config.hotKey)
         }
+        if !manager.register(Config.clipboardHotKey, action: { [weak clipboardPanel] in clipboardPanel?.toggle() }) {
+            failed.append(Config.clipboardHotKey)
+        }
+        if !failed.isEmpty {
+            showHotKeyError(failed)
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        clipboardStore?.saveNow()
     }
 
     private func setUpStatusItem() {
@@ -712,25 +872,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.button?.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Launcher")
 
         let menu = NSMenu()
-        let open = NSMenuItem(
-            title: "Open Launcher (\(Config.hotKey.display))",
-            action: #selector(openLauncher),
-            keyEquivalent: ""
-        )
-        open.target = self
-        menu.addItem(open)
+        menu.addItem(menuItem("Open Launcher (\(Config.hotKey.display))", #selector(openLauncher)))
+        menu.addItem(menuItem("Clipboard History (\(Config.clipboardHotKey.display))", #selector(openClipboardHistory)))
+        menu.addItem(menuItem("Clear Clipboard History", #selector(clearClipboardHistory)))
         menu.addItem(.separator())
         let workflows = NSMenuItem(title: "Workflows", action: nil, keyEquivalent: "")
         let workflowsMenu = NSMenu(title: "Workflows")
         workflowsMenu.delegate = self
         workflows.submenu = workflowsMenu
         menu.addItem(workflows)
-        let edit = NSMenuItem(title: "Edit Workflows…", action: #selector(editWorkflows), keyEquivalent: "")
-        edit.target = self
-        menu.addItem(edit)
-        let reveal = NSMenuItem(title: "Show Workflows in Finder", action: #selector(revealWorkflows), keyEquivalent: "")
-        reveal.target = self
-        menu.addItem(reveal)
+        menu.addItem(menuItem("Edit Workflows…", #selector(editWorkflows)))
+        menu.addItem(menuItem("Show Workflows in Finder", #selector(revealWorkflows)))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Launcher", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
@@ -738,8 +890,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = item
     }
 
+    private func menuItem(_ title: String, _ action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        return item
+    }
+
     @objc private func openLauncher() {
         launcher?.show()
+    }
+
+    @objc private func openClipboardHistory() {
+        clipboardPanel?.show()
+    }
+
+    @objc private func clearClipboardHistory() {
+        clipboardStore?.clear()
     }
 
     // MARK: NSMenuDelegate
@@ -747,10 +913,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Rebuilds the Workflows submenu each time it opens, so it always
     /// matches workflows.json.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        store.reloadIfNeeded()
+        workflowStore.reloadIfNeeded()
         menu.removeAllItems()
 
-        let workflows = store.current.workflows
+        let workflows = workflowStore.current.workflows
         if workflows.isEmpty {
             let empty = NSMenuItem(title: "No workflows yet", action: nil, keyEquivalent: "")
             empty.isEnabled = false
@@ -778,28 +944,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Opens the launcher with the workflow's keyword already typed.
     @objc private func startWorkflow(_ sender: NSMenuItem) {
         guard let keyword = sender.representedObject as? String else { return }
-        let takesArgument = store.current.workflow(for: keyword)?.takesArgument ?? false
+        let takesArgument = workflowStore.current.workflow(for: keyword)?.takesArgument ?? false
         launcher?.show(prefill: takesArgument ? keyword + " " : keyword)
     }
 
     /// Opens workflows.json in the default editor for JSON files. Changes are
     /// picked up the next time the launcher opens.
     @objc private func editWorkflows() {
-        store.ensureFileExists()
-        NSWorkspace.shared.open(store.fileURL)
+        workflowStore.ensureFileExists()
+        NSWorkspace.shared.open(workflowStore.fileURL)
     }
 
     @objc private func revealWorkflows() {
-        store.ensureFileExists()
-        NSWorkspace.shared.activateFileViewerSelecting([store.fileURL])
+        workflowStore.ensureFileExists()
+        NSWorkspace.shared.activateFileViewerSelecting([workflowStore.fileURL])
     }
 
-    private func showHotKeyError() {
+    private func showHotKeyError(_ hotKeys: [HotKey]) {
+        let names = hotKeys.map(\.display).joined(separator: " and ")
         let alert = NSAlert()
-        alert.messageText = "Could not register \(Config.hotKey.display)"
+        alert.messageText = "Could not register \(names)"
         alert.informativeText = """
-            Another app may already use this shortcut, or macOS rejected it. \
-            Change Config.hotKey in Launcher.swift and rebuild.
+            Another app may already use \(hotKeys.count == 1 ? "this shortcut" : "these shortcuts"), \
+            or macOS rejected \(hotKeys.count == 1 ? "it" : "them"). Change Config.hotKey or \
+            Config.clipboardHotKey in Launcher.swift and rebuild.
             """
         if #available(macOS 14.0, *) {
             NSApp.activate()
