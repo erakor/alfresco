@@ -4,7 +4,8 @@ A single-file, Spotlight-style URL launcher for macOS. Press a global hotkey,
 type a command, hit Enter, and the URL opens in your default browser.
 
 - Hotkey via Carbon `RegisterEventHotKey`: **no Accessibility or Screen Recording permission**.
-- Accessory agent: no Dock icon (optional menu bar icon with Open / Quit).
+- Accessory agent: no Dock icon (optional menu bar icon with Open / Edit Workflows / Quit).
+- Workflows live in a JSON file and reload automatically: no rebuild to add one.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
 - `Esc`, clicking outside, or pressing the hotkey again dismisses it.
 - `⌘X/C/V/A/Z` work in the input even though the app has no menu bar.
@@ -16,17 +17,57 @@ type a command, hit Enter, and the URL opens in your default browser.
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
 | anything else  | `https://www.google.com/search?q=...`                             |
 
+## Workflows
+
+A workflow maps a keyword to a URL. They live in
+`~/.config/alfresco/workflows.json`, which is created with the defaults above on
+first launch. Open it from the menu bar icon (**Edit Workflows…**) or any
+editor. Changes apply the next time you open the launcher; no rebuild or
+restart needed.
+
+```json
+{
+  "workflows": [
+    {
+      "keywords": ["pr"],
+      "title": "GitHub PR",
+      "url": "https://github.com/your-org/your-repo/pull/{query}",
+      "transforms": ["stripPrefix:#"]
+    },
+    {
+      "keywords": ["gh", "github"],
+      "title": "GitHub notifications",
+      "url": "https://github.com/notifications"
+    }
+  ],
+  "fallback": {
+    "title": "Search Google",
+    "url": "https://www.google.com/search?q={query}"
+  }
+}
+```
+
+| Field        | Meaning                                                                    |
+| ------------ | -------------------------------------------------------------------------- |
+| `keywords`   | One or more single words, matched case-insensitively. First match wins.     |
+| `title`      | Shown in the hint as you type.                                              |
+| `url`        | `{query}` is replaced with the percent-encoded argument. Without `{query}`, typing the keyword alone opens the URL. |
+| `transforms` | Optional, applied in order to the argument: `uppercase`, `lowercase`, `trim`, `stripPrefix:<text>`, `stripSuffix:<text>`. |
+| `fallback`   | Optional. Used when nothing matches; its `url` must contain `{query}`.      |
+
+If the file has a mistake, the launcher keeps using the last good version and
+shows the error in the hint area (hover it for the full message). Delete the
+file to get the defaults back.
+
 ## Configure
 
-Edit the `Config` enum at the top of `Launcher.swift`:
+Edit the `Config` enum at the top of `Launcher.swift`, then rebuild:
 
-- `githubOwner` / `githubRepo`: fill these in for the `pr` command.
 - `hotKey`: `.commandShiftSpace` (default) or `.optionSpace`. macOS 15+ rejects
   Option-only hotkeys, so `.optionSpace` only works on macOS 14 and earlier.
-- `shortcuts`: append a `Shortcut(keywords:title:urlTemplate:)`; `{query}` is
-  replaced with the percent-encoded argument. An optional `transform` lets you
-  normalize the argument (the Jira one uppercases it).
 - `showMenuBarIcon`: set to `false` for a fully invisible agent.
+- `workflowsFile` / `defaultWorkflowsJSON`: where workflows are stored and what
+  a fresh file contains.
 
 ## Build
 
