@@ -24,13 +24,13 @@
       "keywords": ["weather"],
       "title": "Weather here",
       "description": "Forecast for your current location (from your IP)",
-      "url": "https://wttr.in/"
+      "url": "https://wttr.in/?lang=fr&m"
     },
     {
       "keywords": ["weather"],
       "title": "Weather in",
       "description": "Forecast for a place: city, airport code or postal code, e.g. weather paris",
-      "url": "https://wttr.in/{query}"
+      "url": "https://wttr.in/{query}?lang=fr&m"
     }
   ],
   "fallback": {

@@ -16,8 +16,8 @@ keeps a 24-hour clipboard history on a second hotkey.
 | `pr 123`       | `https://github.com/<owner>/<repo>/pull/123` (`pr #123` works too) |
 | `jira abc-42`  | `https://understood.atlassian.net/browse/ABC-42`                  |
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
-| `weather`      | `https://wttr.in/` (forecast for where you are)                   |
-| `weather paris` | `https://wttr.in/paris`                                          |
+| `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric)   |
+| `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
 | anything else  | `https://www.google.com/search?q=...`                             |
 
 ## Workflows
