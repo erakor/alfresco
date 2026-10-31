@@ -987,6 +987,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 enum LauncherApp {
     @MainActor
     static func main() {
+        // Two copies (say ./Launcher and build/Launcher.app) would fight over
+        // the hotkeys and overwrite each other's clipboard history, so a
+        // second copy quits. exit(0) also keeps a LaunchAgent's KeepAlive
+        // from restarting it.
+        guard acquireSingleInstanceLock() else {
+            FileHandle.standardError.write(Data("Launcher is already running; quit it first.\n".utf8))
+            NSLog("Launcher: another copy is already running, exiting")
+            exit(0)
+        }
+
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
@@ -995,5 +1005,24 @@ enum LauncherApp {
         withExtendedLifetime(delegate) {
             app.run()
         }
+    }
+}
+
+extension LauncherApp {
+    /// Takes an exclusive lock on a file in the shared support folder and holds
+    /// it until the process exits (the descriptor is never closed; the system
+    /// releases the lock on exit, including a crash). False if another copy
+    /// holds it.
+    @MainActor
+    static func acquireSingleInstanceLock() -> Bool {
+        let directory = ClipboardStore.directory
+        try? ClipImageFile.createPrivateDirectory(directory)
+        let path = directory.appendingPathComponent("launcher.lock").path
+        let descriptor = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        // If the lock file can't be opened, run anyway rather than not at all.
+        guard descriptor >= 0 else { return true }
+        if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { return true }
+        close(descriptor)
+        return false
     }
 }

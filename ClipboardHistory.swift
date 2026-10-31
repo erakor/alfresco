@@ -106,7 +106,13 @@ extension ClipContent: Codable {
         case .image:
             self = .image(try container.decode(ClipImage.self, forKey: .image))
         case .files:
-            self = .files(try container.decode([String].self, forKey: .paths))
+            let paths = try container.decode([String].self, forKey: .paths)
+            // The panel shows paths[0], so never let an empty list in, even
+            // from a hand-edited history file.
+            guard !paths.isEmpty else {
+                throw DecodingError.dataCorruptedError(forKey: .paths, in: container, debugDescription: "No file paths")
+            }
+            self = .files(paths)
         }
     }
 
@@ -199,10 +205,16 @@ final class ClipboardStore: NSObject {
     /// build/Launcher.app) shares the folder, and its images aren't ours.
     private var knownImageFiles = Set<String>()
 
-    override init() {
+    /// ~/Library/Application Support/Launcher. Also holds the lock file that
+    /// keeps a second copy of the launcher from running (see LauncherApp).
+    static let directory: URL = {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        let directory = support.appendingPathComponent("Launcher", isDirectory: true)
+        return support.appendingPathComponent("Launcher", isDirectory: true)
+    }()
+
+    override init() {
+        let directory = Self.directory
         fileURL = directory.appendingPathComponent("clipboard-history.json")
         imagesDirectory = directory.appendingPathComponent("clipboard-images", isDirectory: true)
         super.init()
@@ -485,7 +497,10 @@ final class ClipboardMonitor: NSObject {
         } else if let text {
             preferImage = Self.isLink(text)
         } else {
-            preferImage = true
+            // Text that was refused (too large, or only whitespace) is still
+            // the copy's real content: record nothing rather than the picture
+            // apps like Excel put next to it.
+            preferImage = !types.contains(.string)
         }
 
         if preferImage, let imageType {

@@ -33,7 +33,7 @@ ALFRESCO_WORKFLOWS=/path/to/workflows.json ./Launcher
 - **Global hotkeys** — Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitoring permissions. Don't switch to `NSEvent` global monitors or CGEventTap. macOS 15+ rejects Option-only hotkeys.
 - **Panel / Floating panel controller** — `LauncherPanel` is a borderless non-activating `NSPanel`, so the previously frontmost app stays frontmost. `FloatingPanelController` is the shared base for both panels: frosted background, positioning on the screen under the mouse, fade in/out, dismissal on Esc / click-away / hotkey. Subclasses override hooks (`prepareToShow`, `didHide`, `initialFirstResponder`, `didFocus`) and add views to `contentView`; it also provides shared view factories like `makeHintLabel()`.
 - **Launcher window** — `LauncherController` (a `FloatingPanelController`) runs the URL launcher: the input field, the hint line, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone.
-- **App** — `AppDelegate` runs as an accessory app, registers both hotkeys, owns the clipboard store/monitor, and builds the optional status-bar menu. The Workflows submenu is rebuilt in `menuNeedsUpdate`.
+- **App** — `AppDelegate` runs as an accessory app, registers both hotkeys, owns the clipboard store/monitor, and builds the optional status-bar menu. The Workflows submenu is rebuilt in `menuNeedsUpdate`. `LauncherApp.main` first takes an exclusive `flock` on `~/Library/Application Support/Launcher/launcher.lock`; a second copy (plain binary, `build/`, or the installed app) exits with status 0 instead of fighting over the hotkeys and clipboard history.
 
 ### ClipboardHistory.swift
 
