@@ -101,9 +101,9 @@ workflow's page.
 Without a key the launcher behaves as before, with the one-line `preview` in
 the hint.
 
-With a key, a line above the input always shows the current weather where
-you are (e.g. "☀️ 14°  Ciel dégagé · Paris" with "↑ 16°  ↓ 8°" on the right;
-hover it for the full place). It shares the 10-minute cache with `weather`,
+With a key, the launcher's top-right corner, above the input, always shows
+the current weather where you are (e.g. "☀️ 14°  Ciel dégagé · Paris
+↑ 16°  ↓ 8°"; hover it for the full place). It shares the 10-minute cache with `weather`,
 so opening the launcher often costs at most one request every 10 minutes.
 Turn it off with `Config.weatherStrip = false`.
 

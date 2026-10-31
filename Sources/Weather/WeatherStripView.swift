@@ -1,15 +1,15 @@
 // WeatherStripView.swift
 //
-// The one-line weather strip at the top of the launcher, above the input:
-// the current weather at home (Config.weatherHomePlace, or the IP location)
-// on the left, today's high / low on the right. Shown whenever a WeatherAPI
-// key is set and Config.weatherStrip is on.
+// The weather in the launcher's top-right corner, above the input: the
+// current weather at home (Config.weatherHomePlace, or the IP location) and
+// today's high / low, right-aligned. Shown whenever a WeatherAPI key is set
+// and Config.weatherStrip is on.
 
 import Cocoa
 
 final class WeatherStripView: NSView {
     /// Height the strip adds above the launcher's input row.
-    static let height: CGFloat = 30
+    static let height: CGFloat = 24
 
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
@@ -57,39 +57,32 @@ final class WeatherStripView: NSView {
 
     private func build() {
         icon.imageScaling = .scaleProportionallyDown
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 16),
+            icon.heightAnchor.constraint(equalToConstant: 16),
+        ])
         label.font = .systemFont(ofSize: 12)
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         rangeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         rangeLabel.textColor = .tertiaryLabelColor
-        rangeLabel.setContentHuggingPriority(.required, for: .horizontal)
+        rangeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        // Hairline between the strip and the input row.
-        let separator = NSBox()
-        separator.boxType = .separator
-
-        for view in [icon, label, rangeLabel, separator] {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(view)
-        }
+        // Icon, text and high / low, hugging the right edge.
+        let group = NSStackView(views: [icon, label, rangeLabel])
+        group.orientation = .horizontal
+        group.alignment = .centerY
+        group.spacing = 6
+        group.setCustomSpacing(10, after: label)
+        group.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(group)
 
         NSLayoutConstraint.activate([
-            // Lined up with the launcher's magnifying glass (24 pt wide).
-            icon.centerXAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            icon.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 2),
-            icon.widthAnchor.constraint(equalToConstant: 18),
-            icon.heightAnchor.constraint(equalToConstant: 18),
-
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 36),
-            label.centerYAnchor.constraint(equalTo: icon.centerYAnchor),
-
-            rangeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12),
-            rangeLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
-            rangeLabel.centerYAnchor.constraint(equalTo: icon.centerYAnchor),
-
-            separator.leadingAnchor.constraint(equalTo: leadingAnchor),
-            separator.trailingAnchor.constraint(equalTo: trailingAnchor),
-            separator.bottomAnchor.constraint(equalTo: bottomAnchor),
+            group.trailingAnchor.constraint(equalTo: trailingAnchor),
+            group.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor),
+            // A little below the panel's top edge, clear of the rounded corner.
+            group.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 3),
         ])
     }
 }
