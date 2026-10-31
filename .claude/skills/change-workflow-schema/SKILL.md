@@ -9,7 +9,7 @@ The schema lives in four places that must stay in agreement, and users' existing
 `workflows.json` files must keep loading. Go through every step, even for a
 "small" field.
 
-## 1. Decoding (`Launcher.swift`, `// MARK: - Workflows`)
+## 1. Decoding (`Sources/Launcher/Workflows.swift`)
 
 - **New workflow field**: add the property to `Workflow`, a case to its
   `CodingKeys` (map a JSON name that differs from the Swift name, as
@@ -41,7 +41,7 @@ missing required key, a wrong type, or your custom validation. Adjust
 If the field changes what happens, wire it in where the existing fields are
 used: `CommandParser.parse` / `expand` for URLs, `workflowAwaitingArgument` and
 the launcher hint for help text, and `AppDelegate.menuNeedsUpdate` for the
-Workflows submenu. `grep -n 'takesArgument\|\.help\|\.transforms' *.swift`
+Workflows submenu. `grep -rn 'takesArgument\|\.help\|\.transforms' Sources`
 finds the use sites.
 
 ## 4. Docs and defaults
@@ -61,7 +61,7 @@ finds the use sites.
 ## 5. Verify
 
 ```bash
-swiftc -O -parse-as-library -swift-version 6 *.swift -o "$(mktemp -d)/Launcher"   # must be clean
+swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o "$(mktemp -d)/Launcher"   # must be clean
 .claude/skills/add-workflow/scripts/check.sh workflows.json "<inputs exercising the change>"
 ```
 

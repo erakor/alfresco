@@ -122,7 +122,7 @@ Notes:
 
 ## Configure
 
-Edit the `Config` enum at the top of `Launcher.swift`, then rebuild:
+Edit the `Config` enum in `Sources/App/Config.swift`, then rebuild:
 
 - `hotKey`: `.commandShiftSpace` (default) or `.optionSpace`. macOS 15+ rejects
   Option-only hotkeys, so `.optionSpace` only works on macOS 14 and earlier.
@@ -134,9 +134,16 @@ Edit the `Config` enum at the top of `Launcher.swift`, then rebuild:
   `clipboardMaxTextBytes` (256 KB), `clipboardMaxImageBytes` (20 MB),
   `clipboardMaxImagePixels` (40 MP), `clipboardPollInterval` (0.5 s).
 
-The source is split into `Launcher.swift` (config, workflows, hotkeys, panels,
-URL launcher, app), `ClipboardHistory.swift` (clipboard model, storage, watcher)
-and `ClipboardPanel.swift` (history panel).
+The source lives in `Sources/`, one folder per feature:
+
+- `App/`: `Launcher.swift` (app delegate, menu bar, entry point) and
+  `Config.swift` (settings).
+- `Launcher/`: `Workflows.swift` (workflows.json model, reloading, command
+  parsing) and `LauncherController.swift` (the launcher panel).
+- `Clipboard/`: `ClipboardHistory.swift` (clipboard model, storage, watcher) and
+  `ClipboardPanel.swift` (history panel).
+- `Shared/`: `FloatingPanel.swift` (base class for both panels) and
+  `HotKeys.swift` (global hotkeys).
 
 ## Build
 
@@ -144,14 +151,15 @@ Needs the Xcode 16+ Command Line Tools (`xcode-select --install`), which include
 
 ```bash
 # Plain binary
-swiftc -O -parse-as-library -swift-version 6 *.swift -o Launcher
+swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o Launcher
 ./Launcher
 
 # Or an .app bundle (recommended for Login Items)
 ./build.sh            # -> build/Launcher.app
 ```
 
-`-parse-as-library` is required because `Launcher.swift` uses `@main`.
+`-parse-as-library` is required because `Sources/App/Launcher.swift` uses `@main`.
+The build compiles every `.swift` file under `Sources/`.
 
 ## Start automatically at login
 
@@ -173,7 +181,7 @@ repo's `workflows.json`.
 
 ```bash
 mkdir -p ~/Applications ~/Library/LaunchAgents
-swiftc -O -parse-as-library -swift-version 6 *.swift -o ~/Applications/Launcher
+swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o ~/Applications/Launcher
 
 cat > ~/Library/LaunchAgents/local.launcher.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

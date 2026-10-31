@@ -5,8 +5,9 @@
 #   check.sh [workflows.json] [input ...]
 #   check.sh workflows.json "pr #12" "jira abc-42" "jira" "hello world"
 #
-# It compiles the "Workflows" and "Command parsing" sections of Launcher.swift
-# plus Config.defaultWorkflowsJSON, so it tracks the source automatically.
+# It compiles Sources/Launcher/Workflows.swift as is, plus a stub Config that
+# carries the real Config.defaultWorkflowsJSON, so it tracks the source
+# automatically.
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -16,19 +17,21 @@ shift || true
 work="$(mktemp -d "${TMPDIR:-/tmp}/alfresco-check.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-src="$repo/Launcher.swift"
-grep -q '^// MARK: - Workflows$' "$src" && grep -q '^// MARK: - Global hotkeys' "$src" || {
-  echo "check.sh: MARK sections in Launcher.swift changed; update this script" >&2; exit 2; }
+workflows="$repo/Sources/Launcher/Workflows.swift"
+config="$repo/Sources/App/Config.swift"
+for f in "$workflows" "$config"; do
+  [ -f "$f" ] || { echo "check.sh: $f not found; update this script" >&2; exit 2; }
+done
+grep -q 'static let defaultWorkflowsJSON' "$config" || {
+  echo "check.sh: Config.defaultWorkflowsJSON changed; update this script" >&2; exit 2; }
 
-{
-  echo 'import Foundation'
-  awk '/^\/\/ MARK: - Workflows$/{on=1} /^\/\/ MARK: - Global hotkeys/{on=0} on' "$src"
-} > "$work/sections.swift"
+# The real Config.swift needs Carbon and the app bundle, so only the default
+# workflows JSON is taken from it.
 {
   echo 'import Foundation'
   echo 'enum Config {'
   echo '    static let workflowsSource: (url: URL, isFallback: Bool) = (URL(fileURLWithPath: "/dev/null"), false)'
-  awk '/static let defaultWorkflowsJSON/{on=1} on{print} on && /"""#/{exit}' "$src"
+  awk '/static let defaultWorkflowsJSON/{on=1} on{print} on && /"""#/{exit}' "$config"
   echo '}'
 } > "$work/config.swift"
 cat > "$work/main.swift" <<'SWIFT'
@@ -61,6 +64,6 @@ SWIFT
 
 # NSLog output from WorkflowStore goes to stderr and is silenced, so only the
 # report prints.
-swiftc -swift-version 6 "$work/main.swift" "$work/sections.swift" "$work/config.swift" -o "$work/check" 2> "$work/build.log" || {
+swiftc -swift-version 6 "$work/main.swift" "$workflows" "$work/config.swift" -o "$work/check" 2> "$work/build.log" || {
   cat "$work/build.log" >&2; echo "check.sh: harness failed to compile (see above)" >&2; exit 2; }
 "$work/check" "$file" "$@" 2>/dev/null
