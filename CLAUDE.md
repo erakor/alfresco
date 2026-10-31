@@ -8,11 +8,11 @@ alfresco is a Spotlight-style URL launcher for macOS with a 24-hour clipboard hi
 
 ## Build & run
 
-Needs the Xcode Command Line Tools only.
+Needs the Xcode 16+ Command Line Tools only (Swift 6 compiler, for `-swift-version 6`).
 
 ```bash
 # Plain binary (finds workflows.json next to itself)
-swiftc -O -parse-as-library *.swift -o Launcher && ./Launcher
+swiftc -O -parse-as-library -swift-version 6 *.swift -o Launcher && ./Launcher
 
 # .app bundle -> build/Launcher.app (ad-hoc signed, LSUIElement)
 ./build.sh
@@ -21,7 +21,7 @@ swiftc -O -parse-as-library *.swift -o Launcher && ./Launcher
 ALFRESCO_WORKFLOWS=/path/to/workflows.json ./Launcher
 ```
 
-`-parse-as-library` is required because `Launcher.swift` uses `@main`. Every `.swift` file in the repo root is compiled in, so new source files are picked up automatically. There are no tests, linter, or formatter; "compiles with `swiftc`" is the check. `build/` is gitignored, but a plain `Launcher` binary built in the repo root is not, so don't commit it.
+`-parse-as-library` is required because `Launcher.swift` uses `@main`. `-swift-version 6` turns on Swift 6 language mode, so data-race safety violations are compile errors rather than warnings; keep it on every build command. Every `.swift` file in the repo root is compiled in, so new source files are picked up automatically. There are no tests, linter, or formatter; "compiles with `swiftc`" is the check. `build/` is gitignored, but a plain `Launcher` binary built in the repo root is not, so don't commit it.
 
 ## Architecture
 

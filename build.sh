@@ -10,7 +10,7 @@ APP="build/Launcher.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 
-swiftc -O -parse-as-library *.swift -o "$APP/Contents/MacOS/Launcher"
+swiftc -O -parse-as-library -swift-version 6 *.swift -o "$APP/Contents/MacOS/Launcher"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

@@ -122,11 +122,11 @@ and `ClipboardPanel.swift` (history panel).
 
 ## Build
 
-Needs the Xcode Command Line Tools (`xcode-select --install`).
+Needs the Xcode 16+ Command Line Tools (`xcode-select --install`), which include the Swift 6 compiler.
 
 ```bash
 # Plain binary
-swiftc -O -parse-as-library *.swift -o Launcher
+swiftc -O -parse-as-library -swift-version 6 *.swift -o Launcher
 ./Launcher
 
 # Or an .app bundle (recommended for Login Items)
@@ -155,7 +155,7 @@ repo's `workflows.json`.
 
 ```bash
 mkdir -p ~/Applications ~/Library/LaunchAgents
-swiftc -O -parse-as-library *.swift -o ~/Applications/Launcher
+swiftc -O -parse-as-library -swift-version 6 *.swift -o ~/Applications/Launcher
 
 cat > ~/Library/LaunchAgents/local.launcher.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
