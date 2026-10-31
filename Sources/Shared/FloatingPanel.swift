@@ -73,7 +73,11 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
     /// Host for the subclass's views (the frosted background).
     let contentView = NSVisualEffectView()
 
-    private let size: NSSize
+    /// The current size; subclasses change the height with setHeight(_:).
+    private var size: NSSize
+    /// The size the panel was created with. Its top edge fixes where the
+    /// panel sits, so a taller panel grows downward.
+    private let baseSize: NSSize
     /// How far above the screen's vertical center the panel sits, as a
     /// fraction of the screen height. 0 is dead center.
     private let verticalOffset: CGFloat
@@ -81,6 +85,7 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
 
     init(size: NSSize, verticalOffset: CGFloat) {
         self.size = size
+        self.baseSize = size
         self.verticalOffset = verticalOffset
         panel = LauncherPanel(
             contentRect: NSRect(origin: .zero, size: size),
@@ -125,9 +130,9 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
 
     func show() {
         isHiding = false
-        let target = targetFrame()
-
+        // prepareToShow may change the height, so the frame comes after it.
         prepareToShow()
+        let target = targetFrame()
 
         panel.alphaValue = 0
         panel.setFrame(target.offsetBy(dx: 0, dy: -8), display: false)
@@ -165,14 +170,31 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
         didHide()
     }
 
-    /// Centers the panel on the screen that holds the mouse pointer.
+    /// Grows or shrinks the panel downward, keeping its top edge in place.
+    /// Animated while the panel is on screen.
+    func setHeight(_ height: CGFloat) {
+        guard height != size.height else { return }
+        size.height = height
+        guard panel.isVisible else { return }
+        var frame = panel.frame
+        frame.origin.y += frame.height - height
+        frame.size.height = height
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.14
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(frame, display: true)
+        })
+    }
+
+    /// Centers a panel of the original size on the screen that holds the
+    /// mouse pointer; a taller one extends below it.
     private func targetFrame() -> NSRect {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let x = visible.midX - size.width / 2
-        let y = visible.midY - size.height / 2 + visible.height * verticalOffset
-        return NSRect(x: x, y: y, width: size.width, height: size.height).integral
+        let top = visible.midY + baseSize.height / 2 + visible.height * verticalOffset
+        return NSRect(x: x, y: top - size.height, width: size.width, height: size.height).integral
     }
 
     // MARK: NSWindowDelegate

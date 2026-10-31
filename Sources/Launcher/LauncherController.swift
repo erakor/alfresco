@@ -12,14 +12,19 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let textField = NSTextField()
     private let hintLabel = FloatingPanelController.makeHintLabel()
     private let previews = PreviewFetcher()
+    private let weather = WeatherProvider()
+    private let weatherView = WeatherView(frame: .zero)
+    /// Height of the input row, which is the whole panel without the weather.
+    private static let rowHeight: CGFloat = 60
     /// Text to start with on the next show(prefill:).
     private var pendingPrefill = ""
 
     init(store: WorkflowStore) {
         self.store = store
-        super.init(size: NSSize(width: 680, height: 60), verticalOffset: 0.15)
+        super.init(size: NSSize(width: 680, height: LauncherController.rowHeight), verticalOffset: 0.15)
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
+        weather.onUpdate = { [weak self] in self?.updateWeather() }
     }
 
     override var initialFirstResponder: NSResponder? { textField }
@@ -32,10 +37,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     override func prepareToShow() {
         store.reloadIfNeeded()
+        weather.reloadKey()
         textField.placeholderString = placeholder()
         textField.stringValue = pendingPrefill
         pendingPrefill = ""
         updateHint()
+        updateWeather()
     }
 
     override func didFocus() {
@@ -46,6 +53,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     override func didHide() {
         textField.stringValue = ""
         previews.cancel()
+        weather.cancel()
+        weatherView.isHidden = true
+        setHeight(Self.rowHeight)
     }
 
     private func execute() {
@@ -63,6 +73,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private func updateHint() {
         // A preview to fetch; anything pending is cancelled when this stays nil.
         var missingPreview: URL?
+        // The weather panel replaces the one-line preview when it is shown.
+        let showsWeather = weather.query(for: textField.stringValue) != nil
         defer {
             if let missingPreview { previews.fetch(missingPreview) } else { previews.cancel() }
         }
@@ -76,7 +88,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         } else if let command = CommandParser.parse(textField.stringValue, using: store.current) {
             hintLabel.stringValue = "↩ \(command.label)"
             hintLabel.toolTip = nil
-            if let preview = command.preview {
+            if let preview = command.preview, !showsWeather {
                 if let text = previews.cachedText(for: preview) {
                     // e.g. "paris: ☀️ +14°C ↙11km/h  ↩ Weather in paris"
                     hintLabel.stringValue = "\(text)  ↩ \(command.label)"
@@ -94,6 +106,21 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         }
     }
 
+    /// Shows the forecast below the input while it reads `weather [place]`
+    /// (and an OpenWeather key is set), and hides it otherwise.
+    private func updateWeather() {
+        guard let query = weather.query(for: textField.stringValue) else {
+            weather.cancel()
+            weatherView.isHidden = true
+            setHeight(Self.rowHeight)
+            return
+        }
+        weatherView.show(weather.state(for: query), for: query)
+        weatherView.isHidden = false
+        setHeight(Self.rowHeight + WeatherView.height)
+        weather.request(query)
+    }
+
     private func placeholder() -> String {
         let set = store.current
         let keywords = set.workflows.compactMap(\.keywords.first).prefix(4)
@@ -105,6 +132,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     func controlTextDidChange(_ obj: Notification) {
         updateHint()
+        updateWeather()
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -131,24 +159,31 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         hintLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         hintLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-        for view in [icon, textField, hintLabel] {
+        weatherView.isHidden = true
+
+        for view in [icon, textField, hintLabel, weatherView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
 
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            icon.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            icon.centerYAnchor.constraint(equalTo: contentView.topAnchor, constant: Self.rowHeight / 2),
             icon.widthAnchor.constraint(equalToConstant: 24),
             icon.heightAnchor.constraint(equalToConstant: 24),
 
             textField.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
-            textField.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            textField.centerYAnchor.constraint(equalTo: contentView.topAnchor, constant: Self.rowHeight / 2),
 
             hintLabel.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 12),
             hintLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            hintLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            hintLabel.centerYAnchor.constraint(equalTo: contentView.topAnchor, constant: Self.rowHeight / 2),
             hintLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 340),
+
+            weatherView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Self.rowHeight),
+            weatherView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            weatherView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            weatherView.heightAnchor.constraint(equalToConstant: WeatherView.height),
         ])
     }
 }

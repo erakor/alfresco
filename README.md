@@ -78,6 +78,46 @@ version and shows the error in the hint area (hover it for the full message).
 The menu bar's **Workflows** submenu lists every workflow with its description;
 picking one opens the launcher with its keyword already typed.
 
+## Weather
+
+With an [OpenWeather](https://openweathermap.org/price) API key (the free
+plan is enough, no card needed), typing `weather` or `weather <place>` opens
+a forecast under the input: current conditions (temperature, feels-like,
+humidity, wind, chance of rain in the next 3 hours) and five days with
+high / low and chance of rain. Enter still opens the `weather` workflow's
+page.
+
+1. Create a free account at openweathermap.org and copy your API key. A new
+   key can take a couple of hours to start working; until then the panel says
+   the key was refused.
+2. Save it, alone on the first line, in `~/.config/alfresco/openweather-key`:
+
+   ```bash
+   mkdir -p ~/.config/alfresco && pbpaste > ~/.config/alfresco/openweather-key && chmod 600 ~/.config/alfresco/openweather-key
+   ```
+
+   Or set `ALFRESCO_OPENWEATHER_KEY` in the launcher's environment. The key
+   is read each time the launcher opens, so no restart is needed.
+
+Without a key the launcher behaves as before, with the one-line `preview` in
+the hint.
+
+- `weather paris`, `weather lyon,fr`, `weather new york`: the place is looked
+  up with OpenWeather's geocoding, after you pause typing.
+- `weather` alone uses your public IP address (via ipinfo.io), shown as
+  "position approximative" since it can be off by a city. Set
+  `Config.weatherHomePlace` (e.g. `"Paris,FR"`) and rebuild to use a fixed
+  place instead.
+- Text is in French, metric units (`Config.weatherLanguage` sets the language
+  of OpenWeather's descriptions and the day names; the panel's own labels are
+  French).
+- Each place is fetched at most once every 10 minutes
+  (`Config.weatherCacheLifetime`), three requests each time, far below the
+  free plan's limits.
+- The free plan's forecast comes in 3-hour steps, so a day's high and low are
+  the extremes of its eight slots (today's also counts the current
+  temperature), and its icon is the one around 13:00.
+
 ## Clipboard history
 
 Copy and paste with `⌘C` / `⌘V` as usual; the launcher only watches the

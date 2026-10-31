@@ -40,13 +40,23 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 
 `PreviewFetcher` (main actor) fetches `Command.preview` for the launcher hint: debounced 400 ms, one request in flight (a new URL cancels the old one, and so does input that no longer has a preview or hiding the panel), 5 s timeout, keeps the first non-empty line of a 2xx non-HTML answer for 10 minutes. Failures are silent. `LauncherController.updateHint` shows `"<text>  ↩ <label>"` once it's cached.
 
+### Weather/
+
+The forecast area under the launcher input, shown while the input is `Config.weatherKeyword` alone or followed by a place, and only when an OpenWeather key is set (`Config.openWeatherAPIKey()`: `ALFRESCO_OPENWEATHER_KEY`, else `~/.config/alfresco/openweather-key`; nil turns the feature off entirely). Enter is unaffected: it still runs the workflow from `workflows.json`.
+
+- `OpenWeather.swift`: not main-actor. `WeatherLoader.load` resolves the place (OpenWeather geocoding, or ipinfo.io for the bare keyword unless `Config.weatherHomePlace` is set), then fetches `data/2.5/weather` and `data/2.5/forecast` (free plan only; no One Call) in parallel and builds a `Forecast`, grouping the 3-hour slots into days in the place's time zone. Errors are `WeatherError`, whose `message` is shown in the panel.
+- `WeatherProvider.swift`: main actor. Turns input into a `WeatherQuery`, debounces typed places (400 ms), runs one load at a time, caches results per query (`Config.weatherCacheLifetime`, failures 30 s), and calls `onUpdate`.
+- `WeatherView.swift`: the `NSView` (loading, error and forecast states; SF Symbols for OpenWeather icon codes). Labels are French.
+
+`LauncherController.updateWeather` shows or hides it and resizes the panel with `FloatingPanelController.setHeight`; while it is shown, the one-line hint `preview` is not fetched.
+
 ### Shared/HotKeys.swift
 
 Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitoring permissions. Don't switch to `NSEvent` global monitors or CGEventTap. macOS 15+ rejects Option-only hotkeys.
 
 ### Shared/FloatingPanel.swift
 
-`LauncherPanel` is a borderless non-activating `NSPanel`, so the previously frontmost app stays frontmost. `FloatingPanelController` is the shared base for both panels: frosted background, positioning on the screen under the mouse, fade in/out, dismissal on Esc / click-away / hotkey. Subclasses override hooks (`prepareToShow`, `didHide`, `initialFirstResponder`, `didFocus`, and `handleKeyEquivalent`, which sees ⌘ shortcuts before the panel's standard editing ones) and add views to `contentView`; it also provides shared view factories like `makeHintLabel()`.
+`LauncherPanel` is a borderless non-activating `NSPanel`, so the previously frontmost app stays frontmost. `FloatingPanelController` is the shared base for both panels: frosted background, positioning on the screen under the mouse, fade in/out, dismissal on Esc / click-away / hotkey. `setHeight(_:)` grows or shrinks a panel downward, keeping its top edge where a panel of the original size would sit. Subclasses override hooks (`prepareToShow`, `didHide`, `initialFirstResponder`, `didFocus`, and `handleKeyEquivalent`, which sees ⌘ shortcuts before the panel's standard editing ones) and add views to `contentView`; it also provides shared view factories like `makeHintLabel()`.
 
 ### Launcher/LauncherController.swift
 

@@ -82,6 +82,38 @@ enum Config {
         return (home.appendingPathComponent(".config/alfresco/workflows.json"), true)
     }()
 
+    // MARK: Weather
+
+    /// `weather` or `weather <place>` in the launcher shows the forecast
+    /// under the input, once an OpenWeather key is set. Enter still opens
+    /// whatever workflows.json maps the keyword to.
+    static let weatherKeyword = "weather"
+    /// OpenWeather's language for descriptions, also used for day names.
+    static let weatherLanguage = "fr"
+    /// Place used for the bare keyword, e.g. "Paris,FR". nil looks up the
+    /// public IP address with ipinfo.io, which can be off by a city.
+    static let weatherHomePlace: String? = nil
+    /// Forecasts are reused for this long before being fetched again.
+    static let weatherCacheLifetime: TimeInterval = 10 * 60
+
+    /// The OpenWeather API key (free plan): the `ALFRESCO_OPENWEATHER_KEY`
+    /// environment variable, else the first line of
+    /// ~/.config/alfresco/openweather-key. Re-read each time the launcher
+    /// opens. nil turns the weather panel off.
+    static func openWeatherAPIKey() -> String? {
+        func clean(_ value: String?) -> String? {
+            let line = value?.split(whereSeparator: \.isNewline).first
+            let key = line?.trimmingCharacters(in: .whitespaces) ?? ""
+            return key.isEmpty ? nil : key
+        }
+        if let key = clean(ProcessInfo.processInfo.environment["ALFRESCO_OPENWEATHER_KEY"]) {
+            return key
+        }
+        let file = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/alfresco/openweather-key")
+        return clean(try? String(contentsOf: file, encoding: .utf8))
+    }
+
     /// Used until workflows.json loads, and to seed the ~/.config fallback.
     /// The real workflows live in the repo's workflows.json.
     static let defaultWorkflowsJSON = #"""
