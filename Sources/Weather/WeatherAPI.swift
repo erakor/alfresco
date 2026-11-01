@@ -58,6 +58,9 @@ struct Forecast: Sendable {
     /// Config.weatherHours hours from the current one (fewer near the end
     /// of the forecast).
     let hours: [Hour]
+    /// When the hour labeled "Maint." ends; after that the cached forecast
+    /// is out of date. nil when the response had no current hour slot.
+    let currentHourEnd: Date?
     let days: [Day]
 }
 
@@ -221,6 +224,7 @@ enum WeatherLoader {
             condition: WeatherCondition(code: current.condition.code, isDay: current.isDay != 0),
             rainChance: rainChance,
             hours: hours,
+            currentHourEnd: currentIndex.map { Date(timeIntervalSince1970: allHours[$0].timeEpoch + 3600) },
             days: days
         )
     }
