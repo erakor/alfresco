@@ -1,0 +1,31 @@
+# Checks that the app still compiles in Swift 6 language mode, that build.sh
+# still produces the .app bundle, and that workflows.json decodes with the
+# app's own decoder. AppKit and Carbon only exist on macOS, hence the runner.
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Swift version
+        run: swiftc --version
+
+      - name: Compile
+        run: swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o Launcher
+
+      - name: Build .app bundle
+        run: ./build.sh
+
+      - name: Check workflows.json
+        run: .claude/skills/add-workflow/scripts/check.sh workflows.json
