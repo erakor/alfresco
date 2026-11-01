@@ -93,10 +93,16 @@ final class PomodoroTimer: NSObject {
         }
     }
 
+    /// A phase whose end has already passed (the Mac just woke, or the tick
+    /// hasn't fired yet) finishes instead of being paused with time left.
     @discardableResult
     func pause() -> Bool {
         guard case .running(let phase, let endsAt) = state else { return false }
-        transition(to: .paused(phase, remaining: max(1, endsAt.timeIntervalSinceNow)))
+        if endsAt.timeIntervalSinceNow <= 0 {
+            finish(phase, alert: true)
+        } else {
+            transition(to: .paused(phase, remaining: max(1, endsAt.timeIntervalSinceNow)))
+        }
         return true
     }
 
