@@ -213,6 +213,9 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         }
         monitor.ignoreCurrentContents()
         store.promote(id: item.id)
+        // A later pick during the fade-out decides alone: ⌘↩ right after ↩
+        // must not paste.
+        pasteTarget = nil
         if paste {
             let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
             if !PasteKeystroke.isAllowed {
