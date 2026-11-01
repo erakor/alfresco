@@ -197,13 +197,21 @@ final class UsageStats: NSObject {
             weatherFailures[String(name.dropFirst(failurePrefix.count))] = value
         }
         let skipped = count(.clipboardSkippedMarked) + count(.clipboardSkippedText) + count(.clipboardSkippedImage)
-        let apps = Set(total.clipboardCopies.keys).union(total.clipboardRestores.keys)
-            .map { (id: $0, copies: total.clipboardCopies[$0] ?? 0, restores: total.clipboardRestores[$0] ?? 0) }
-            .sorted { $0.copies != $1.copies ? $0.copies > $1.copies : $0.id < $1.id }
-            .prefix(10)
-            .map { "  \(Self.appName(for: $0.id)): \($0.copies) copied, \($0.restores) restored" }
+        // Spelled out step by step: as one chain it is too slow to type-check.
+        let appIDs: Set<String> = Set(total.clipboardCopies.keys).union(total.clipboardRestores.keys)
+        let byCopies: [String] = appIDs.sorted { lhs, rhs in
+            let left: Int = total.clipboardCopies[lhs] ?? 0
+            let right: Int = total.clipboardCopies[rhs] ?? 0
+            return left != right ? left > right : lhs < rhs
+        }
+        var apps: [String] = []
+        for id in byCopies.prefix(10) {
+            let copies: Int = total.clipboardCopies[id] ?? 0
+            let restores: Int = total.clipboardRestores[id] ?? 0
+            apps.append("  \(Self.appName(for: id)): \(copies) copied, \(restores) restored")
+        }
 
-        var lines = [
+        var lines: [String] = [
             "Launcher: opened \(count(.launcherOpened)), ran \(launched)",
             "  closed without running: \(closed) (\(count(.launcherClosedTyped)) with text typed)",
             "  Enter on a keyword missing its argument: \(count(.launcherEnterNeedsArgument))",
