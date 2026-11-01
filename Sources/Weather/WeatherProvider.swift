@@ -99,17 +99,26 @@ final class WeatherProvider {
                 }
             }
             let state: WeatherState
+            let failure: WeatherError?
             do {
                 let forecast = try await WeatherLoader.load(query, key: key)
                 state = .loaded(forecast)
+                failure = nil
             } catch is CancellationError {
                 return
             } catch let error as WeatherError {
                 state = .failed(error.message)
+                failure = error
             } catch {
                 state = .failed(WeatherError.badResponse.message)
+                failure = .badResponse
             }
             guard let self, !Task.isCancelled else { return }
+            if let failure {
+                UsageStats.shared.recordWeatherFailure(failure)
+            } else {
+                UsageStats.shared.record(.weatherLoaded)
+            }
             self.pending = nil
             if self.results.count >= Self.maxEntries { self.results.removeAll() }
             self.results[query] = (state, Date())

@@ -22,6 +22,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private static let rowHeight: CGFloat = 60
     /// Text to start with on the next show(prefill:).
     private var pendingPrefill = ""
+    /// Whether Enter opened a URL since the panel was shown (usage stats).
+    private var didLaunch = false
 
     init(store: WorkflowStore) {
         self.store = store
@@ -40,6 +42,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     override func prepareToShow() {
+        UsageStats.shared.record(.launcherOpened)
+        didLaunch = false
         store.reloadIfNeeded()
         weather.reloadKey()
         textField.placeholderString = placeholder()
@@ -55,6 +59,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     override func didHide() {
+        if !didLaunch {
+            let typed = !textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            UsageStats.shared.record(typed ? .launcherClosedTyped : .launcherClosedEmpty)
+        }
         textField.stringValue = ""
         previews.cancel()
         weather.cancel()
@@ -63,12 +71,17 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     private func execute() {
         // Keyword typed without its argument: keep the bar open and wait.
-        if store.current.workflowAwaitingArgument(textField.stringValue) != nil { return }
+        if store.current.workflowAwaitingArgument(textField.stringValue) != nil {
+            UsageStats.shared.record(.launcherEnterNeedsArgument)
+            return
+        }
         guard let command = CommandParser.parse(textField.stringValue, using: store.current) else {
             hide()
             return
         }
         NSWorkspace.shared.open(command.url)
+        UsageStats.shared.recordLaunch(command.source, input: textField.stringValue)
+        didLaunch = true
         textField.stringValue = ""
         hide()
     }

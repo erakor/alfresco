@@ -254,6 +254,7 @@ final class ClipboardStore: NSObject {
         )
         let index = items.firstIndex { $0.copiedAt <= copiedAt } ?? items.count
         items.insert(item, at: index)
+        UsageStats.shared.recordClipboardCopy(content, bundleID: source.bundleID)
         if items.count > Config.clipboardMaxItems {
             items.removeLast(items.count - Config.clipboardMaxItems)
         }
@@ -483,7 +484,10 @@ final class ClipboardMonitor: NSObject {
         lastChangeCount = changeCount
 
         let types = pasteboard.types ?? []
-        guard !types.contains(where: { Self.ignoredTypes.contains($0) }) else { return }
+        guard !types.contains(where: { Self.ignoredTypes.contains($0) }) else {
+            UsageStats.shared.record(.clipboardSkippedMarked)
+            return
+        }
 
         let source = ClipSource.frontmost
         let copiedAt = Date()
@@ -509,6 +513,9 @@ final class ClipboardMonitor: NSObject {
             store.add(.files(filePaths), source: source, copiedAt: copiedAt)
         } else if let text {
             store.add(.text(text), source: source, copiedAt: copiedAt)
+        } else if types.contains(.string) {
+            // Text refused by readText (too large, or only whitespace).
+            UsageStats.shared.record(.clipboardSkippedText)
         }
     }
 
@@ -535,12 +542,18 @@ final class ClipboardMonitor: NSObject {
     /// huge image can't freeze the panels.
     private func recordImage(type: NSPasteboard.PasteboardType, source: ClipSource, copiedAt: Date) {
         guard let data = pasteboard.data(forType: type) else { return }
-        if let size = ClipImageFile.pixelSize(of: data), !ClipImageFile.isAcceptable(size) { return }
+        if let size = ClipImageFile.pixelSize(of: data), !ClipImageFile.isAcceptable(size) {
+            UsageStats.shared.record(.clipboardSkippedImage)
+            return
+        }
 
         let store = self.store
         let directory = store.imagesDirectory
         Task.detached(priority: .userInitiated) {
-            guard let image = ClipImageFile.save(data, type: type, in: directory) else { return }
+            guard let image = ClipImageFile.save(data, type: type, in: directory) else {
+                await MainActor.run { UsageStats.shared.record(.clipboardSkippedImage) }
+                return
+            }
             await store.add(.image(image), source: source, copiedAt: copiedAt)
         }
     }

@@ -177,9 +177,11 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         guard let item = selectedItem else { return }
         guard write(item.content, to: NSPasteboard.general) else {
             // The image file or every copied file is gone.
+            UsageStats.shared.record(.clipboardRestoreFailed)
             NSSound.beep()
             return
         }
+        UsageStats.shared.recordClipboardRestore(bundleID: item.sourceBundleID)
         monitor.ignoreCurrentContents()
         store.promote(id: item.id)
         hide()

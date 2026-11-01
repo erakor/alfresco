@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         clipboardStore?.saveNow()
+        UsageStats.shared.saveNow()
     }
 
     private func setUpStatusItem() {
@@ -77,6 +78,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(workflows)
         menu.addItem(menuItem("Edit Workflows…", #selector(editWorkflows)))
         menu.addItem(menuItem("Show Workflows in Finder", #selector(revealWorkflows)))
+        if Config.usageTracking {
+            menu.addItem(menuItem("Usage…", #selector(showUsage)))
+        }
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Launcher", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
@@ -153,6 +157,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func revealWorkflows() {
         workflowStore.ensureFileExists()
         NSWorkspace.shared.activateFileViewerSelecting([workflowStore.fileURL])
+    }
+
+    /// The last 30 days of UsageStats, with a button to the file itself.
+    @objc private func showUsage() {
+        let stats = UsageStats.shared
+        stats.saveNow()
+        let alert = NSAlert()
+        alert.messageText = "Usage, last 30 days"
+        alert.informativeText = stats.summary(days: 30)
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Show File in Finder")
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        if alert.runModal() == .alertSecondButtonReturn {
+            if FileManager.default.fileExists(atPath: stats.fileURL.path) {
+                NSWorkspace.shared.activateFileViewerSelecting([stats.fileURL])
+            } else {
+                NSWorkspace.shared.open(stats.fileURL.deletingLastPathComponent())
+            }
+        }
     }
 
     private func showHotKeyError(_ hotKeys: [HotKey]) {

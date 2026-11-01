@@ -29,12 +29,12 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 
 ### App/Config.swift
 
-`Config` enum holds compile-time settings: both hotkeys (`hotKey`, `clipboardHotKey`), `showMenuBarIcon`, the clipboard limits (`clipboardRetention`, `clipboardMaxItems`, `clipboardMaxTextBytes`, `clipboardMaxImageBytes`, `clipboardMaxImagePixels`, `clipboardPollInterval`), and `workflowsSource`, which resolves the workflows file in this order: `ALFRESCO_WORKFLOWS` env var → `AlfrescoWorkflowsFile` Info.plist key (written by `build.sh` as the repo's absolute path, so moving the repo requires a rebuild) → `workflows.json` next to the executable → `~/.config/alfresco/workflows.json` (the only location auto-created if missing).
+`Config` enum holds compile-time settings: both hotkeys (`hotKey`, `clipboardHotKey`), `showMenuBarIcon`, the clipboard limits (`clipboardRetention`, `clipboardMaxItems`, `clipboardMaxTextBytes`, `clipboardMaxImageBytes`, `clipboardMaxImagePixels`, `clipboardPollInterval`), the usage stats switches (`usageTracking`, `usageTrackFallbackWords`, `usageRetentionDays`), and `workflowsSource`, which resolves the workflows file in this order: `ALFRESCO_WORKFLOWS` env var → `AlfrescoWorkflowsFile` Info.plist key (written by `build.sh` as the repo's absolute path, so moving the repo requires a rebuild) → `workflows.json` next to the executable → `~/.config/alfresco/workflows.json` (the only location auto-created if missing).
 
 ### Launcher/Workflows.swift
 
 - **Workflows** — `Workflow` / `WorkflowSet` are `Decodable` models of `workflows.json`; `ArgumentTransform` parses string transforms like `"stripPrefix:#"`. `WorkflowStore` re-reads the file only when its modification date changes (checked each time the launcher opens) and keeps the last good `WorkflowSet` when a reload fails, exposing `loadError` for the UI.
-- **Command parsing** — `CommandParser.parse` splits input into `<keyword> [argument]`. A workflow whose `url` contains `{query}` requires an argument; one without `{query}` matches only the bare keyword. `WorkflowSet.workflow(for:withArgument:)` picks the first workflow of the right form, so one keyword can have both (e.g. `weather` and `weather paris`). Anything else goes to `fallback`. Arguments are percent-encoded with the RFC 3986 unreserved set. An optional `preview` URL template is expanded the same way into `Command.preview`.
+- **Command parsing** — `CommandParser.parse` splits input into `<keyword> [argument]`. A workflow whose `url` contains `{query}` requires an argument; one without `{query}` matches only the bare keyword. `WorkflowSet.workflow(for:withArgument:)` picks the first workflow of the right form, so one keyword can have both (e.g. `weather` and `weather paris`). Anything else goes to `fallback`. `Command.source` says which (`.workflow(keyword:withArgument:)` with the workflow's first keyword, or `.fallback`), for the usage stats. Arguments are percent-encoded with the RFC 3986 unreserved set. An optional `preview` URL template is expanded the same way into `Command.preview`.
 
 ### Launcher/PreviewFetcher.swift
 
@@ -54,6 +54,10 @@ The forecast area under the launcher input, shown while the input is `Config.wea
 ### Shared/HotKeys.swift
 
 Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitoring permissions. Don't switch to `NSEvent` global monitors or CGEventTap. macOS 15+ rejects Option-only hotkeys.
+
+### Shared/UsageStats.swift
+
+`UsageStats.shared` (main actor) keeps local counters in `~/Library/Application Support/Launcher/usage.json`: daily buckets keyed `yyyy-MM-dd` (local time), each a set of name → count maps (`counts`, `keywords`, `fallbackWords`, `clipboardCopies`, `clipboardRestores`), pruned past `Config.usageRetentionDays`, saved 5 s after a change and on quit, 0600. Simple counters are `UsageCounter` cases (the raw value is the name in the file); weather failures are `weather.failed.<WeatherError.usageName>`. Hooks: `LauncherController` (opened, closed without launching, Enter needing an argument, `recordLaunch` with `Command.source`), `PreviewFetcher` and `WeatherProvider` (loaded / failed, cancellations not counted), `ClipboardStore.add` (copy by kind and bundle ID), `ClipboardMonitor` (skipped: marked, text, image), `ClipboardController.copySelected` (restore per bundle ID, restore failed). The menu bar's "Usage…" shows `summary(days:)` in an alert. Never record content: no arguments, queries, clipboard text or file paths. The one exception is the first word of a multi-word fallback input, only when it looks like a keyword (`fallbackWord(in:)`), behind `Config.usageTrackFallbackWords`. Every record call is a no-op when `Config.usageTracking` is false.
 
 ### Shared/FloatingPanel.swift
 
@@ -82,4 +86,5 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 - New top-level features (anything with its own hotkey or panel) get a folder under `Sources/`; additions to an existing feature stay in its folder. Code used by more than one feature goes in `Sources/Shared/` rather than being copied. A folder can hold a single file.
 - When changing the `workflows.json` schema, update the decoding in `Workflow`/`WorkflowSet`, the field table in `README.md`, and `Config.defaultWorkflowsJSON` if relevant. Decoding errors are turned into short user-facing messages by `WorkflowStore.describe`.
 - New panels should subclass `FloatingPanelController` rather than duplicating panel setup.
-- Adding a clip kind means a new `ClipContent` case plus handling in `ClipboardMonitor` (read) and `ClipboardController` (display and restore).
+- Adding a clip kind means a new `ClipContent` case plus handling in `ClipboardMonitor` (read), `ClipboardController` (display and restore) and `UsageStats.recordClipboardCopy` (a `UsageCounter` for it).
+- New usage counters are `UsageCounter` cases recorded through `UsageStats.shared`; anything that would store what the user typed or copied needs its own `Config` switch.
