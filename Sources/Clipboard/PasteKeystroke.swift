@@ -53,6 +53,9 @@ enum PasteKeystroke {
         else { return nil }
         let layoutData = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue() as Data
         let target = Array(String(character).utf16)
+        // Translated with ⌘ held, as the event is posted: layouts like
+        // "Dvorak - QWERTY ⌘" switch to another keymap under ⌘.
+        let commandModifierState = UInt32((cmdKey >> 8) & 0xFF)
 
         return layoutData.withUnsafeBytes { buffer -> CGKeyCode? in
             guard let layout = buffer.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self)
@@ -62,7 +65,7 @@ enum PasteKeystroke {
                 var chars = [UniChar](repeating: 0, count: 4)
                 var length = 0
                 let status = UCKeyTranslate(
-                    layout, UInt16(code), UInt16(kUCKeyActionDisplay), 0,
+                    layout, UInt16(code), UInt16(kUCKeyActionDisplay), commandModifierState,
                     UInt32(LMGetKbdType()), OptionBits(1 << kUCKeyTranslateNoDeadKeysBit),
                     &deadKeyState, chars.count, &length, &chars)
                 if status == noErr, Array(chars.prefix(length)) == target {

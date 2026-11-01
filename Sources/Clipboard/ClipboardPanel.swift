@@ -59,9 +59,13 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     /// The store's items that match the search field, newest first.
     private var visibleItems: [ClipItem] = []
 
-    /// Set by a pick that should paste; didHide sends ⌘V once the panel is
-    /// gone, so the keystroke reaches the app underneath.
-    private var pasteAfterHide = false
+    /// Set by a pick that should paste: the app that was in front, which
+    /// didHide sends ⌘V to once the panel is gone.
+    private var pasteTarget: pid_t?
+
+    /// The ⌘V waiting for keyboard focus to settle; cancelled if a panel
+    /// opens first, so it can't land in a search field.
+    private var pendingPaste: Task<Void, Never>?
 
     private let ageFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -95,7 +99,9 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
     override func prepareToShow() {
         store.expireOldItems()
-        pasteAfterHide = false
+        pasteTarget = nil
+        pendingPaste?.cancel()
+        pendingPaste = nil
         searchField.stringValue = ""
         reload(keepingSelection: false)
     }
@@ -105,12 +111,21 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         imageCache.removeAllObjects()
         fileStates.removeAll()
 
-        guard pasteAfterHide else { return }
-        pasteAfterHide = false
+        guard let target = pasteTarget else { return }
+        pasteTarget = nil
         // A moment for the window server to hand keyboard focus back to the
         // app underneath before the keystroke arrives.
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 50_000_000)
+        pendingPaste = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            } catch {
+                return
+            }
+            // Skip it if the user switched apps meanwhile, or opened either
+            // panel (the launcher's would otherwise receive the ⌘V).
+            let panelOpen = NSApp.windows.contains { $0 is LauncherPanel && $0.isVisible }
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target,
+                  !panelOpen else { return }
             PasteKeystroke.post()
         }
     }
@@ -199,10 +214,13 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         monitor.ignoreCurrentContents()
         store.promote(id: item.id)
         if paste {
-            if PasteKeystroke.isAllowed {
-                pasteAfterHide = true
-            } else {
+            let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            if !PasteKeystroke.isAllowed {
                 PasteKeystroke.requestPermission()
+            } else if let front, front != ProcessInfo.processInfo.processIdentifier {
+                // The panel doesn't activate the app, so the one in front is
+                // where the user was working.
+                pasteTarget = front
             }
         }
         hide()
