@@ -292,6 +292,9 @@ struct Command {
     let label: String
     /// The workflow's preview URL, filled in with the same argument.
     var preview: URL?
+    /// No keyword matched; this is the fallback search. Installed apps whose
+    /// name matches the input take precedence over it.
+    var isFallback = false
 }
 
 enum CommandParser {
@@ -321,7 +324,7 @@ enum CommandParser {
         }
 
         guard let url = expand(set.fallback.url, with: set.fallback.prepare(input)) else { return nil }
-        return Command(url: url, label: set.fallback.title)
+        return Command(url: url, label: set.fallback.title, isFallback: true)
     }
 
     private static func expand(_ template: String, with argument: String) -> URL? {

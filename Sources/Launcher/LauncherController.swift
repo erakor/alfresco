@@ -1,8 +1,9 @@
 // LauncherController.swift
 //
-// The URL launcher panel: input field, hint line, keyword suggestions, and
-// Enter handling.
+// The launcher panel: input field, hint line, keyword suggestions, and
+// Enter handling, which opens a workflow's URL or an installed app.
 
+import Carbon.HIToolbox
 import Cocoa
 
 // MARK: - Launcher window
@@ -15,6 +16,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let internalURLHandler: (URL) -> Bool
     private let textField = NSTextField()
     private let hintLabel = FloatingPanelController.makeHintLabel()
+    private let icon = FloatingPanelController.makeIcon(symbolName: "magnifyingglass")
+    /// Shown in place of an app's icon when the input names no app.
+    private let searchIcon = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+    private let apps = AppIndex()
     private let previews = PreviewFetcher()
     private let weather = WeatherProvider()
     private let weatherView = WeatherView(frame: .zero)
@@ -36,6 +41,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
         weather.onUpdate = { [weak self] in self?.updateWeather() }
+        apps.onUpdate = { [weak self] in self?.updateHint() }
         suggestionList.onPick = { [weak self] in self?.complete(with: $0) }
     }
 
@@ -50,6 +56,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     override func prepareToShow() {
         store.reloadIfNeeded()
         weather.reloadKey()
+        apps.refreshIfStale()
         textField.placeholderString = placeholder()
         textField.stringValue = pendingPrefill
         pendingPrefill = ""
@@ -77,9 +84,26 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateWeather()
     }
 
-    private func execute() {
+    /// The installed app the input names, when no workflow keyword claims
+    /// the input (it would otherwise go to the fallback search).
+    private func matchedApp() -> AppEntry? {
+        let input = textField.stringValue
+        guard store.current.workflowAwaitingArgument(input) == nil,
+              CommandParser.parse(input, using: store.current)?.isFallback == true else { return nil }
+        return apps.bestMatch(for: input)
+    }
+
+    /// Enter: the matching app, else the workflow or fallback URL. ⌘↩
+    /// (`searchOnly`) skips the app and runs the fallback search.
+    private func execute(searchOnly: Bool = false) {
         // Keyword typed without its argument: keep the bar open and wait.
         if store.current.workflowAwaitingArgument(textField.stringValue) != nil { return }
+        if !searchOnly, let app = matchedApp() {
+            AppIndex.open(app)
+            textField.stringValue = ""
+            hide()
+            return
+        }
         guard let command = CommandParser.parse(textField.stringValue, using: store.current) else {
             hide()
             return
@@ -130,11 +154,24 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             if let missingPreview { previews.fetch(missingPreview) } else { previews.cancel() }
         }
 
+        // A suggestion row chosen with the arrows takes Enter, not the app.
+        let app = suggestionList.selected == nil ? matchedApp() : nil
+        if let app {
+            let iconImage = NSWorkspace.shared.icon(forFile: app.url.path)
+            iconImage.size = NSSize(width: 24, height: 24)
+            icon.image = iconImage
+        } else {
+            icon.image = searchIcon
+        }
+
         if let suggestion = suggestionList.selected {
             // A row chosen with the arrows: Enter takes it.
             let title = suggestion.workflow.title
             hintLabel.stringValue = suggestion.workflow.takesArgument ? "↩ \(title)…" : "↩ \(title)"
             hintLabel.toolTip = nil
+        } else if let app {
+            hintLabel.stringValue = "↩ Open \(app.name)  ⌘↩ \(store.current.fallback.title)"
+            hintLabel.toolTip = app.url.path
         } else if let workflow = store.current.workflowAwaitingArgument(textField.stringValue) {
             // The keyword is typed but its argument is not: show its help.
             let keyword = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -202,6 +239,18 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         return "\(set.fallback.title), or type \(keywords.joined(separator: ", "))…"
     }
 
+    /// ⌘↩ ignores a matching app and runs the search (or workflow) instead.
+    override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
+        let keyCode = Int(event.keyCode)
+        // Only the shortcut modifiers: Caps Lock and keypad Enter's
+        // .numericPad flag must not get in the way.
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        guard modifiers == .command,
+              keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter else { return false }
+        execute(searchOnly: true)
+        return true
+    }
+
     // MARK: NSTextFieldDelegate
 
     func controlTextDidChange(_ obj: Notification) {
@@ -243,8 +292,6 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     // MARK: Setup
 
     private func buildContent() {
-        let icon = Self.makeIcon(symbolName: "magnifyingglass")
-
         Self.styleSearchField(textField, placeholder: placeholder())
         textField.delegate = self
 

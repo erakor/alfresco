@@ -1,9 +1,10 @@
 # alfresco
 
 A small, Spotlight-style URL launcher for macOS. Press a global hotkey,
-type a command, hit Enter, and the URL opens in your default browser. It also
-keeps a 24-hour clipboard history on a second hotkey, and runs a pomodoro
-timer you start from the launcher.
+type a command, hit Enter, and the URL opens in your default browser. Type an
+app's name instead and it opens the app. It also keeps a 24-hour clipboard
+history on a second hotkey, and runs a pomodoro timer you start from the
+launcher.
 
 - Hotkeys via Carbon `RegisterEventHotKey`: **no Accessibility or Screen Recording permission**.
 - Accessory agent: no Dock icon (optional menu bar icon with Open / Clipboard History / Edit Workflows / Quit).
@@ -20,8 +21,30 @@ timer you start from the launcher.
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
 | `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
 | `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
+| `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | `pomo`         | Starts a 25 min [pomodoro](#pomodoro), or pauses / resumes it (nothing opens) |
 | anything else  | `https://www.google.com/search?q=...`                             |
+
+## Apps
+
+When what you type isn't a workflow keyword, the launcher looks for an
+installed app with that name. The hint shows `↩ Open Safari` and the
+magnifying glass turns into the app's icon; Enter opens the app (or brings it
+forward if it's already running). Press `⌘↩` to search for the text instead.
+
+- Matching ignores case and accents, and picks, in order: the exact name, a
+  name starting with what you typed (`saf`), a word of the name (`code`,
+  `studio code` for Visual Studio Code), then the initials (`vsc`). Ties go
+  to the shorter name.
+- Both the name Finder shows and the file name count, so system apps match
+  in English and in your language (`calculator` and `calculatrice`).
+- Workflow keywords always win: `weather` runs the `weather` workflow, not
+  the Weather app. Only the whole keyword counts, so `weath` opens the app.
+- Apps are found in `/Applications`, `/System/Applications`,
+  `/System/Library/CoreServices/Applications` and `~/Applications`, each with
+  one level of subfolders (`Utilities`), plus Finder. The list is refreshed
+  when the launcher opens, at most once a minute, so new apps show up
+  without a restart.
 
 ## Workflows
 
@@ -234,6 +257,8 @@ Edit the `Config` enum in `Sources/App/Config.swift`, then rebuild:
 - `workflowsSource`: how the workflows file is found (see above).
 - `clipboardHotKey`: the history shortcut, `.commandOptionC` (`⌘⌥C`) by default.
   Define your own `HotKey(keyCode:modifiers:display:)` with any `kVK_` key code.
+- `appSearch`: set to `false` to turn app launching off. `appFolders` lists
+  where apps are looked for, `appRescanInterval` (60 s) how often.
 - `clipboardRetention` (24 h), `clipboardMaxItems` (500),
   `clipboardMaxTextBytes` (256 KB), `clipboardMaxImageBytes` (20 MB),
   `clipboardMaxImagePixels` (40 MP), `clipboardPollInterval` (0.5 s).
@@ -247,7 +272,8 @@ The source lives in `Sources/`, one folder per feature:
 - `App/`: `Launcher.swift` (app delegate, menu bar, entry point) and
   `Config.swift` (settings).
 - `Launcher/`: `Workflows.swift` (workflows.json model, reloading, command
-  parsing) and `LauncherController.swift` (the launcher panel).
+  parsing), `AppIndex.swift` (installed apps and name matching) and
+  `LauncherController.swift` (the launcher panel).
 - `Clipboard/`: `ClipboardHistory.swift` (clipboard model, storage, watcher) and
   `ClipboardPanel.swift` (history panel).
 - `Pomodoro/`: `PomodoroTimer.swift` (the timer), `PomodoroCommand.swift`
