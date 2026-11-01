@@ -172,6 +172,32 @@ struct WorkflowSet: Decodable, Sendable {
         guard workflow(for: input, withArgument: false) == nil else { return nil }
         return workflow(for: input, withArgument: true)
     }
+
+    /// Workflows whose keyword starts with what is typed, for the list under
+    /// the launcher input. Only while a single word is typed, and not when it
+    /// already is every match's whole keyword (nothing left to complete).
+    /// Exact matches come first, then file order. One row per workflow, with
+    /// its first matching keyword, so "weather" and "weather paris" are two.
+    func suggestions(for input: String) -> [Suggestion] {
+        let prefix = String(input.drop(while: \.isWhitespace)).lowercased()
+        guard !prefix.isEmpty, !prefix.contains(where: \.isWhitespace) else { return [] }
+        let matches = workflows.compactMap { workflow in
+            workflow.keywords.first { $0.hasPrefix(prefix) }.map { Suggestion(keyword: $0, workflow: workflow) }
+        }
+        let exact = matches.filter { $0.keyword == prefix }
+        guard exact.count < matches.count else { return [] }
+        return exact + matches.filter { $0.keyword != prefix }
+    }
+}
+
+/// A row in the launcher's suggestion list.
+struct Suggestion: Sendable {
+    let keyword: String
+    let workflow: Workflow
+
+    /// What Tab puts in the field: the keyword, plus a space when the
+    /// workflow needs an argument, so typing can go straight on.
+    var completion: String { workflow.takesArgument ? keyword + " " : keyword }
 }
 
 /// Owns workflows.json: finds it, reloads it when its modification date

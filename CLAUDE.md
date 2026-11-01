@@ -61,7 +61,11 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Launcher/LauncherController.swift
 
-`LauncherController` (a `FloatingPanelController`) runs the URL launcher: the input field, the hint line, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone.
+`LauncherController` (a `FloatingPanelController`) runs the URL launcher: the input field, the hint line, the suggestion list, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone.
+
+### Launcher/SuggestionListView.swift
+
+`SuggestionListView` is the list under the input, filled from `WorkflowSet.suggestions(for:)` (workflows whose keyword starts with a single typed word; empty once the word is every match's whole keyword). The input keeps focus, so `LauncherController` routes Tab (completes `tabTarget`: the row chosen with ↑ ↓, else the first; `Suggestion.completion` adds a space when the workflow takes an argument), ↑ ↓ (only while the list has rows) and Enter (with a chosen row: complete, then run it if it takes no argument; otherwise unchanged). The list sits where the forecast goes and is empty while the forecast is shown; its height is part of `setHeight` in `updateWeather`.
 
 ### App/Launcher.swift
 
