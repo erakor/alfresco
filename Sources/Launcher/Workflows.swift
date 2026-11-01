@@ -179,17 +179,19 @@ struct WorkflowSet: Decodable, Sendable {
     /// Exact matches come first, then file order. One row per workflow, with
     /// its first matching keyword, so "weather" and "weather paris" are two.
     /// A keyword is only offered for the workflow it would actually run: an
-    /// earlier workflow of the same form with that keyword shadows it.
+    /// earlier workflow of the same form with that keyword shadows it. Among
+    /// a workflow's aliases, one equal to the typed word wins.
     func suggestions(for input: String) -> [Suggestion] {
         let prefix = String(input.drop(while: \.isWhitespace)).lowercased()
         guard !prefix.isEmpty, !prefix.contains(where: \.isWhitespace) else { return [] }
         let matches = workflows.indices.compactMap { index -> Suggestion? in
             let workflow = workflows[index]
-            let keyword = workflow.keywords.first { keyword in
+            let usable = workflow.keywords.filter { keyword in
                 keyword.hasPrefix(prefix) && workflows.firstIndex {
                     $0.keywords.contains(keyword) && $0.takesArgument == workflow.takesArgument
                 } == index
             }
+            let keyword = usable.contains(prefix) ? prefix : usable.first
             return keyword.map { Suggestion(keyword: $0, workflow: workflow) }
         }
         let exact = matches.filter { $0.keyword == prefix }
