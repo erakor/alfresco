@@ -278,7 +278,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     /// selected row without pasting.
     override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            .subtracting([.numericPad, .function])
+            .subtracting([.numericPad, .function, .capsLock])
         guard modifiers == .command else { return false }
         let keyCode = Int(event.keyCode)
         if keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter {
