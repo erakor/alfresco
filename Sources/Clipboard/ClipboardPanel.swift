@@ -60,8 +60,9 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     private var visibleItems: [ClipItem] = []
 
     /// Set by a pick that should paste: the app that was in front, which
-    /// didHide sends ⌘V to once the panel is gone.
-    private var pasteTarget: pid_t?
+    /// didHide sends ⌘V to once the panel is gone, and the clipboard's
+    /// change count right after the item was written to it.
+    private var pasteTarget: (app: pid_t, changeCount: Int)?
 
     /// The ⌘V waiting for keyboard focus to settle; cancelled if a panel
     /// opens first, so it can't land in a search field.
@@ -124,7 +125,10 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             // Skip it if the user switched apps meanwhile, or opened either
             // panel (the launcher's would otherwise receive the ⌘V).
             let panelOpen = NSApp.windows.contains { $0 is LauncherPanel && $0.isVisible }
-            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target,
+            // Also skip it if something else was copied since the pick, so
+            // only the picked item can be pasted.
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.app,
+                  NSPasteboard.general.changeCount == target.changeCount,
                   !panelOpen else { return }
             PasteKeystroke.post()
         }
@@ -223,7 +227,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             } else if let front, front != ProcessInfo.processInfo.processIdentifier {
                 // The panel doesn't activate the app, so the one in front is
                 // where the user was working.
-                pasteTarget = front
+                pasteTarget = (front, NSPasteboard.general.changeCount)
             }
         }
         hide()

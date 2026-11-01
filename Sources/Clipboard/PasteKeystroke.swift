@@ -29,12 +29,10 @@ enum PasteKeystroke {
 
     /// Posts ⌘V key down and up.
     static func post() {
+        // The events carry their own flags, so keys the user is still holding
+        // (⌘ after ⌘1 to ⌘9) don't change the shortcut. No local-event
+        // suppression: it would drop the user's typing right after a pick.
         let source = CGEventSource(stateID: .combinedSessionState)
-        // Keys the user is still holding (⌘ after ⌘1 to ⌘9) shouldn't mix
-        // into the synthetic keystroke.
-        source?.setLocalEventsFilterDuringSuppressionState(
-            [.permitLocalMouseEvents, .permitSystemDefinedEvents],
-            state: .eventSuppressionStateSuppressionInterval)
 
         let key = keyCode(typing: "v") ?? CGKeyCode(kVK_ANSI_V)
         let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)
