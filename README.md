@@ -142,10 +142,11 @@ Copy and paste with `⌘C` / `⌘V` as usual; the launcher only watches the
 clipboard and records each copy: text, images (screenshots, "Copy Image" in a
 browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the history:
 
-- Type to filter, `↑` / `↓` to choose, `↩` (or double-click) to put the item
-  back on the clipboard. The panel closes; paste it with `⌘V`.
+- Type to filter, `↑` / `↓` to choose, `↩` (or double-click) to paste the
+  item into the app you were using. It is also put back on the clipboard.
 - `⌘1` to `⌘9` do the same for the first nine rows of the (filtered) list,
   without arrowing down. Each of those rows shows its shortcut on the right.
+- `⌘↩` only puts the selected item back on the clipboard, without pasting.
 - `⌘⌫` deletes the selected item. The menu bar icon has **Clear Clipboard History**.
 - Each row shows the app it was copied from and how long ago. Images show a
   thumbnail, files their icon.
@@ -177,6 +178,12 @@ Notes:
 - `⌘⌥C` is global, so while the launcher runs it replaces that shortcut in other
   apps (Finder's "Copy as Pathname", Chrome's and Safari's web inspector).
   Change `Config.clipboardHotKey` if you rely on those.
+- Pasting needs the **Accessibility** permission (System Settings > Privacy &
+  Security > Accessibility), because it types `⌘V` into the other app. The
+  first pick without it shows the system prompt and only copies the item;
+  until you allow it, paste with `⌘V` yourself. `build.sh` signs the app
+  ad hoc, so macOS may forget the permission after a rebuild: remove the
+  launcher from that list and add it again.
 - Newer macOS versions may ask once whether the launcher may read what you copy
   in other apps ("paste from other apps"). Allow it, or the history stays
   empty.
