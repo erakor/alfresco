@@ -184,12 +184,14 @@ enum WeatherLoader {
         // Hours run on from the slot that contains the place's current time.
         let now = location.localtimeEpoch
         let allHours = response.forecast.forecastday.flatMap(\.hour)
-        let start = allHours.lastIndex { $0.timeEpoch <= now } ?? allHours.startIndex
-        let upcoming = allHours[start...].prefix(Config.weatherHours)
         func chance(_ hour: ForecastResponse.Hour) -> Double {
             max(hour.chanceOfRain?.value ?? 0, hour.chanceOfSnow?.value ?? 0) / 100
         }
-        let rainChance = upcoming.first.map(chance)
+        let currentIndex = allHours.lastIndex { $0.timeEpoch <= now }
+        // Independent of Config.weatherHours, so the current-conditions row
+        // keeps it even when no hourly columns are shown.
+        let rainChance = currentIndex.map { chance(allHours[$0]) }
+        let upcoming = allHours[(currentIndex ?? allHours.startIndex)...].prefix(Config.weatherHours)
 
         let clock = DateFormatter()
         clock.locale = Locale(identifier: "en_US_POSIX")
