@@ -187,7 +187,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// ⌘↩ ignores a matching app and runs the search (or workflow) instead.
     override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
         let keyCode = Int(event.keyCode)
-        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+        // Only the shortcut modifiers: Caps Lock and keypad Enter's
+        // .numericPad flag must not get in the way.
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        guard modifiers == .command,
               keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter else { return false }
         execute(searchOnly: true)
         return true

@@ -72,10 +72,9 @@ final class AppIndex {
         // "studio code"; one typed word can start any word.
         let typed = input.split(whereSeparator: \.isWhitespace)
         if typed.count == 1, words.dropFirst().contains(where: { $0.hasPrefix(typed[0]) }) { return 2 }
-        if typed.count > 1, let start = words.firstIndex(where: { $0.hasPrefix(typed[0]) }) {
-            let rest = words[(start + 1)...]
-            if rest.count >= typed.count - 1,
-               zip(rest, typed.dropFirst()).allSatisfy({ $0.hasPrefix($1) }) {
+        if typed.count > 1, words.count >= typed.count {
+            for start in 0...(words.count - typed.count)
+            where zip(words[start...], typed).allSatisfy({ $0.hasPrefix($1) }) {
                 return 2
             }
         }
