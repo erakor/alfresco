@@ -86,11 +86,16 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     /// Puts the suggestion's keyword in the field (plus a space when it
-    /// needs an argument), cursor at the end.
+    /// needs an argument), cursor at the end. Goes through the field editor
+    /// when there is one, so ⌘Z brings back what was typed.
     private func complete(with suggestion: Suggestion) {
-        textField.stringValue = suggestion.completion
-        let end = (textField.stringValue as NSString).length
-        textField.currentEditor()?.selectedRange = NSRange(location: end, length: 0)
+        if let editor = textField.currentEditor() as? NSTextView {
+            editor.breakUndoCoalescing()
+            editor.insertText(suggestion.completion, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
+            editor.breakUndoCoalescing()
+        } else {
+            textField.stringValue = suggestion.completion
+        }
         inputDidChange()
     }
 
