@@ -116,6 +116,8 @@ enum Config {
     static let weatherStrip = true
     /// Days shown, today included. The free plan returns at most 3.
     static let weatherDays = 3
+    /// Hourly forecast columns shown, starting with the current hour.
+    static let weatherHours = 12
     /// Place used for the bare keyword, e.g. "Paris, France". nil locates
     /// the public IP address (WeatherAPI's auto:ip), which can be off by a city.
     static let weatherHomePlace: String? = nil

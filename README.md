@@ -11,6 +11,7 @@ history on a second hotkey.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
 - `Esc`, clicking outside, or pressing the hotkey again dismisses it.
 - `⌘X/C/V/A/Z` work in the input even though the app has no menu bar.
+- Keyword suggestions as you type: `p` lists `pr`, `Tab` completes, `↑` `↓` choose.
 
 | Input          | Opens                                                             |
 | -------------- | ----------------------------------------------------------------- |
@@ -101,13 +102,25 @@ version and shows the error in the hint area (hover it for the full message).
 The menu bar's **Workflows** submenu lists every workflow with its description;
 picking one opens the launcher with its keyword already typed.
 
+### Suggestions
+
+While you type a single word, a list under the input shows the workflows whose
+keyword starts with it (`p` shows `pr`), with their title and description.
+`Tab` completes the first row, or the one chosen with `↑` `↓`, adding a space
+when the workflow needs an argument so you can keep typing. `Enter` on a chosen
+row completes it and opens it if it needs nothing more; with no row chosen,
+`Enter` runs what is typed, as before (so `p` alone still searches Google).
+Clicking a row completes it. The list goes away once the word is a whole
+keyword or you type a space.
+
 ## Weather
 
 With a [WeatherAPI.com](https://www.weatherapi.com/pricing.aspx) key (the
 free plan is enough, no card needed), typing `weather` or `weather <place>`
 opens a forecast under the input: current conditions (temperature,
-feels-like, humidity, wind, chance of rain this hour) and three days with
-high / low and chance of rain or snow. Enter still opens the `weather`
+feels-like, humidity, wind, chance of rain this hour), the next 12 hours
+(temperature, icon, chance of rain or snow; `Config.weatherHours`), and below
+them a compact line with three days' high / low and chance of rain or snow. Enter still opens the `weather`
 workflow's page.
 
 1. Create a free account at weatherapi.com and copy your API key from the
@@ -152,10 +165,11 @@ Copy and paste with `⌘C` / `⌘V` as usual; the launcher only watches the
 clipboard and records each copy: text, images (screenshots, "Copy Image" in a
 browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the history:
 
-- Type to filter, `↑` / `↓` to choose, `↩` (or double-click) to put the item
-  back on the clipboard. The panel closes; paste it with `⌘V`.
+- Type to filter, `↑` / `↓` to choose, `↩` (or double-click) to paste the
+  item into the app you were using. It is also put back on the clipboard.
 - `⌘1` to `⌘9` do the same for the first nine rows of the (filtered) list,
   without arrowing down. Each of those rows shows its shortcut on the right.
+- `⌘↩` only puts the selected item back on the clipboard, without pasting.
 - `⌘⌫` deletes the selected item. The menu bar icon has **Clear Clipboard History**.
 - Each row shows the app it was copied from and how long ago. Images show a
   thumbnail, files their icon.
@@ -187,6 +201,12 @@ Notes:
 - `⌘⌥C` is global, so while the launcher runs it replaces that shortcut in other
   apps (Finder's "Copy as Pathname", Chrome's and Safari's web inspector).
   Change `Config.clipboardHotKey` if you rely on those.
+- Pasting needs the **Accessibility** permission (System Settings > Privacy &
+  Security > Accessibility), because it types `⌘V` into the other app. The
+  first pick without it shows the system prompt and only copies the item;
+  until you allow it, paste with `⌘V` yourself. `build.sh` signs the app
+  ad hoc, so macOS may forget the permission after a rebuild: remove the
+  launcher from that list and add it again.
 - Newer macOS versions may ask once whether the launcher may read what you copy
   in other apps ("paste from other apps"). Allow it, or the history stays
   empty.

@@ -48,10 +48,10 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 
 The forecast area under the launcher input, shown while the input is `Config.weatherKeyword` alone or followed by a place, and only when a WeatherAPI.com key is set (`Config.weatherAPIKey()`: `ALFRESCO_WEATHERAPI_KEY`, else `~/.config/alfresco/weatherapi-key`; nil turns the feature off entirely). Enter is unaffected: it still runs the workflow from `workflows.json`.
 
-- `WeatherAPI.swift`: not main-actor. `WeatherLoader.load` makes one `v1/forecast.json` request (`q` is the typed place, `Config.weatherHomePlace`, or `auto:ip` for the bare keyword; `days` is `Config.weatherDays`, at most 3 on the free plan) and builds a `Forecast`. Error bodies' codes map to `WeatherError` (1006 unknown place, 2007 quota, 1002/2006/2008 key), whose `message` is shown in the panel.
+- `WeatherAPI.swift`: not main-actor. `WeatherLoader.load` makes one `v1/forecast.json` request (`q` is the typed place, `Config.weatherHomePlace`, or `auto:ip` for the bare keyword; `days` is `Config.weatherDays`, at most 3 on the free plan) and builds a `Forecast` (current conditions, `hours` from the current hour slot onward across days, and `days`). Error bodies' codes map to `WeatherError` (1006 unknown place, 2007 quota, 1002/2006/2008 key), whose `message` is shown in the panel.
 - `WeatherProvider.swift`: main actor. Turns input into a `WeatherQuery`, debounces typed places (400 ms), runs one load at a time, caches results per query (`Config.weatherCacheLifetime`, failures 30 s), and calls `onUpdate`.
 - `WeatherStripView.swift`: the strip above the input; its content (icon, temperature, description, city, today's high / low) is right-aligned in the panel's top-right corner.
-- `WeatherView.swift`: the `NSView` (loading, error and forecast states; SF Symbols for WeatherAPI condition codes; the "Powered by WeatherAPI.com" link the free plan requires). Labels are French.
+- `WeatherView.swift`: the `NSView` (loading, error and forecast states; the forecast is current conditions, a row of `Config.weatherHours` hourly columns, then a compact one-line-per-day row of `Config.weatherDays` days; SF Symbols for WeatherAPI condition codes; the "Powered by WeatherAPI.com" link the free plan requires). Labels are French.
 
 `LauncherController.updateWeather` shows or hides it and resizes the panel with `FloatingPanelController.setHeight`; while it is shown, the one-line hint `preview` is not fetched. It also lays out `WeatherStripView`, the line above the input that shows `WeatherProvider.homeQuery()` whenever `Config.weatherStrip` is on and a key is set: the input row is positioned by a layout guide (`rowGuide`) whose top moves down by the strip's height. Requests go one at a time, the typed query first, then home.
 
@@ -65,7 +65,11 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Launcher/LauncherController.swift
 
-`LauncherController` (a `FloatingPanelController`) runs the launcher: the input field, the hint line, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone. When `matchedApp()` finds an app, the search icon shows the app's icon, the hint reads `↩ Open <app>  ⌘↩ <fallback title>`, Enter opens the app, and ⌘↩ (`handleKeyEquivalent`) runs the fallback search instead.
+`LauncherController` (a `FloatingPanelController`) runs the launcher: the input field, the hint line, the suggestion list, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone. When `matchedApp()` finds an app and no suggestion row is chosen, the search icon shows the app's icon, the hint reads `↩ Open <app>  ⌘↩ <fallback title>`, Enter opens the app, and ⌘↩ (`handleKeyEquivalent`) runs the fallback search instead.
+
+### Launcher/SuggestionListView.swift
+
+`SuggestionListView` is the list under the input, filled from `WorkflowSet.suggestions(for:)` (workflows whose keyword starts with a single typed word; empty once the word is every match's whole keyword). The input keeps focus, so `LauncherController` routes Tab (completes `tabTarget`: the row chosen with ↑ ↓, else the first; `Suggestion.completion` adds a space when the workflow takes an argument), ↑ ↓ (only while the list has rows) and Enter (with a chosen row: complete, then run it if it takes no argument; otherwise unchanged). The list sits where the forecast goes and is empty while the forecast is shown; its height is part of `setHeight` in `updateWeather`.
 
 ### App/Launcher.swift
 
@@ -79,7 +83,7 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Clipboard/ClipboardPanel.swift
 
-`ClipboardController` (a `FloatingPanelController`) shows the history: search field + `NSTableView` (left) filtered via `ClipContent.matches`, and `ClipPreviewView` (right) showing the selected item in full. Row icons are the source app's icon (text), an ImageIO-downsampled thumbnail (images) or the Finder icon (files), cached in an `NSCache` that is emptied when the panel hides. Picking an item (↩, double-click, or ⌘1 to ⌘9 for the first nine rows, matched by key code so other keyboard layouts work) writes it back to the clipboard and moves it to the top; it does not paste. Restoring beeps and leaves the clipboard alone if the image file or every referenced file is gone.
+`ClipboardController` (a `FloatingPanelController`) shows the history: search field + `NSTableView` (left) filtered via `ClipContent.matches`, and `ClipPreviewView` (right) showing the selected item in full. Row icons are the source app's icon (text), an ImageIO-downsampled thumbnail (images) or the Finder icon (files), cached in an `NSCache` that is emptied when the panel hides. Picking an item (↩, double-click, or ⌘1 to ⌘9 for the first nine rows, matched by key code so other keyboard layouts work) writes it back to the clipboard, moves it to the top, and pastes it: `didHide` calls `PasteKeystroke.post()` (`PasteKeystroke.swift`), which posts ⌘V with `CGEvent` once the panel is gone, using the key that types "v" in the current layout. That needs the Accessibility permission (the hotkeys still don't); without it the first pick of a launch shows the system prompt and the item is only copied. ⌘↩ copies without pasting. Restoring beeps and leaves the clipboard alone if the image file or every referenced file is gone.
 
 ## Conventions
 
