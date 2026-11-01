@@ -1,6 +1,7 @@
 // LauncherController.swift
 //
-// The URL launcher panel: input field, hint line, and Enter handling.
+// The URL launcher panel: input field, hint line, keyword suggestions, and
+// Enter handling.
 
 import Cocoa
 
@@ -15,9 +16,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let weather = WeatherProvider()
     private let weatherView = WeatherView(frame: .zero)
     private let weatherStrip = WeatherStripView(frame: .zero)
+    private let suggestionList = SuggestionListView(frame: .zero)
     /// The input row (icon, field, hint); moves down when the strip is shown.
     private let rowGuide = NSLayoutGuide()
     private var rowTop: NSLayoutConstraint?
+    private var suggestionListHeight: NSLayoutConstraint?
     /// Height of the input row, which is the whole panel without the weather.
     private static let rowHeight: CGFloat = 60
     /// Text to start with on the next show(prefill:).
@@ -29,6 +32,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
         weather.onUpdate = { [weak self] in self?.updateWeather() }
+        suggestionList.onPick = { [weak self] in self?.complete(with: $0) }
     }
 
     override var initialFirstResponder: NSResponder? { textField }
@@ -45,8 +49,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         textField.placeholderString = placeholder()
         textField.stringValue = pendingPrefill
         pendingPrefill = ""
-        updateHint()
-        updateWeather()
+        inputDidChange()
     }
 
     override func didFocus() {
@@ -59,6 +62,15 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         previews.cancel()
         weather.cancel()
         weatherView.isHidden = true
+        suggestionList.show([])
+        suggestionList.isHidden = true
+        suggestionListHeight?.constant = 0
+    }
+
+    private func inputDidChange() {
+        updateSuggestions()
+        updateHint()
+        updateWeather()
     }
 
     private func execute() {
@@ -73,6 +85,30 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         hide()
     }
 
+    /// Puts the suggestion's keyword in the field (plus a space when it
+    /// needs an argument), cursor at the end. Goes through the field editor
+    /// when there is one, so ⌘Z brings back what was typed.
+    private func complete(with suggestion: Suggestion) {
+        if let editor = textField.currentEditor() as? NSTextView {
+            editor.breakUndoCoalescing()
+            editor.insertText(suggestion.completion, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
+            editor.breakUndoCoalescing()
+        } else {
+            textField.stringValue = suggestion.completion
+        }
+        inputDidChange()
+    }
+
+    /// Fills the list under the input with the keywords that start with
+    /// what is typed. The forecast takes that space while it is shown.
+    private func updateSuggestions() {
+        let input = textField.stringValue
+        let suggestions = weather.query(for: input) == nil ? store.current.suggestions(for: input) : []
+        suggestionList.show(suggestions)
+        suggestionList.isHidden = suggestions.isEmpty
+        suggestionListHeight?.constant = suggestionList.preferredHeight
+    }
+
     private func updateHint() {
         // A preview to fetch; anything pending is cancelled when this stays nil.
         var missingPreview: URL?
@@ -82,7 +118,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             if let missingPreview { previews.fetch(missingPreview) } else { previews.cancel() }
         }
 
-        if let workflow = store.current.workflowAwaitingArgument(textField.stringValue) {
+        if let suggestion = suggestionList.selected {
+            // A row chosen with the arrows: Enter takes it.
+            let title = suggestion.workflow.title
+            hintLabel.stringValue = suggestion.workflow.takesArgument ? "↩ \(title)…" : "↩ \(title)"
+            hintLabel.toolTip = nil
+        } else if let workflow = store.current.workflowAwaitingArgument(textField.stringValue) {
             // The keyword is typed but its argument is not: show its help.
             let keyword = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let help = workflow.help ?? "\(workflow.title): type a value after \"\(keyword)\""
@@ -112,7 +153,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// Lays out and fills the weather strip above the input (always, while
     /// Config.weatherStrip is on and a WeatherAPI key is set) and the
     /// forecast below it (while the input reads `weather [place]`), resizes
-    /// the panel to fit, and asks for whatever is missing.
+    /// the panel to fit (the suggestion list included), and asks for
+    /// whatever is missing.
     private func updateWeather() {
         let homeQuery = Config.weatherStrip ? weather.homeQuery() : nil
         let panelQuery = weather.query(for: textField.stringValue)
@@ -128,7 +170,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             weatherView.show(weather.state(for: panelQuery), for: panelQuery)
         }
         weatherView.isHidden = panelQuery == nil
-        setHeight(stripHeight + Self.rowHeight + (panelQuery == nil ? 0 : WeatherView.height))
+        let below = panelQuery == nil ? suggestionList.preferredHeight : WeatherView.height
+        setHeight(stripHeight + Self.rowHeight + below)
 
         // One request at a time: what the input asks for first, then home.
         if let panelQuery, !weather.hasFreshResult(for: panelQuery) {
@@ -150,14 +193,32 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     // MARK: NSTextFieldDelegate
 
     func controlTextDidChange(_ obj: Notification) {
-        updateHint()
-        updateWeather()
+        inputDidChange()
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        let hasSuggestions = !suggestionList.suggestions.isEmpty
         switch commandSelector {
+        case #selector(NSResponder.insertTab(_:)):
+            // Never moves focus out of the field; completes when it can.
+            if let target = suggestionList.tabTarget { complete(with: target) }
+            return true
+        case #selector(NSResponder.moveDown(_:)) where hasSuggestions:
+            suggestionList.moveSelection(by: 1)
+            updateHint()
+            return true
+        case #selector(NSResponder.moveUp(_:)) where hasSuggestions:
+            suggestionList.moveSelection(by: -1)
+            updateHint()
+            return true
         case #selector(NSResponder.insertNewline(_:)):
-            execute()
+            if let suggestion = suggestionList.selected {
+                // A chosen row: complete it, and open it if it needs nothing more.
+                complete(with: suggestion)
+                if !suggestion.workflow.takesArgument { execute() }
+            } else {
+                execute()
+            }
             return true
         case #selector(NSResponder.cancelOperation(_:)):
             hide()
@@ -180,14 +241,17 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
         weatherView.isHidden = true
         weatherStrip.isHidden = true
+        suggestionList.isHidden = true
 
-        for view in [weatherStrip, icon, textField, hintLabel, weatherView] {
+        for view in [weatherStrip, icon, textField, hintLabel, weatherView, suggestionList] {
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
         contentView.addLayoutGuide(rowGuide)
         let rowTop = rowGuide.topAnchor.constraint(equalTo: contentView.topAnchor)
         self.rowTop = rowTop
+        let suggestionListHeight = suggestionList.heightAnchor.constraint(equalToConstant: 0)
+        self.suggestionListHeight = suggestionListHeight
 
         NSLayoutConstraint.activate([
             weatherStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -217,6 +281,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             weatherView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             weatherView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             weatherView.heightAnchor.constraint(equalToConstant: WeatherView.height),
+
+            suggestionList.topAnchor.constraint(equalTo: rowGuide.bottomAnchor),
+            suggestionList.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            suggestionList.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            suggestionListHeight,
         ])
     }
 }

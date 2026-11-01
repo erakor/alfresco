@@ -10,6 +10,7 @@ keeps a 24-hour clipboard history on a second hotkey.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
 - `Esc`, clicking outside, or pressing the hotkey again dismisses it.
 - `⌘X/C/V/A/Z` work in the input even though the app has no menu bar.
+- Keyword suggestions as you type: `p` lists `pr`, `Tab` completes, `↑` `↓` choose.
 
 | Input          | Opens                                                             |
 | -------------- | ----------------------------------------------------------------- |
@@ -77,6 +78,17 @@ version and shows the error in the hint area (hover it for the full message).
 
 The menu bar's **Workflows** submenu lists every workflow with its description;
 picking one opens the launcher with its keyword already typed.
+
+### Suggestions
+
+While you type a single word, a list under the input shows the workflows whose
+keyword starts with it (`p` shows `pr`), with their title and description.
+`Tab` completes the first row, or the one chosen with `↑` `↓`, adding a space
+when the workflow needs an argument so you can keep typing. `Enter` on a chosen
+row completes it and opens it if it needs nothing more; with no row chosen,
+`Enter` runs what is typed, as before (so `p` alone still searches Google).
+Clicking a row completes it. The list goes away once the word is a whole
+keyword or you type a space.
 
 ## Weather
 
