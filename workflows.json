@@ -33,6 +33,18 @@
       "description": "Forecast for a place: city, airport code or postal code, e.g. weather paris",
       "url": "https://wttr.in/{query}?lang=fr&m",
       "preview": "https://wttr.in/{query}?format=%25l:+%25c+%25t+%25w&lang=fr&m"
+    },
+    {
+      "keywords": ["pomo"],
+      "title": "Pomodoro",
+      "description": "Start a focus session, or pause / resume the running one",
+      "url": "alfresco://pomodoro/toggle"
+    },
+    {
+      "keywords": ["pomo"],
+      "title": "Pomodoro",
+      "description": "pomo 50 (focus for 50 min), pomo pause, resume, skip or stop",
+      "url": "alfresco://pomodoro/{query}"
     }
   ],
   "fallback": {

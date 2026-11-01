@@ -2,7 +2,8 @@
 
 A small, Spotlight-style URL launcher for macOS. Press a global hotkey,
 type a command, hit Enter, and the URL opens in your default browser. It also
-keeps a 24-hour clipboard history on a second hotkey.
+keeps a 24-hour clipboard history on a second hotkey, and runs a pomodoro
+timer you start from the launcher.
 
 - Hotkeys via Carbon `RegisterEventHotKey`: **no Accessibility or Screen Recording permission**.
 - Accessory agent: no Dock icon (optional menu bar icon with Open / Clipboard History / Edit Workflows / Quit).
@@ -18,6 +19,7 @@ keeps a 24-hour clipboard history on a second hotkey.
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
 | `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
 | `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
+| `pomo`         | Starts a 25 min [pomodoro](#pomodoro), or pauses / resumes it (nothing opens) |
 | anything else  | `https://www.google.com/search?q=...`                             |
 
 ## Workflows
@@ -67,7 +69,7 @@ The app looks for the file in this order:
 | `keywords`   | One or more single words, matched case-insensitively. First match wins. A keyword can be used by two workflows, one with `{query}` and one without: the keyword alone opens the second, the keyword plus an argument the first. |
 | `title`      | Shown in the hint as you type.                                              |
 | `description` | Optional help text. Shown in the hint when you type the keyword without its argument (Enter does nothing until you add one), and under the workflow in the menu bar's **Workflows** submenu. |
-| `url`        | `{query}` is replaced with the percent-encoded argument. Without `{query}`, typing the keyword alone opens the URL. |
+| `url`        | `{query}` is replaced with the percent-encoded argument. Without `{query}`, typing the keyword alone opens the URL. An `alfresco://` URL is run by the launcher itself instead of being opened (see [Pomodoro](#pomodoro)); one it doesn't know beeps. |
 | `preview`    | Optional http(s) URL, filled in like `url` (`{query}` only if `url` has it). While the input matches the workflow, the launcher fetches it and shows the first line of the plain-text answer in the hint, e.g. the weather. It waits until you pause typing and keeps answers for 10 minutes; if the request fails, the hint just shows the title. What you type after the keyword is sent to that server. Not allowed on `fallback`. |
 | `transforms` | Optional, applied in order to the argument: `uppercase`, `lowercase`, `trim`, `stripPrefix:<text>`, `stripSuffix:<text>`. |
 | `fallback`   | Optional. Used when nothing matches; its `url` must contain `{query}`.      |
@@ -122,6 +124,40 @@ Turn it off with `Config.weatherStrip = false`.
   (`Config.weatherDays`).
 - "Powered by WeatherAPI.com" in the corner is the link back the free plan
   asks for.
+
+## Pomodoro
+
+Type `pomo` in the launcher and press Enter to start a 25 minute focus
+session. The countdown shows in the menu bar (a timer icon for focus, a cup
+for breaks) for as long as a session or break is under way, and disappears
+when it's over. Its menu shows where you are in the cycle ("Focus 2 of 4,
+18:42 left") and has Pause / Resume, Skip and Stop.
+
+| Input        | Does                                                                  |
+| ------------ | --------------------------------------------------------------------- |
+| `pomo`       | Starts a focus session, or pauses / resumes the one running           |
+| `pomo 50`    | Starts a 50 minute focus session (1 to 180), replacing any running one |
+| `pomo pause`, `pomo resume` | Pause or resume                                        |
+| `pomo skip`  | Ends the focus session or break now, without the alert                |
+| `pomo stop`  | Stops, and the cycle starts over                                      |
+
+- After a focus session comes a 5 minute break, or a 15 minute one after
+  every 4th session. The break starts by itself. When it ends the timer stops
+  until you type `pomo` again.
+- When a session or break runs out, a sound plays (`Glass`). When you run
+  `build/Launcher.app`, a macOS notification is shown too. macOS asks once
+  for permission the first time you start a session. The plain `./Launcher`
+  binary only plays the sound, since notifications need an app bundle.
+- The timer is saved in `~/Library/Application Support/Launcher/pomodoro.json`,
+  so quitting or rebuilding mid-session keeps the countdown going. A phase
+  that ran out while the app was closed moves on to the next one, paused.
+- The `pomo` keyword is two ordinary workflows in `workflows.json` pointing at
+  `alfresco://pomodoro/toggle` and `alfresco://pomodoro/{query}`. Rename the
+  keyword or add others (say `focus` → `alfresco://pomodoro/50`) there.
+  The actions are `toggle`, `start`, `pause`, `resume`, `skip`, `stop` and a
+  number of minutes.
+- Lengths, the cycle, the sound and whether breaks start by themselves are in
+  `Config` (see [Configure](#configure)).
 
 ## Clipboard history
 
@@ -181,6 +217,10 @@ Edit the `Config` enum in `Sources/App/Config.swift`, then rebuild:
 - `clipboardRetention` (24 h), `clipboardMaxItems` (500),
   `clipboardMaxTextBytes` (256 KB), `clipboardMaxImageBytes` (20 MB),
   `clipboardMaxImagePixels` (40 MP), `clipboardPollInterval` (0.5 s).
+- `pomodoroFocus` (25 min), `pomodoroShortBreak` (5 min), `pomodoroLongBreak`
+  (15 min), `pomodoroSessionsBeforeLongBreak` (4), `pomodoroAutoStartBreaks`
+  (`true`; when `false`, a break waits paused in the menu bar until you resume
+  it), `pomodoroSound` (`"Glass"`, any name from `/System/Library/Sounds`).
 
 The source lives in `Sources/`, one folder per feature:
 
@@ -190,6 +230,9 @@ The source lives in `Sources/`, one folder per feature:
   parsing) and `LauncherController.swift` (the launcher panel).
 - `Clipboard/`: `ClipboardHistory.swift` (clipboard model, storage, watcher) and
   `ClipboardPanel.swift` (history panel).
+- `Pomodoro/`: `PomodoroTimer.swift` (the timer), `PomodoroCommand.swift`
+  (`alfresco://pomodoro/...` URLs), `PomodoroStatusItem.swift` (menu bar
+  countdown) and `PomodoroAlert.swift` (sound and notification).
 - `Shared/`: `FloatingPanel.swift` (base class for both panels) and
   `HotKeys.swift` (global hotkeys).
 
