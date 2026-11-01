@@ -19,6 +19,20 @@
       "title": "Contentful entry",
       "description": "Contentful entry by ID, e.g. cf 5KsDBWseXY",
       "url": "https://app.contentful.com/spaces/p0qf7j048i0q/entries/{query}"
+    },
+    {
+      "keywords": ["weather"],
+      "title": "Weather here",
+      "description": "Forecast for your current location (from your IP)",
+      "url": "https://wttr.in/?lang=fr&m",
+      "preview": "https://wttr.in/?format=%25l:+%25c+%25t+%25w&lang=fr&m"
+    },
+    {
+      "keywords": ["weather"],
+      "title": "Weather in",
+      "description": "Forecast for a place: city, airport code or postal code, e.g. weather paris",
+      "url": "https://wttr.in/{query}?lang=fr&m",
+      "preview": "https://wttr.in/{query}?format=%25l:+%25c+%25t+%25w&lang=fr&m"
     }
   ],
   "fallback": {

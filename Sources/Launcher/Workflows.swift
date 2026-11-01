@@ -55,7 +55,10 @@ enum ArgumentTransform: Decodable, Sendable {
 
 /// A keyword that expands into a URL. `{query}` in `url` is replaced with the
 /// percent-encoded argument; a `url` without `{query}` is opened by typing
-/// the keyword alone. `description` is optional help text.
+/// the keyword alone. One keyword can have both forms as two workflows.
+/// `description` is optional help text. `preview` is an optional URL, filled
+/// in like `url`, whose short plain-text answer is shown in the hint while
+/// typing (e.g. the weather).
 struct Workflow: Decodable, Sendable {
     let keywords: [String]
     let title: String
@@ -64,11 +67,14 @@ struct Workflow: Decodable, Sendable {
     /// menu bar's Workflows submenu. Written as "description" in JSON.
     let help: String?
     let transforms: [ArgumentTransform]
+    /// http(s) URL template fetched while the input matches this workflow;
+    /// the first line of its plain-text response is shown in the hint.
+    let preview: String?
 
     var takesArgument: Bool { url.contains("{query}") }
 
     private enum CodingKeys: String, CodingKey {
-        case keywords, title, url, transforms
+        case keywords, title, url, transforms, preview
         case help = "description"
     }
 
@@ -82,12 +88,30 @@ struct Workflow: Decodable, Sendable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }
         transforms = try container.decodeIfPresent([ArgumentTransform].self, forKey: .transforms) ?? []
+        preview = try container.decodeIfPresent(String.self, forKey: .preview)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
 
         if keywords.contains(where: { $0.isEmpty || $0.contains(where: \.isWhitespace) }) {
             throw DecodingError.dataCorruptedError(
                 forKey: .keywords, in: container,
                 debugDescription: "keywords must be single words"
             )
+        }
+        if let preview {
+            let scheme = URL(string: preview.replacingOccurrences(of: "{query}", with: "x"))?.scheme?.lowercased()
+            if scheme != "https" && scheme != "http" {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .preview, in: container,
+                    debugDescription: "preview must be an http(s) URL"
+                )
+            }
+            if preview.contains("{query}") && !takesArgument {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .preview, in: container,
+                    debugDescription: "preview uses {query} but url does not"
+                )
+            }
         }
     }
 
@@ -119,23 +143,34 @@ struct WorkflowSet: Decodable, Sendable {
                 debugDescription: "fallback url must contain {query}"
             )
         }
+        // A fallback preview would send everything typed to that server.
+        if fallback.preview != nil {
+            throw DecodingError.dataCorruptedError(
+                forKey: .fallback, in: container,
+                debugDescription: "fallback cannot have a preview"
+            )
+        }
     }
 
     // swiftlint:disable:next force_try
     static let builtIn = try! JSONDecoder().decode(WorkflowSet.self, from: Data(Config.defaultWorkflowsJSON.utf8))
 
-    func workflow(for keyword: String) -> Workflow? {
+    /// The first workflow with this keyword that fits the input: one with
+    /// `{query}` when an argument was typed, one without it when the keyword
+    /// was typed alone. A keyword can therefore be listed twice, once per
+    /// form (e.g. "weather" and "weather paris").
+    func workflow(for keyword: String, withArgument: Bool) -> Workflow? {
         let keyword = keyword.lowercased()
-        return workflows.first { $0.keywords.contains(keyword) }
+        return workflows.first { $0.keywords.contains(keyword) && $0.takesArgument == withArgument }
     }
 
     /// The workflow whose keyword is the whole input, when it still needs an
-    /// argument (e.g. just "pr"). Enter does nothing then, and the hint shows
-    /// the workflow's help instead.
+    /// argument (e.g. just "pr") and no workflow takes that keyword alone.
+    /// Enter does nothing then, and the hint shows the workflow's help instead.
     func workflowAwaitingArgument(_ input: String) -> Workflow? {
         let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let workflow = workflow(for: input), workflow.takesArgument else { return nil }
-        return workflow
+        guard workflow(for: input, withArgument: false) == nil else { return nil }
+        return workflow(for: input, withArgument: true)
     }
 }
 
@@ -219,6 +254,8 @@ final class WorkflowStore {
 struct Command {
     let url: URL
     let label: String
+    /// The workflow's preview URL, filled in with the same argument.
+    var preview: URL?
 }
 
 enum CommandParser {
@@ -233,15 +270,18 @@ enum CommandParser {
         guard !input.isEmpty else { return nil }
 
         let parts = input.split(maxSplits: 1, whereSeparator: \.isWhitespace)
-        if let workflow = set.workflow(for: String(parts[0])) {
-            if workflow.takesArgument, parts.count == 2 {
-                let argument = workflow.prepare(parts[1].trimmingCharacters(in: .whitespaces))
-                if !argument.isEmpty, let url = expand(workflow.url, with: argument) {
-                    return Command(url: url, label: "\(workflow.title) \(argument)")
-                }
-            } else if !workflow.takesArgument, parts.count == 1, let url = URL(string: workflow.url) {
-                return Command(url: url, label: workflow.title)
+        let keyword = String(parts[0])
+        if parts.count == 2, let workflow = set.workflow(for: keyword, withArgument: true) {
+            let argument = workflow.prepare(parts[1].trimmingCharacters(in: .whitespaces))
+            if !argument.isEmpty, let url = expand(workflow.url, with: argument) {
+                return Command(
+                    url: url, label: "\(workflow.title) \(argument)",
+                    preview: workflow.preview.flatMap { expand($0, with: argument) }
+                )
             }
+        } else if parts.count == 1, let workflow = set.workflow(for: keyword, withArgument: false),
+                  let url = URL(string: workflow.url) {
+            return Command(url: url, label: workflow.title, preview: workflow.preview.flatMap { URL(string: $0) })
         }
 
         guard let url = expand(set.fallback.url, with: set.fallback.prepare(input)) else { return nil }

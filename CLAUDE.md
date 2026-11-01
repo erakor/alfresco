@@ -34,7 +34,22 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 ### Launcher/Workflows.swift
 
 - **Workflows** — `Workflow` / `WorkflowSet` are `Decodable` models of `workflows.json`; `ArgumentTransform` parses string transforms like `"stripPrefix:#"`. `WorkflowStore` re-reads the file only when its modification date changes (checked each time the launcher opens) and keeps the last good `WorkflowSet` when a reload fails, exposing `loadError` for the UI.
-- **Command parsing** — `CommandParser.parse` splits input into `<keyword> [argument]`. A workflow whose `url` contains `{query}` requires an argument; one without `{query}` matches only the bare keyword. Anything else goes to `fallback`. Arguments are percent-encoded with the RFC 3986 unreserved set.
+- **Command parsing** — `CommandParser.parse` splits input into `<keyword> [argument]`. A workflow whose `url` contains `{query}` requires an argument; one without `{query}` matches only the bare keyword. `WorkflowSet.workflow(for:withArgument:)` picks the first workflow of the right form, so one keyword can have both (e.g. `weather` and `weather paris`). Anything else goes to `fallback`. Arguments are percent-encoded with the RFC 3986 unreserved set. An optional `preview` URL template is expanded the same way into `Command.preview`.
+
+### Launcher/PreviewFetcher.swift
+
+`PreviewFetcher` (main actor) fetches `Command.preview` for the launcher hint: debounced 400 ms, one request in flight (a new URL cancels the old one, and so does input that no longer has a preview or hiding the panel), 5 s timeout, keeps the first non-empty line of a 2xx non-HTML answer for 10 minutes. Failures are silent. `LauncherController.updateHint` shows `"<text>  ↩ <label>"` once it's cached.
+
+### Weather/
+
+The forecast area under the launcher input, shown while the input is `Config.weatherKeyword` alone or followed by a place, and only when a WeatherAPI.com key is set (`Config.weatherAPIKey()`: `ALFRESCO_WEATHERAPI_KEY`, else `~/.config/alfresco/weatherapi-key`; nil turns the feature off entirely). Enter is unaffected: it still runs the workflow from `workflows.json`.
+
+- `WeatherAPI.swift`: not main-actor. `WeatherLoader.load` makes one `v1/forecast.json` request (`q` is the typed place, `Config.weatherHomePlace`, or `auto:ip` for the bare keyword; `days` is `Config.weatherDays`, at most 3 on the free plan) and builds a `Forecast`. Error bodies' codes map to `WeatherError` (1006 unknown place, 2007 quota, 1002/2006/2008 key), whose `message` is shown in the panel.
+- `WeatherProvider.swift`: main actor. Turns input into a `WeatherQuery`, debounces typed places (400 ms), runs one load at a time, caches results per query (`Config.weatherCacheLifetime`, failures 30 s), and calls `onUpdate`.
+- `WeatherStripView.swift`: the strip above the input; its content (icon, temperature, description, city, today's high / low) is right-aligned in the panel's top-right corner.
+- `WeatherView.swift`: the `NSView` (loading, error and forecast states; SF Symbols for WeatherAPI condition codes; the "Powered by WeatherAPI.com" link the free plan requires). Labels are French.
+
+`LauncherController.updateWeather` shows or hides it and resizes the panel with `FloatingPanelController.setHeight`; while it is shown, the one-line hint `preview` is not fetched. It also lays out `WeatherStripView`, the line above the input that shows `WeatherProvider.homeQuery()` whenever `Config.weatherStrip` is on and a key is set: the input row is positioned by a layout guide (`rowGuide`) whose top moves down by the strip's height. Requests go one at a time, the typed query first, then home.
 
 ### Shared/HotKeys.swift
 
@@ -42,7 +57,7 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Shared/FloatingPanel.swift
 
-`LauncherPanel` is a borderless non-activating `NSPanel`, so the previously frontmost app stays frontmost. `FloatingPanelController` is the shared base for both panels: frosted background, positioning on the screen under the mouse, fade in/out, dismissal on Esc / click-away / hotkey. Subclasses override hooks (`prepareToShow`, `didHide`, `initialFirstResponder`, `didFocus`, and `handleKeyEquivalent`, which sees ⌘ shortcuts before the panel's standard editing ones) and add views to `contentView`; it also provides shared view factories like `makeHintLabel()`.
+`LauncherPanel` is a borderless non-activating `NSPanel`, so the previously frontmost app stays frontmost. `FloatingPanelController` is the shared base for both panels: frosted background, positioning on the screen under the mouse, fade in/out, dismissal on Esc / click-away / hotkey. `setHeight(_:)` grows or shrinks a panel downward, keeping its top edge where a panel of the original size would sit. Subclasses override hooks (`prepareToShow`, `didHide`, `initialFirstResponder`, `didFocus`, and `handleKeyEquivalent`, which sees ⌘ shortcuts before the panel's standard editing ones) and add views to `contentView`; it also provides shared view factories like `makeHintLabel()`.
 
 ### Launcher/LauncherController.swift
 

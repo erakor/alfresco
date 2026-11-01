@@ -16,6 +16,8 @@ keeps a 24-hour clipboard history on a second hotkey.
 | `pr 123`       | `https://github.com/<owner>/<repo>/pull/123` (`pr #123` works too) |
 | `jira abc-42`  | `https://understood.atlassian.net/browse/ABC-42`                  |
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
+| `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
+| `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
 | anything else  | `https://www.google.com/search?q=...`                             |
 
 ## Workflows
@@ -62,10 +64,11 @@ The app looks for the file in this order:
 
 | Field        | Meaning                                                                    |
 | ------------ | -------------------------------------------------------------------------- |
-| `keywords`   | One or more single words, matched case-insensitively. First match wins.     |
+| `keywords`   | One or more single words, matched case-insensitively. First match wins. A keyword can be used by two workflows, one with `{query}` and one without: the keyword alone opens the second, the keyword plus an argument the first. |
 | `title`      | Shown in the hint as you type.                                              |
 | `description` | Optional help text. Shown in the hint when you type the keyword without its argument (Enter does nothing until you add one), and under the workflow in the menu bar's **Workflows** submenu. |
 | `url`        | `{query}` is replaced with the percent-encoded argument. Without `{query}`, typing the keyword alone opens the URL. |
+| `preview`    | Optional http(s) URL, filled in like `url` (`{query}` only if `url` has it). While the input matches the workflow, the launcher fetches it and shows the first line of the plain-text answer in the hint, e.g. the weather. It waits until you pause typing and keeps answers for 10 minutes; if the request fails, the hint just shows the title. What you type after the keyword is sent to that server. Not allowed on `fallback`. |
 | `transforms` | Optional, applied in order to the argument: `uppercase`, `lowercase`, `trim`, `stripPrefix:<text>`, `stripSuffix:<text>`. |
 | `fallback`   | Optional. Used when nothing matches; its `url` must contain `{query}`.      |
 
@@ -74,6 +77,51 @@ version and shows the error in the hint area (hover it for the full message).
 
 The menu bar's **Workflows** submenu lists every workflow with its description;
 picking one opens the launcher with its keyword already typed.
+
+## Weather
+
+With a [WeatherAPI.com](https://www.weatherapi.com/pricing.aspx) key (the
+free plan is enough, no card needed), typing `weather` or `weather <place>`
+opens a forecast under the input: current conditions (temperature,
+feels-like, humidity, wind, chance of rain this hour) and three days with
+high / low and chance of rain or snow. Enter still opens the `weather`
+workflow's page.
+
+1. Create a free account at weatherapi.com and copy your API key from the
+   dashboard.
+2. Save it, alone on the first line, in `~/.config/alfresco/weatherapi-key`:
+
+   ```bash
+   mkdir -p ~/.config/alfresco && pbpaste > ~/.config/alfresco/weatherapi-key && chmod 600 ~/.config/alfresco/weatherapi-key
+   ```
+
+   Or set `ALFRESCO_WEATHERAPI_KEY` in the launcher's environment. The key is
+   read each time the launcher opens, so no restart is needed.
+
+Without a key the launcher behaves as before, with the one-line `preview` in
+the hint.
+
+With a key, the launcher's top-right corner, above the input, always shows
+the current weather where you are (e.g. "☀️ 14°  Ciel dégagé · Paris
+↑ 16°  ↓ 8°"; hover it for the full place). It shares the 10-minute cache with `weather`,
+so opening the launcher often costs at most one request every 10 minutes.
+Turn it off with `Config.weatherStrip = false`.
+
+- `weather paris`, `weather lyon`, `weather 75011`, `weather cdg`: WeatherAPI
+  accepts city names, postal codes, airport codes and `lat,lon`. The place is
+  looked up after you pause typing.
+- `weather` alone is located from your public IP address (`auto:ip`), shown as
+  "position approximative" since it can be off by a city. Set
+  `Config.weatherHomePlace` (e.g. `"Paris, France"`) and rebuild to use a
+  fixed place instead.
+- Text is in French, metric units (`Config.weatherLanguage` sets the language
+  of WeatherAPI's condition text and the day names; the panel's own labels
+  are French).
+- One request per place, reused for 10 minutes (`Config.weatherCacheLifetime`),
+  far below the free plan's monthly quota. The free plan forecasts 3 days
+  (`Config.weatherDays`).
+- "Powered by WeatherAPI.com" in the corner is the link back the free plan
+  asks for.
 
 ## Clipboard history
 

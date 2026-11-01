@@ -82,6 +82,43 @@ enum Config {
         return (home.appendingPathComponent(".config/alfresco/workflows.json"), true)
     }()
 
+    // MARK: Weather
+
+    /// `weather` or `weather <place>` in the launcher shows the forecast
+    /// under the input, once a WeatherAPI.com key is set. Enter still opens
+    /// whatever workflows.json maps the keyword to.
+    static let weatherKeyword = "weather"
+    /// WeatherAPI's language for condition text, also used for day names.
+    static let weatherLanguage = "fr"
+    /// A line above the launcher input always shows the current weather at
+    /// home (or where the IP address says you are), once a key is set.
+    static let weatherStrip = true
+    /// Days shown, today included. The free plan returns at most 3.
+    static let weatherDays = 3
+    /// Place used for the bare keyword, e.g. "Paris, France". nil locates
+    /// the public IP address (WeatherAPI's auto:ip), which can be off by a city.
+    static let weatherHomePlace: String? = nil
+    /// Forecasts are reused for this long before being fetched again.
+    static let weatherCacheLifetime: TimeInterval = 10 * 60
+
+    /// The WeatherAPI.com key (free plan): the `ALFRESCO_WEATHERAPI_KEY`
+    /// environment variable, else the first line of
+    /// ~/.config/alfresco/weatherapi-key. Re-read each time the launcher
+    /// opens. nil turns the weather panel off.
+    static func weatherAPIKey() -> String? {
+        func clean(_ value: String?) -> String? {
+            let line = value?.split(whereSeparator: \.isNewline).first
+            let key = line?.trimmingCharacters(in: .whitespaces) ?? ""
+            return key.isEmpty ? nil : key
+        }
+        if let key = clean(ProcessInfo.processInfo.environment["ALFRESCO_WEATHERAPI_KEY"]) {
+            return key
+        }
+        let file = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/alfresco/weatherapi-key")
+        return clean(try? String(contentsOf: file, encoding: .utf8))
+    }
+
     /// Used until workflows.json loads, and to seed the ~/.config fallback.
     /// The real workflows live in the repo's workflows.json.
     static let defaultWorkflowsJSON = #"""

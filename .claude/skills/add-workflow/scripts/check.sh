@@ -44,11 +44,15 @@ if let error = store.loadError {
 }
 let set = store.current
 print("OK: \(set.workflows.count) workflows, fallback \"\(set.fallback.title)\"")
+// A keyword may appear once with {query} and once without; a second use of
+// the same form is unreachable.
 var seen: [String: String] = [:]
 for w in set.workflows {
     for k in w.keywords {
-        if let other = seen[k] { print("WARNING: keyword \"\(k)\" is used by \"\(other)\" and \"\(w.title)\"; the first wins") }
-        else { seen[k] = w.title }
+        let form = "\(k)|\(w.takesArgument)"
+        let kind = w.takesArgument ? "with an argument" : "alone"
+        if let other = seen[form] { print("WARNING: keyword \"\(k)\" \(kind) is used by \"\(other)\" and \"\(w.title)\"; the first wins") }
+        else { seen[form] = w.title }
     }
 }
 for input in args.dropFirst(2) {
@@ -56,6 +60,7 @@ for input in args.dropFirst(2) {
         print("\(input)  ->  (Enter does nothing; hint: \(w.help ?? w.title))")
     } else if let command = CommandParser.parse(input, using: set) {
         print("\(input)  ->  \(command.label)  ->  \(command.url.absoluteString)")
+        if let preview = command.preview { print("    preview: \(preview.absoluteString)") }
     } else {
         print("\(input)  ->  (nothing)")
     }
