@@ -541,7 +541,10 @@ final class ClipboardMonitor: NSObject {
     /// PNG conversion, hashing and writing happen in the background, so a
     /// huge image can't freeze the panels.
     private func recordImage(type: NSPasteboard.PasteboardType, source: ClipSource, copiedAt: Date) {
-        guard let data = pasteboard.data(forType: type) else { return }
+        guard let data = pasteboard.data(forType: type) else {
+            UsageStats.shared.record(.clipboardSkippedImage)
+            return
+        }
         if let size = ClipImageFile.pixelSize(of: data), !ClipImageFile.isAcceptable(size) {
             UsageStats.shared.record(.clipboardSkippedImage)
             return

@@ -79,10 +79,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             hide()
             return
         }
-        NSWorkspace.shared.open(command.url)
-        UsageStats.shared.recordLaunch(command.source, input: textField.stringValue)
-        didLaunch = true
-        textField.stringValue = ""
+        // false when macOS can't open it: the text stays, so didHide counts a
+        // close with text typed instead of a launch.
+        if NSWorkspace.shared.open(command.url) {
+            UsageStats.shared.recordLaunch(command.source, input: textField.stringValue)
+            didLaunch = true
+            textField.stringValue = ""
+        }
         hide()
     }
 

@@ -280,11 +280,14 @@ final class UsageStats: NSObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL) else { return }
         do {
+            let data = try Data(contentsOf: fileURL)
             stored = try JSONDecoder().decode(StoredUsage.self, from: data)
+        } catch CocoaError.fileReadNoSuchFile {
+            // First launch: nothing recorded yet.
         } catch {
-            // Set it aside rather than overwrite it on the next save.
+            // Unreadable or undecodable: set it aside rather than overwrite it
+            // on the next save, in case it can be recovered by hand.
             let backup = fileURL.deletingPathExtension().appendingPathExtension("unreadable.json")
             try? FileManager.default.removeItem(at: backup)
             try? FileManager.default.moveItem(at: fileURL, to: backup)
