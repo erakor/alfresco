@@ -83,8 +83,9 @@ picking one opens the launcher with its keyword already typed.
 With a [WeatherAPI.com](https://www.weatherapi.com/pricing.aspx) key (the
 free plan is enough, no card needed), typing `weather` or `weather <place>`
 opens a forecast under the input: current conditions (temperature,
-feels-like, humidity, wind, chance of rain this hour) and three days with
-high / low and chance of rain or snow. Enter still opens the `weather`
+feels-like, humidity, wind, chance of rain this hour), the next 12 hours
+(temperature, icon, chance of rain or snow; `Config.weatherHours`), and below
+them a compact line with three days' high / low and chance of rain or snow. Enter still opens the `weather`
 workflow's page.
 
 1. Create a free account at weatherapi.com and copy your API key from the
