@@ -2,7 +2,7 @@
 //
 // The network side of the weather panel, off the main actor: one request to
 // WeatherAPI.com's forecast endpoint (free plan) returns the place, the
-// current weather and the daily forecast, which become a Forecast.
+// current weather and the hourly and daily forecasts, which become a Forecast.
 
 import Foundation
 
@@ -22,6 +22,15 @@ struct WeatherCondition: Sendable {
 }
 
 struct Forecast: Sendable {
+    struct Hour: Sendable {
+        /// "Maint." for the current hour, else "15h", in the place's time zone.
+        let name: String
+        let temperature: Double
+        let condition: WeatherCondition
+        /// Chance of rain or snow during that hour, 0...1.
+        let rainChance: Double
+    }
+
     struct Day: Sendable {
         /// Short weekday name, or "Auj." for today.
         let name: String
@@ -46,6 +55,9 @@ struct Forecast: Sendable {
     let condition: WeatherCondition
     /// Chance of rain or snow during the current hour, 0...1.
     let rainChance: Double?
+    /// Config.weatherHours hours from the current one (fewer near the end
+    /// of the forecast).
+    let hours: [Hour]
     let days: [Day]
 }
 
@@ -169,11 +181,28 @@ enum WeatherLoader {
             )
         }
 
-        // The hour slot that contains the place's current time.
+        // Hours run on from the slot that contains the place's current time.
         let now = location.localtimeEpoch
-        let hour = response.forecast.forecastday.flatMap(\.hour)
-            .last { $0.timeEpoch <= now }
-        let rainChance = hour.map { max($0.chanceOfRain?.value ?? 0, $0.chanceOfSnow?.value ?? 0) / 100 }
+        let allHours = response.forecast.forecastday.flatMap(\.hour)
+        let start = allHours.lastIndex { $0.timeEpoch <= now } ?? allHours.startIndex
+        let upcoming = allHours[start...].prefix(Config.weatherHours)
+        func chance(_ hour: ForecastResponse.Hour) -> Double {
+            max(hour.chanceOfRain?.value ?? 0, hour.chanceOfSnow?.value ?? 0) / 100
+        }
+        let rainChance = upcoming.first.map(chance)
+
+        let clock = DateFormatter()
+        clock.locale = Locale(identifier: "en_US_POSIX")
+        clock.timeZone = timeZone
+        clock.dateFormat = "H'h'"
+        let hours = upcoming.enumerated().map { offset, hour in
+            Forecast.Hour(
+                name: offset == 0 ? "Maint." : clock.string(from: Date(timeIntervalSince1970: hour.timeEpoch)),
+                temperature: hour.tempC,
+                condition: WeatherCondition(code: hour.condition.code, isDay: hour.isDay != 0),
+                rainChance: chance(hour)
+            )
+        }
 
         let place = [location.name, location.country]
             .filter { !$0.isEmpty }
@@ -189,6 +218,7 @@ enum WeatherLoader {
             description: current.condition.text,
             condition: WeatherCondition(code: current.condition.code, isDay: current.isDay != 0),
             rainChance: rainChance,
+            hours: hours,
             days: days
         )
     }
@@ -250,6 +280,9 @@ private struct ForecastResponse: Decodable, Sendable {
     }
     struct Hour: Decodable, Sendable {
         let timeEpoch: TimeInterval
+        let tempC: Double
+        let isDay: Int
+        let condition: Condition
         let chanceOfRain: Percent?
         let chanceOfSnow: Percent?
     }
