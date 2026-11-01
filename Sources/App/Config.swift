@@ -82,6 +82,27 @@ enum Config {
         return (home.appendingPathComponent(".config/alfresco/workflows.json"), true)
     }()
 
+    // MARK: Apps
+
+    /// Typing an installed app's name in the launcher opens the app, unless
+    /// the input is a workflow keyword. ⌘↩ runs the fallback search instead.
+    static let appSearch = true
+    /// Searched for .app bundles, each directly and one folder down. A path
+    /// ending in .app adds that one app.
+    static let appFolders: [URL] = {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return [
+            "/Applications",
+            "/System/Applications",
+            "/System/Library/CoreServices/Applications",
+            "/System/Library/CoreServices/Finder.app",
+            home.appendingPathComponent("Applications").path,
+        ].map { URL(fileURLWithPath: $0) }
+    }()
+    /// The folders are scanned again when the launcher opens if the last
+    /// scan is older than this, so new apps show up without a restart.
+    static let appRescanInterval: TimeInterval = 60
+
     // MARK: Weather
 
     /// `weather` or `weather <place>` in the launcher shows the forecast

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-alfresco is a Spotlight-style URL launcher for macOS with a 24-hour clipboard history on a second hotkey. It's a few Swift files under `Sources/` compiled together with `swiftc` (AppKit + Carbon, no Xcode project, no package manager, no dependencies). The keyword → URL mappings live in `workflows.json`, which is data, not code, and is committed to the repo.
+alfresco is a Spotlight-style URL and app launcher for macOS with a 24-hour clipboard history on a second hotkey. It's a few Swift files under `Sources/` compiled together with `swiftc` (AppKit + Carbon, no Xcode project, no package manager, no dependencies). The keyword → URL mappings live in `workflows.json`, which is data, not code, and is committed to the repo.
 
 ## Build & run
 
@@ -29,12 +29,16 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 
 ### App/Config.swift
 
-`Config` enum holds compile-time settings: both hotkeys (`hotKey`, `clipboardHotKey`), `showMenuBarIcon`, the clipboard limits (`clipboardRetention`, `clipboardMaxItems`, `clipboardMaxTextBytes`, `clipboardMaxImageBytes`, `clipboardMaxImagePixels`, `clipboardPollInterval`), and `workflowsSource`, which resolves the workflows file in this order: `ALFRESCO_WORKFLOWS` env var → `AlfrescoWorkflowsFile` Info.plist key (written by `build.sh` as the repo's absolute path, so moving the repo requires a rebuild) → `workflows.json` next to the executable → `~/.config/alfresco/workflows.json` (the only location auto-created if missing).
+`Config` enum holds compile-time settings: both hotkeys (`hotKey`, `clipboardHotKey`), `showMenuBarIcon`, app launching (`appSearch`, `appFolders`, `appRescanInterval`), the clipboard limits (`clipboardRetention`, `clipboardMaxItems`, `clipboardMaxTextBytes`, `clipboardMaxImageBytes`, `clipboardMaxImagePixels`, `clipboardPollInterval`), and `workflowsSource`, which resolves the workflows file in this order: `ALFRESCO_WORKFLOWS` env var → `AlfrescoWorkflowsFile` Info.plist key (written by `build.sh` as the repo's absolute path, so moving the repo requires a rebuild) → `workflows.json` next to the executable → `~/.config/alfresco/workflows.json` (the only location auto-created if missing).
 
 ### Launcher/Workflows.swift
 
 - **Workflows** — `Workflow` / `WorkflowSet` are `Decodable` models of `workflows.json`; `ArgumentTransform` parses string transforms like `"stripPrefix:#"`. `WorkflowStore` re-reads the file only when its modification date changes (checked each time the launcher opens) and keeps the last good `WorkflowSet` when a reload fails, exposing `loadError` for the UI.
 - **Command parsing** — `CommandParser.parse` splits input into `<keyword> [argument]`. A workflow whose `url` contains `{query}` requires an argument; one without `{query}` matches only the bare keyword. `WorkflowSet.workflow(for:withArgument:)` picks the first workflow of the right form, so one keyword can have both (e.g. `weather` and `weather paris`). Anything else goes to `fallback`. Arguments are percent-encoded with the RFC 3986 unreserved set. An optional `preview` URL template is expanded the same way into `Command.preview`.
+
+### Launcher/AppIndex.swift
+
+`AppIndex` (main actor) lists the `.app` bundles in `Config.appFolders`, each directly and one folder down, scanned in a detached task at launch and again when the launcher opens if older than `Config.appRescanInterval`. Each `AppEntry` matches on its folded (case/accent-insensitive) Finder display name and file name. `bestMatch` ranks exact name, name prefix, word prefix (several typed words must start consecutive words), then initials; ties go to the shorter name. Apps only take input that would otherwise go to the fallback (`Command.isFallback`), never a workflow keyword.
 
 ### Launcher/PreviewFetcher.swift
 
@@ -61,7 +65,7 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Launcher/LauncherController.swift
 
-`LauncherController` (a `FloatingPanelController`) runs the URL launcher: the input field, the hint line, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone.
+`LauncherController` (a `FloatingPanelController`) runs the launcher: the input field, the hint line, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone. When `matchedApp()` finds an app, the search icon shows the app's icon, the hint reads `↩ Open <app>  ⌘↩ <fallback title>`, Enter opens the app, and ⌘↩ (`handleKeyEquivalent`) runs the fallback search instead.
 
 ### App/Launcher.swift
 
