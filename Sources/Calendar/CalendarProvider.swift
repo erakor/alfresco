@@ -69,6 +69,9 @@ private final class EventStoreBox: @unchecked Sendable {
 private struct FetchResult: Sendable {
     let events: [CalendarEvent]
     let hasCalendars: Bool
+    /// The account names when calendars exist but the Config filters left
+    /// none of them; nil otherwise.
+    let filteredOutAccounts: [String]?
 }
 
 @MainActor
@@ -87,6 +90,7 @@ final class CalendarProvider {
     private var fetchedAt: Date?
     private var hasFetched = false
     private var hasCalendars = true
+    private var filteredOutAccounts: [String]?
     private var fetchTask: Task<Void, Never>?
     /// Bumped when the calendars change, so a fetch started before is not
     /// taken as fresh.
@@ -145,6 +149,10 @@ final class CalendarProvider {
         guard hasCalendars else {
             return .message("Aucun calendrier : ajoutez votre compte Google dans Réglages Système › Comptes Internet")
         }
+        if let accounts = filteredOutAccounts {
+            let names = accounts.isEmpty ? "" : " (comptes : \(accounts.joined(separator: ", ")))"
+            return .message("Aucun calendrier ne correspond à calendarAccounts / calendarExcluded\(names)")
+        }
         let now = Date()
         let today = Calendar.current.startOfDay(for: now)
         let matching: [CalendarEvent]
@@ -179,6 +187,7 @@ final class CalendarProvider {
             self.fetchTask = nil
             self.events = result.events
             self.hasCalendars = result.hasCalendars
+            self.filteredOutAccounts = result.filteredOutAccounts
             self.hasFetched = true
             // A change during the fetch leaves it stale: the next state()
             // fetches again.
@@ -194,8 +203,16 @@ final class CalendarProvider {
         let today = Calendar.current.startOfDay(for: Date())
         let days = max(Config.calendarDays, Config.calendarSearchDays)
         // An empty list would mean every calendar to EventKit.
-        guard !calendars.isEmpty, let end = Calendar.current.date(byAdding: .day, value: days, to: today) else {
-            return FetchResult(events: [], hasCalendars: !allCalendars.isEmpty)
+        guard !allCalendars.isEmpty else {
+            return FetchResult(events: [], hasCalendars: false, filteredOutAccounts: nil)
+        }
+        guard !calendars.isEmpty else {
+            // Named as Internet Accounts shows them, to fix calendarAccounts.
+            let accounts = Set(allCalendars.compactMap { $0.source?.title }).sorted()
+            return FetchResult(events: [], hasCalendars: true, filteredOutAccounts: accounts)
+        }
+        guard let end = Calendar.current.date(byAdding: .day, value: days, to: today) else {
+            return FetchResult(events: [], hasCalendars: true, filteredOutAccounts: nil)
         }
         let predicate = store.predicateForEvents(withStart: today, end: end, calendars: calendars)
         let events = store.events(matching: predicate)
@@ -205,7 +222,7 @@ final class CalendarProvider {
                 if lhs.isAllDay != rhs.isAllDay { return lhs.isAllDay }
                 return lhs.title < rhs.title
             }
-        return FetchResult(events: events, hasCalendars: true)
+        return FetchResult(events: events, hasCalendars: true, filteredOutAccounts: nil)
     }
 
     nonisolated private static func isIncluded(_ calendar: EKCalendar) -> Bool {

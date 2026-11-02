@@ -61,7 +61,8 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `calendarDays` (3, today included) and `calendarSearchDays` (30).
 - `calendarMaxEvents` (8): results listed by `cal <text>`.
 - `calendarAccounts` (empty, every account): only these accounts, by the name
-  shown in Internet Accounts (usually the address).
+  shown in Internet Accounts (usually the address). If the filters leave no
+  calendar, `cal` says so and lists the account names it found.
 - `calendarExcluded` (empty): calendars left out by name, e.g. holidays.
 - `calendarHidesBirthdays`, `calendarHidesDeclined` (both `true`).
 - `calendarCacheLifetime` (60 s).
