@@ -12,7 +12,9 @@ user), one bucket per calendar day, keeping the last 90 days (today
 included). The menu bar's **Usage…** shows the last 30 days and can reveal the
 file. If the file can't be read, or was written by a newer build of alfresco,
 it is moved aside as `usage.unreadable.json` (then `usage.unreadable-2.json`
-and so on, never replacing an earlier one) and counting starts over.
+and so on, never replacing an earlier one, up to 100) and counting starts over.
+With all 100 taken, the file is left alone and nothing is saved until the next
+launch.
 
 Recorded:
 

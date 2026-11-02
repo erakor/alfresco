@@ -74,6 +74,21 @@ enum UsageStatsTests {
         check("usage: the first set-aside file is kept", (try? Data(contentsOf: backup)) == newerJSON)
         check("usage: the second goes to .unreadable-2.json",
               (try? Data(contentsOf: secondBackup)) == newerAgain, "at \(secondBackup.path)")
+
+        // Every set-aside name taken: the newer file stays put, and this run
+        // doesn't save over it.
+        let full = SelfTest.scratchFile("usage-full")
+        let fullBase = full.deletingPathExtension()
+        for number in 1...UsageStats.maxSetAsideFiles {
+            let suffix = number == 1 ? "unreadable" : "unreadable-\(number)"
+            try? Data("old".utf8).write(to: fullBase.appendingPathExtension(suffix).appendingPathExtension("json"))
+        }
+        try? newerJSON.write(to: full)
+        let blocked = makeStats(clock, file: full)
+        blocked.record(.launcherOpened)
+        blocked.saveNow()
+        check("usage: with no set-aside name free, the version 2 file is not overwritten",
+              (try? Data(contentsOf: full)) == newerJSON)
     }
 
     private static func daylightSaving() {

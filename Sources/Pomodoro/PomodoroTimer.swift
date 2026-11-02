@@ -236,8 +236,10 @@ final class PomodoroTimer: NSObject {
     }
 
     /// A phase that ran out during sleep ends (with its alert) right away.
-    /// Otherwise the ticker is restarted in step with the countdown (a phase
-    /// change has already restarted it).
+    /// Otherwise the ticker is restarted on purpose: the old one would catch
+    /// up by itself, but its ticks no longer line up with whole seconds of
+    /// the countdown, so the menu bar title would change mid-second. (A phase
+    /// change has already restarted it.)
     @objc private func systemDidWake() {
         let before = state
         tick()

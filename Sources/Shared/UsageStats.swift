@@ -115,6 +115,9 @@ final class UsageStats: NSObject {
     private let calendar: Calendar
     private var stored = StoredUsage()
     private var saveTimer: Timer?
+    /// False when an unreadable usage.json couldn't be set aside: saving
+    /// would overwrite it, so nothing is saved until the next launch.
+    private var canSave = true
     /// Key of the newest bucket, so old days are pruned once a day.
     private var lastDayKey: String?
 
@@ -127,7 +130,7 @@ final class UsageStats: NSObject {
 
     private override convenience init() {
         self.init(fileURL: ClipboardStore.directory.appendingPathComponent("usage.json"),
-                  now: { Date() }, calendar: .current)
+                  now: { Date() }, calendar: .autoupdatingCurrent)
     }
 
     init(fileURL: URL, now: @escaping @MainActor () -> Date, calendar: Calendar) {
@@ -358,6 +361,11 @@ final class UsageStats: NSObject {
     /// Writes any pending change; called on quit.
     func saveNow() {
         guard saveTimer != nil else { return }
+        guard canSave else {
+            saveTimer?.invalidate()
+            saveTimer = nil
+            return
+        }
         saveTimer?.invalidate()
         saveTimer = nil
 
@@ -386,17 +394,23 @@ final class UsageStats: NSObject {
             if let backup = setAside() {
                 NSLog("Launcher: unreadable usage stats moved to \(backup.path): \(error)")
             } else {
-                NSLog("Launcher: could not set aside unreadable usage stats: \(error)")
+                canSave = false
+                NSLog("Launcher: could not set aside unreadable usage stats, so they won't be saved this run: \(error)")
             }
         }
     }
 
+    /// Set-aside files kept at most. With all of them taken, usage.json stays
+    /// where it is and this run saves nothing (see canSave).
+    static let maxSetAsideFiles = 100
+
     /// Moves the file to usage.unreadable.json, or usage.unreadable-2.json and
     /// so on when that exists: an earlier backup is never replaced, so
-    /// switching between an older and a newer build loses nothing.
+    /// switching between an older and a newer build loses nothing. nil when
+    /// every name up to maxSetAsideFiles is taken or the move fails.
     private func setAside() -> URL? {
         let base = fileURL.deletingPathExtension()
-        for number in 1...1000 {
+        for number in 1...Self.maxSetAsideFiles {
             let suffix = number == 1 ? "unreadable" : "unreadable-\(number)"
             let backup = base.appendingPathExtension(suffix).appendingPathExtension("json")
             do {

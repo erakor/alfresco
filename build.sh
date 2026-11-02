@@ -5,8 +5,6 @@
 #
 # Environment (all optional, used by Tests/run-self-tests.sh):
 #   BUILD_DIR     where Launcher.app goes (default: build)
-#   SOURCE_DIRS   folders whose .swift files are compiled (default: Sources)
-#   SWIFTC_FLAGS  extra swiftc flags, e.g. "-D SELFTEST"
 #   EXECUTABLE    an already built binary to bundle instead of compiling
 #   BUNDLE_ID     CFBundleIdentifier (default: local.launcher). Give a test
 #                 bundle its own, so LaunchServices and notification
@@ -17,7 +15,6 @@ cd "$(dirname "$0")"
 
 BUILD_DIR="${BUILD_DIR:-build}"
 BUNDLE_ID="${BUNDLE_ID:-local.launcher}"
-SOURCE_DIRS="${SOURCE_DIRS:-Sources}"
 APP="$BUILD_DIR/Launcher.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
@@ -25,9 +22,7 @@ mkdir -p "$APP/Contents/MacOS"
 if [ -n "${EXECUTABLE:-}" ]; then
     cp "$EXECUTABLE" "$APP/Contents/MacOS/Launcher"
 else
-    # shellcheck disable=SC2086 # word splitting is intended
-    swiftc -O -parse-as-library -swift-version 6 ${SWIFTC_FLAGS:-} $(find $SOURCE_DIRS -name '*.swift') \
-        -o "$APP/Contents/MacOS/Launcher"
+    swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o "$APP/Contents/MacOS/Launcher"
 fi
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'

@@ -40,7 +40,7 @@ private final class AlertRecorder: PomodoroAlertSink {
 enum PomodoroTests {
     private static let recorder = AlertRecorder()
     /// One notification per alert inside the bundle, none in a plain binary.
-    private static var notificationsPerAlert: Int { PomodoroAlert.notificationsAvailable ? 1 : 0 }
+    private static var notificationsPerAlert: Int { PomodoroAlert.notificationsAvailableForSelfTest ? 1 : 0 }
 
     static func run() {
         PomodoroAlert.sink = recorder
@@ -92,7 +92,7 @@ enum PomodoroTests {
         if let expected = ProcessInfo.processInfo.environment["SELFTEST_EXPECT_BUNDLE"] {
             let bundled = expected == "1"
             check("run: \(bundled ? "inside" : "outside") an app bundle, as expected",
-                  PomodoroAlert.notificationsAvailable == bundled,
+                  PomodoroAlert.notificationsAvailableForSelfTest == bundled,
                   "bundle ID is \(Bundle.main.bundleIdentifier ?? "nil")")
             if bundled {
                 check("run: the test bundle has its own bundle ID",
@@ -102,7 +102,7 @@ enum PomodoroTests {
         }
         check("alert: the sound \"\(Config.pomodoroSound)\" exists on this Mac",
               NSSound(named: NSSound.Name(Config.pomodoroSound)) != nil)
-        if PomodoroAlert.notificationsAvailable {
+        if PomodoroAlert.notificationsAvailableForSelfTest {
             // Raises an Objective-C exception (and crashes the run) when the
             // bundle isn't set up for notifications.
             _ = UNUserNotificationCenter.current()
@@ -115,7 +115,7 @@ enum PomodoroTests {
     private static func messages() {
         let later = Date(timeIntervalSince1970: 1_800_000_000)
         func expect(_ name: String, _ phase: PomodoroPhase, _ next: PomodoroState, _ title: String, _ body: String) {
-            let message = PomodoroAlert.message(ended: phase, next: next)
+            let message = PomodoroAlert.messageForSelfTest(ended: phase, next: next)
             check("message: \(name)", message.title == title && message.body == body,
                   "got \"\(message.title)\" / \"\(message.body)\"")
         }
@@ -205,7 +205,7 @@ enum PomodoroTests {
         check("phase end: focus posts \(notificationsPerAlert) notification(s)",
               recorder.notifications.count == notificationsPerAlert, "got \(recorder.notifications.count)")
         if let note = recorder.notifications.last {
-            let expected = PomodoroAlert.message(ended: .focus, next: timer.state)
+            let expected = PomodoroAlert.messageForSelfTest(ended: .focus, next: timer.state)
             check("phase end: focus notification text", note.title == expected.title && note.body == expected.body,
                   "got \"\(note.title)\" / \"\(note.body)\"")
         }

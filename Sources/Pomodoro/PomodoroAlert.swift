@@ -32,7 +32,7 @@ enum PomodoroAlert {
 
     /// UNUserNotificationCenter needs an app bundle; in a plain binary built
     /// with swiftc it raises an exception, so notifications are skipped there.
-    static var notificationsAvailable: Bool { Bundle.main.bundleIdentifier != nil }
+    private static var notificationsAvailable: Bool { Bundle.main.bundleIdentifier != nil }
 
     /// Asks once per launch for permission to post notifications (macOS only
     /// shows the prompt the first time). Called when a session starts, so the
@@ -55,7 +55,7 @@ enum PomodoroAlert {
         sink.notify(title: text.title, body: text.body)
     }
 
-    static func message(ended phase: PomodoroPhase, next: PomodoroState) -> (title: String, body: String) {
+    private static func message(ended phase: PomodoroPhase, next: PomodoroState) -> (title: String, body: String) {
         switch phase {
         case .focus:
             guard let breakPhase = next.phase else { return ("Focus session done", "") }
@@ -71,6 +71,13 @@ enum PomodoroAlert {
             return ("Long break over", "Cycle complete. Start a new one when you're ready.")
         }
     }
+
+    #if SELFTEST
+    static var notificationsAvailableForSelfTest: Bool { notificationsAvailable }
+    static func messageForSelfTest(ended phase: PomodoroPhase, next: PomodoroState) -> (title: String, body: String) {
+        message(ended: phase, next: next)
+    }
+    #endif
 
     private static func requestAuthorization() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, error in

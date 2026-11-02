@@ -75,7 +75,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let mode = PomodoroAlert.notificationsAvailable ? "app bundle" : "plain binary"
+        let mode = PomodoroAlert.notificationsAvailableForSelfTest ? "app bundle" : "plain binary"
         SelfTest.log("Self-test \(suite) (\(mode))")
         switch suite {
         case "unit":

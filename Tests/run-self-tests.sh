@@ -18,6 +18,14 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 OUT_DIR="${OUT_DIR:-build/self-test}"
+# It is deleted first, so only a folder inside build/ is accepted.
+case "$OUT_DIR" in
+  build/?*) ;;
+  *) echo "run-self-tests.sh: OUT_DIR must be a folder inside build/ (got '$OUT_DIR')" >&2; exit 2 ;;
+esac
+case "/$OUT_DIR/" in
+  */../*) echo "run-self-tests.sh: OUT_DIR must not contain '..'" >&2; exit 2 ;;
+esac
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
@@ -40,7 +48,10 @@ run() {
   fi
 }
 
-scratch() { mktemp -d "${TMPDIR:-/tmp}/alfresco-selftest.XXXXXX"; }
+# One scratch support folder per run, all removed on exit.
+SCRATCH_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/alfresco-selftest.XXXXXX")"
+trap 'rm -rf "$SCRATCH_ROOT"' EXIT
+scratch() { mktemp -d "$SCRATCH_ROOT/run.XXXXXX"; }
 
 # Compiled once: the same binary runs on its own and inside a bundle with
 # its own bundle ID (never the real app's local.launcher).
@@ -65,13 +76,24 @@ hold_log="$OUT_DIR/menubar-hold.log"
 env ALFRESCO_SUPPORT_DIR="$(scratch)" SELFTEST_HOLD_SECONDS=10 \
   perl -e 'alarm shift; exec @ARGV or die "exec: $!"' 60 "$APP_BIN" --self-test menubar-hold > "$hold_log" 2>&1 &
 hold_pid=$!
+holding=0
 for _ in $(seq 1 50); do
-  grep -q '^HOLDING' "$hold_log" && break
+  if grep -q '^HOLDING' "$hold_log"; then holding=1; break; fi
+  kill -0 "$hold_pid" 2>/dev/null || break
   sleep 0.2
 done
 sleep 2
-if screencapture -x "$OUT_DIR/menubar.png" 2>>"$LOG" && [ -s "$OUT_DIR/menubar.png" ]; then
-  say "PASS menu bar screenshot saved to $OUT_DIR/menubar.png"
+# A screenshot only counts if the session was up and still running when it
+# was taken. (Whether the runner may record the screen at all is visible in
+# the uploaded image, not checkable here.)
+if [ "$holding" -ne 1 ]; then
+  say "FAIL menu bar screenshot: menubar-hold never reported HOLDING"
+  status=1
+elif ! kill -0 "$hold_pid" 2>/dev/null; then
+  say "FAIL menu bar screenshot: menubar-hold exited before the capture"
+  status=1
+elif screencapture -x "$OUT_DIR/menubar.png" 2>>"$LOG" && [ -s "$OUT_DIR/menubar.png" ]; then
+  say "PASS menu bar screenshot taken while the session ran: $OUT_DIR/menubar.png"
 else
   say "FAIL menu bar screenshot: screencapture produced no image"
   status=1
