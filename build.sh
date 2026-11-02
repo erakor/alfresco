@@ -7,19 +7,28 @@
 #   BUILD_DIR     where Launcher.app goes (default: build)
 #   SOURCE_DIRS   folders whose .swift files are compiled (default: Sources)
 #   SWIFTC_FLAGS  extra swiftc flags, e.g. "-D SELFTEST"
+#   EXECUTABLE    an already built binary to bundle instead of compiling
+#   BUNDLE_ID     CFBundleIdentifier (default: local.launcher). Give a test
+#                 bundle its own, so LaunchServices and notification
+#                 permission never mistake it for the real app.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
 BUILD_DIR="${BUILD_DIR:-build}"
+BUNDLE_ID="${BUNDLE_ID:-local.launcher}"
 SOURCE_DIRS="${SOURCE_DIRS:-Sources}"
 APP="$BUILD_DIR/Launcher.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 
-# shellcheck disable=SC2086 # word splitting is intended
-swiftc -O -parse-as-library -swift-version 6 ${SWIFTC_FLAGS:-} $(find $SOURCE_DIRS -name '*.swift') \
-    -o "$APP/Contents/MacOS/Launcher"
+if [ -n "${EXECUTABLE:-}" ]; then
+    cp "$EXECUTABLE" "$APP/Contents/MacOS/Launcher"
+else
+    # shellcheck disable=SC2086 # word splitting is intended
+    swiftc -O -parse-as-library -swift-version 6 ${SWIFTC_FLAGS:-} $(find $SOURCE_DIRS -name '*.swift') \
+        -o "$APP/Contents/MacOS/Launcher"
+fi
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -29,7 +38,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key>
     <string>Launcher</string>
     <key>CFBundleIdentifier</key>
-    <string>local.launcher</string>
+    <string>BUNDLE_ID_PLACEHOLDER</string>
     <key>CFBundleExecutable</key>
     <string>Launcher</string>
     <key>CFBundlePackageType</key>
@@ -43,6 +52,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 
 # Point the app at this repo's workflows.json, so edits to it apply without
 # rebuilding. Rebuild if you move the repo.

@@ -63,6 +63,17 @@ enum UsageStatsTests {
               (try? Data(contentsOf: backup)) == newerJSON)
         check("usage: and writes a new version 1 file",
               (try? String(contentsOf: newer, encoding: .utf8))?.contains(#""version" : 1"#) == true)
+
+        // The newer build runs again and writes version 2 again: the next
+        // launch of this one keeps both of its files.
+        let newerAgain = Data(#"{"version":2,"days":{},"run":2}"#.utf8)
+        try? newerAgain.write(to: newer)
+        let secondBackup = newer.deletingPathExtension().appendingPathExtension("unreadable-2.json")
+        let again = makeStats(clock, file: newer)
+        check("usage: a second version 2 file is not loaded", again.dayKeys.isEmpty, "days \(again.dayKeys)")
+        check("usage: the first set-aside file is kept", (try? Data(contentsOf: backup)) == newerJSON)
+        check("usage: the second goes to .unreadable-2.json",
+              (try? Data(contentsOf: secondBackup)) == newerAgain, "at \(secondBackup.path)")
     }
 
     private static func daylightSaving() {
@@ -71,17 +82,17 @@ enum UsageStatsTests {
         let clock = UsageClock(date("2026-03-29T22:30:00Z"))
         let stats = makeStats(clock)
         check("usage: last 2 days after spring forward start on 29 March",
-              stats.firstDayKey(keeping: 2) == "2026-03-29", "got \(stats.firstDayKey(keeping: 2))")
+              stats.firstDayKeyForSelfTest(keeping: 2) == "2026-03-29", "got \(stats.firstDayKeyForSelfTest(keeping: 2))")
         check("usage: last 30 days after spring forward start on 1 March",
-              stats.firstDayKey(keeping: 30) == "2026-03-01", "got \(stats.firstDayKey(keeping: 30))")
+              stats.firstDayKeyForSelfTest(keeping: 30) == "2026-03-01", "got \(stats.firstDayKeyForSelfTest(keeping: 30))")
 
         // Clocks go back on 25 October 2026: a 25 hour day. 23:30 on the 25th
         // (CET) is 24.5 hours after midnight.
         clock.date = date("2026-10-25T22:30:00Z")
         check("usage: last 2 days after fall back start on 24 October",
-              stats.firstDayKey(keeping: 2) == "2026-10-24", "got \(stats.firstDayKey(keeping: 2))")
-        check("usage: last 1 day is today", stats.firstDayKey(keeping: 1) == "2026-10-25",
-              "got \(stats.firstDayKey(keeping: 1))")
+              stats.firstDayKeyForSelfTest(keeping: 2) == "2026-10-24", "got \(stats.firstDayKeyForSelfTest(keeping: 2))")
+        check("usage: last 1 day is today", stats.firstDayKeyForSelfTest(keeping: 1) == "2026-10-25",
+              "got \(stats.firstDayKeyForSelfTest(keeping: 1))")
     }
 
     private static func retention() {
@@ -101,7 +112,7 @@ enum UsageStatsTests {
         check("usage: the newest bucket is the last day recorded", stats.dayKeys.last == lastKey,
               "got \(stats.dayKeys.last ?? "nil"), expected \(lastKey)")
         check("usage: the oldest bucket is \(Config.usageRetentionDays - 1) days before it",
-              stats.dayKeys.first == stats.firstDayKey(keeping: Config.usageRetentionDays + 1),
+              stats.dayKeys.first == stats.firstDayKeyForSelfTest(keeping: Config.usageRetentionDays + 1),
               "got \(stats.dayKeys.first ?? "nil")")
     }
 }

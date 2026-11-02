@@ -70,17 +70,22 @@ final class PomodoroTimer: NSObject {
     /// Saved in ~/Library/Application Support/Launcher, next to the
     /// clipboard history.
     override convenience init() {
-        self.init(fileURL: ClipboardStore.directory.appendingPathComponent("pomodoro.json"), now: { Date() })
+        self.init(
+            fileURL: ClipboardStore.directory.appendingPathComponent("pomodoro.json"),
+            now: { Date() },
+            wakeNotifications: NSWorkspace.shared.notificationCenter)
     }
 
-    init(fileURL: URL, now: @escaping @MainActor () -> Date) {
+    /// `wakeNotifications` posts NSWorkspace.didWakeNotification. The self-test
+    /// gives each timer its own center, so a wake reaches only that timer.
+    init(fileURL: URL, now: @escaping @MainActor () -> Date, wakeNotifications: NotificationCenter) {
         self.fileURL = fileURL
         self.now = now
         super.init()
         restore()
         // A Timer doesn't fire while the Mac sleeps; catch up as soon as it
         // wakes rather than on the next tick.
-        NSWorkspace.shared.notificationCenter.addObserver(
+        wakeNotifications.addObserver(
             self, selector: #selector(systemDidWake), name: NSWorkspace.didWakeNotification, object: nil)
     }
 
@@ -221,7 +226,7 @@ final class PomodoroTimer: NSObject {
 
     /// Time left is always worked out from the end date, so a late tick (or
     /// the Mac waking from sleep) just catches up.
-    @objc func tick() {
+    @objc private func tick() {
         guard case .running(let phase, let endsAt) = state else { return }
         if endsAt.timeIntervalSince(now()) <= 0 {
             finish(phase, alert: true)
@@ -230,12 +235,18 @@ final class PomodoroTimer: NSObject {
         }
     }
 
-    /// A phase that ran out during sleep ends (with its alert) right away,
-    /// and the ticker is restarted in step with the countdown.
+    /// A phase that ran out during sleep ends (with its alert) right away.
+    /// Otherwise the ticker is restarted in step with the countdown (a phase
+    /// change has already restarted it).
     @objc private func systemDidWake() {
+        let before = state
         tick()
-        updateTicker()
+        if state == before { updateTicker() }
     }
+
+    #if SELFTEST
+    func tickForSelfTest() { tick() }
+    #endif
 
     // MARK: Saving
 
@@ -284,6 +295,18 @@ final class PomodoroTimer: NSObject {
             state = .idle
         }
         updateTicker()
+    }
+}
+
+extension PomodoroTimer {
+    /// The app's wiring: the menu bar item follows every change, and a phase
+    /// that runs out by itself plays the alert.
+    func connect(to statusItem: PomodoroStatusItem) {
+        onChange = { [weak statusItem] in statusItem?.update() }
+        onPhaseEnd = { [weak self] phase in
+            guard let self else { return }
+            PomodoroAlert.play(ended: phase, next: self.state)
+        }
     }
 }
 

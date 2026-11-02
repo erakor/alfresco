@@ -42,15 +42,17 @@ run() {
 
 scratch() { mktemp -d "${TMPDIR:-/tmp}/alfresco-selftest.XXXXXX"; }
 
+# Compiled once: the same binary runs on its own and inside a bundle with
+# its own bundle ID (never the real app's local.launcher).
 set -e
 BIN="$OUT_DIR/Launcher"
 swiftc -O -parse-as-library -swift-version 6 -D SELFTEST $(find Sources Tests -name '*.swift') -o "$BIN"
-BUILD_DIR="$OUT_DIR/bundle" SOURCE_DIRS="Sources Tests" SWIFTC_FLAGS="-D SELFTEST" ./build.sh > /dev/null
+BUILD_DIR="$OUT_DIR/bundle" EXECUTABLE="$BIN" BUNDLE_ID=local.launcher.selftest ./build.sh > /dev/null
 APP_BIN="$OUT_DIR/bundle/Launcher.app/Contents/MacOS/Launcher"
 set +e
 
-run "unit, plain binary" env ALFRESCO_SUPPORT_DIR="$(scratch)" "$BIN" --self-test unit
-run "unit, app bundle" env ALFRESCO_SUPPORT_DIR="$(scratch)" "$APP_BIN" --self-test unit
+run "unit, plain binary" env ALFRESCO_SUPPORT_DIR="$(scratch)" SELFTEST_EXPECT_BUNDLE=0 "$BIN" --self-test unit
+run "unit, app bundle" env ALFRESCO_SUPPORT_DIR="$(scratch)" SELFTEST_EXPECT_BUNDLE=1 "$APP_BIN" --self-test unit
 
 relaunch="$(scratch)"
 run "relaunch, first process" env ALFRESCO_SUPPORT_DIR="$relaunch" "$APP_BIN" --self-test relaunch-write
@@ -68,10 +70,11 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 sleep 2
-if screencapture -x "$OUT_DIR/menubar.png" 2>>"$LOG"; then
-  say "Saved $OUT_DIR/menubar.png"
+if screencapture -x "$OUT_DIR/menubar.png" 2>>"$LOG" && [ -s "$OUT_DIR/menubar.png" ]; then
+  say "PASS menu bar screenshot saved to $OUT_DIR/menubar.png"
 else
-  say "(screencapture failed; no screenshot)"
+  say "FAIL menu bar screenshot: screencapture produced no image"
+  status=1
 fi
 wait "$hold_pid"
 hold_code=$?

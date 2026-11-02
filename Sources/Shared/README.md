@@ -8,8 +8,11 @@ reports to.
 alfresco counts how it is used, so you can see which keywords earn their
 place and what is missing. Everything stays on your Mac, in
 `~/Library/Application Support/Launcher/usage.json` (readable only by your
-user), one bucket per day, kept for 90 days. The menu bar's **Usage…** shows the
-last 30 days and can reveal the file.
+user), one bucket per calendar day, keeping the last 90 days (today
+included). The menu bar's **Usage…** shows the last 30 days and can reveal the
+file. If the file can't be read, or was written by a newer build of alfresco,
+it is moved aside as `usage.unreadable.json` (then `usage.unreadable-2.json`
+and so on, never replacing an earlier one) and counting starts over.
 
 Recorded:
 
@@ -31,7 +34,7 @@ In `Sources/App/Config.swift` (rebuild after a change):
 
 - `usageTracking = false` turns it off (and hides **Usage…**).
 - `usageTrackFallbackWords = false` keeps the counts but drops the fallback words.
-- `usageRetentionDays` (90): how long daily buckets are kept.
+- `usageRetentionDays` (90): how many days of buckets are kept, today included.
 
 ## Code
 

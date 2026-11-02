@@ -280,14 +280,17 @@ final class UsageStats: NSObject {
     /// The oldest day of the last `days` calendar days, today included. Counted
     /// in calendar days, not 24 h steps, so a daylight saving change (a 23 or
     /// 25 hour day) doesn't move it by a day.
-    func firstDayKey(keeping days: Int) -> String {
+    private func firstDayKey(keeping days: Int) -> String {
         let today = calendar.startOfDay(for: now())
         let first = calendar.date(byAdding: .day, value: -(max(1, days) - 1), to: today) ?? today
         return dayKey(for: first)
     }
 
+    #if SELFTEST
     /// The days that have counters, oldest first.
     var dayKeys: [String] { stored.days.keys.sorted() }
+    func firstDayKeyForSelfTest(keeping days: Int) -> String { firstDayKey(keeping: days) }
+    #endif
 
     /// Keeps the last Config.usageRetentionDays days, today included.
     private func prune() {
@@ -334,12 +337,34 @@ final class UsageStats: NSObject {
         } catch CocoaError.fileReadNoSuchFile {
             // First launch: nothing recorded yet.
         } catch {
-            // Unreadable or undecodable: set it aside rather than overwrite it
-            // on the next save, in case it can be recovered by hand.
-            let backup = fileURL.deletingPathExtension().appendingPathExtension("unreadable.json")
-            try? FileManager.default.removeItem(at: backup)
-            try? FileManager.default.moveItem(at: fileURL, to: backup)
-            NSLog("Launcher: unreadable usage stats moved to \(backup.path): \(error)")
+            // Unreadable, undecodable or from a newer build: set it aside
+            // rather than overwrite it on the next save, in case it can be
+            // recovered by hand (or the newer build runs again).
+            if let backup = setAside() {
+                NSLog("Launcher: unreadable usage stats moved to \(backup.path): \(error)")
+            } else {
+                NSLog("Launcher: could not set aside unreadable usage stats: \(error)")
+            }
         }
+    }
+
+    /// Moves the file to usage.unreadable.json, or usage.unreadable-2.json and
+    /// so on when that exists: an earlier backup is never replaced, so
+    /// switching between an older and a newer build loses nothing.
+    private func setAside() -> URL? {
+        let base = fileURL.deletingPathExtension()
+        for number in 1...1000 {
+            let suffix = number == 1 ? "unreadable" : "unreadable-\(number)"
+            let backup = base.appendingPathExtension(suffix).appendingPathExtension("json")
+            do {
+                try FileManager.default.moveItem(at: fileURL, to: backup)
+                return backup
+            } catch CocoaError.fileWriteFileExists {
+                continue
+            } catch {
+                return nil
+            }
+        }
+        return nil
     }
 }

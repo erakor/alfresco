@@ -56,8 +56,14 @@ enum PomodoroTests {
 
     // MARK: Helpers
 
-    private static func makeTimer(_ clock: TestClock, file: URL? = nil) -> PomodoroTimer {
-        PomodoroTimer(fileURL: file ?? SelfTest.scratchFile("pomodoro"), now: { clock.date })
+    /// Each timer gets its own wake notification center, so a wake posted
+    /// for one check never reaches a timer another check left behind.
+    private static func makeTimer(
+        _ clock: TestClock, file: URL? = nil, wakeNotifications: NotificationCenter = NotificationCenter()
+    ) -> PomodoroTimer {
+        PomodoroTimer(
+            fileURL: file ?? SelfTest.scratchFile("pomodoro"), now: { clock.date },
+            wakeNotifications: wakeNotifications)
     }
 
     private static func title(_ seconds: TimeInterval) -> String {
@@ -70,16 +76,30 @@ enum PomodoroTests {
 
     /// Picks a menu item the way a click does.
     private static func perform(_ item: PomodoroStatusItem, _ title: String) {
-        guard let index = item.menu.items.firstIndex(where: { $0.title == title }) else {
+        let menu = item.menuForSelfTest
+        guard let index = menu.items.firstIndex(where: { $0.title == title }) else {
             check("status item: menu has \"\(title)\"", false, "menu is \(item.menuTitles)")
             return
         }
-        item.menu.performActionForItem(at: index)
+        menu.performActionForItem(at: index)
     }
 
     // MARK: Alert
 
     private static func alertResources() {
+        // Set by run-self-tests.sh, so a plain binary mistaken for a bundled
+        // one (or the reverse) fails instead of skipping the other branch.
+        if let expected = ProcessInfo.processInfo.environment["SELFTEST_EXPECT_BUNDLE"] {
+            let bundled = expected == "1"
+            check("run: \(bundled ? "inside" : "outside") an app bundle, as expected",
+                  PomodoroAlert.notificationsAvailable == bundled,
+                  "bundle ID is \(Bundle.main.bundleIdentifier ?? "nil")")
+            if bundled {
+                check("run: the test bundle has its own bundle ID",
+                      Bundle.main.bundleIdentifier == "local.launcher.selftest",
+                      "got \(Bundle.main.bundleIdentifier ?? "nil")")
+            }
+        }
         check("alert: the sound \"\(Config.pomodoroSound)\" exists on this Mac",
               NSSound(named: NSSound.Name(Config.pomodoroSound)) != nil)
         if PomodoroAlert.notificationsAvailable {
@@ -129,7 +149,7 @@ enum PomodoroTests {
         check("status item: title starts at the focus length", item.buttonTitle == title(Config.pomodoroFocus),
               "got \(item.buttonTitle ?? "nil")")
         clock.advance(10)
-        timer.tick()
+        timer.tickForSelfTest()
         check("status item: title counts down", item.buttonTitle == title(Config.pomodoroFocus - 10),
               "got \(item.buttonTitle ?? "nil")")
         check("status item: menu offers Pause, Skip to Break and Stop",
@@ -175,7 +195,7 @@ enum PomodoroTests {
 
         timer.startFocus()
         clock.advance(Config.pomodoroFocus + 1)
-        timer.tick()
+        timer.tickForSelfTest()
         let breakState: PomodoroState = Config.pomodoroAutoStartBreaks
             ? .running(.shortBreak, endsAt: clock.date.addingTimeInterval(Config.pomodoroShortBreak))
             : .paused(.shortBreak, remaining: Config.pomodoroShortBreak)
@@ -189,13 +209,13 @@ enum PomodoroTests {
             check("phase end: focus notification text", note.title == expected.title && note.body == expected.body,
                   "got \"\(note.title)\" / \"\(note.body)\"")
         }
-        timer.tick()
+        timer.tickForSelfTest()
         check("phase end: the next tick doesn't alert again", recorder.sounds.count == 1,
               "sounds \(recorder.sounds)")
 
         if Config.pomodoroAutoStartBreaks {
             clock.advance(Config.pomodoroShortBreak + 1)
-            timer.tick()
+            timer.tickForSelfTest()
             check("phase end: a short break leads to idle", timer.state == .idle, "state is \(timer.state)")
             check("phase end: a short break plays the sound", recorder.sounds.count == 2, "sounds \(recorder.sounds)")
             if notificationsPerAlert > 0 {
@@ -211,7 +231,7 @@ enum PomodoroTests {
         for _ in 0..<Config.pomodoroSessionsBeforeLongBreak {
             timer.startFocus()
             clock.advance(Config.pomodoroFocus + 1)
-            timer.tick()
+            timer.tickForSelfTest()
         }
         check("phase end: focus \(Config.pomodoroSessionsBeforeLongBreak) leads to the long break",
               timer.state.phase == .longBreak, "state is \(timer.state)")
@@ -224,7 +244,7 @@ enum PomodoroTests {
         }
         if Config.pomodoroAutoStartBreaks {
             clock.advance(Config.pomodoroLongBreak + 1)
-            timer.tick()
+            timer.tickForSelfTest()
             check("phase end: the long break leads to idle", timer.state == .idle, "state is \(timer.state)")
             check("phase end: the long break resets the cycle", timer.completedFocusSessions == 0,
                   "count \(timer.completedFocusSessions)")
@@ -259,14 +279,15 @@ enum PomodoroTests {
     private static func wakeFromSleep() {
         recorder.reset()
         let clock = TestClock()
-        let timer = makeTimer(clock)
+        let wake = NotificationCenter()
+        let timer = makeTimer(clock, wakeNotifications: wake)
         let item = PomodoroStatusItem(timer: timer)
         timer.connect(to: item)
 
         // Asleep through the end of the session: waking finishes it at once.
         timer.startFocus()
         clock.advance(Config.pomodoroFocus + 30)
-        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: NSWorkspace.shared)
+        wake.post(name: NSWorkspace.didWakeNotification, object: NSWorkspace.shared)
         check("wake: a session that ended during sleep finishes on wake", timer.state.phase == .shortBreak,
               "state is \(timer.state)")
         if case .running(_, let endsAt) = timer.state {
@@ -276,14 +297,14 @@ enum PomodoroTests {
         check("wake: alerts once", recorder.sounds.count == 1, "sounds \(recorder.sounds)")
         check("wake: posts \(notificationsPerAlert) notification(s)",
               recorder.notifications.count == notificationsPerAlert, "got \(recorder.notifications.count)")
-        timer.tick()
+        timer.tickForSelfTest()
         check("wake: the next tick doesn't alert again", recorder.sounds.count == 1, "sounds \(recorder.sounds)")
 
         // Asleep for part of a session: waking just updates the countdown.
         recorder.reset()
         timer.startFocus()
         clock.advance(60)
-        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: NSWorkspace.shared)
+        wake.post(name: NSWorkspace.didWakeNotification, object: NSWorkspace.shared)
         check("wake: a session with time left keeps running", timer.state == .running(
             .focus, endsAt: clock.date.addingTimeInterval(Config.pomodoroFocus - 60)), "state is \(timer.state)")
         check("wake: the menu bar shows the time left", item.buttonTitle == title(Config.pomodoroFocus - 60),
@@ -294,7 +315,7 @@ enum PomodoroTests {
         timer.pause()
         let paused = timer.state
         clock.advance(Config.pomodoroFocus * 2)
-        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: NSWorkspace.shared)
+        wake.post(name: NSWorkspace.didWakeNotification, object: NSWorkspace.shared)
         check("wake: a paused session stays paused", timer.state == paused, "state is \(timer.state)")
         timer.stop()
     }

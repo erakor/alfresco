@@ -90,15 +90,3 @@ enum PomodoroAlert {
         }
     }
 }
-
-extension PomodoroTimer {
-    /// The app's wiring: the menu bar item follows every change, and a phase
-    /// that runs out by itself plays the alert.
-    func connect(to statusItem: PomodoroStatusItem) {
-        onChange = { [weak statusItem] in statusItem?.update() }
-        onPhaseEnd = { [weak self] phase in
-            guard let self else { return }
-            PomodoroAlert.play(ended: phase, next: self.state)
-        }
-    }
-}
