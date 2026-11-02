@@ -7,7 +7,7 @@ app.
 - Frosted panel, auto-focused input, fade/slide animation.
 - `Esc`, clicking outside, or pressing the hotkey again dismisses it.
 - `⌘X/C/V/A/Z` work in the input even though the app has no menu bar.
-- Keyword suggestions as you type: `p` lists `pr`, `Tab` completes, `↑` `↓` choose.
+- Suggestions as you type, with icons: matching apps and keywords (`p` lists `pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
 
 | Input          | Opens                                                             |
 | -------------- | ----------------------------------------------------------------- |
@@ -82,13 +82,24 @@ picking one opens the launcher with its keyword already typed.
 
 ### Suggestions
 
-While you type a single word, a list under the input shows the workflows whose
-keyword starts with it (`p` shows `pr`), with their title and description.
-`Tab` completes the first row, or the one chosen with `↑` `↓`, adding a space
-when the workflow needs an argument so you can keep typing. `Enter` on a chosen
-row completes it and opens it if it needs nothing more; with no row chosen,
-`Enter` runs what is typed, as before (so `p` alone still searches Google).
-Clicking a row completes it. The list goes away once the word is a whole
+A list under the input shows what you could mean, one row each with an icon,
+a title and a subtitle:
+
+- The installed apps whose name matches (with their path), best match first
+  (see [Apps](#apps)). That first app is highlighted because `Enter` opens it;
+  `⌘↩` searches instead.
+- While you type a single word, the workflows whose keyword starts with it
+  (`p` shows `pr`), with their keyword and description, the ones you run most
+  first. Their icon is the app that opens the URL (your browser for web links).
+
+Up to nine rows show (more keywords scroll). The highlighted row shows `↩`,
+the others `⌘2` to `⌘9`: that shortcut takes the row directly. `↑` `↓` move
+the highlight. `Tab` completes the highlighted row, else the first, adding a
+space when a workflow needs an argument so you can keep typing. `Enter` (or a
+click, or `⌘N`) on a workflow row completes it and opens it if it needs
+nothing more; on an app row it opens the app. With no row highlighted,
+`Enter` runs what is typed, as before (so `p` alone still searches Google
+when no app matches). The workflow rows go away once the word is a whole
 keyword or you type a space.
 
 ## Apps
@@ -101,7 +112,12 @@ forward if it's already running). Press `⌘↩` to search for the text instead.
 - Matching ignores case and accents, and picks, in order: the exact name, a
   name starting with what you typed (`saf`), a word of the name (`code`,
   `studio code` for Visual Studio Code), then the initials (`vsc`). Ties go
-  to the shorter name.
+  to the shorter name, then alphabetical order.
+- The list learns: apps you open often move up, enough to beat a closer name
+  (open Visual Studio Code a few dozen times and `s` puts it above Safari).
+  An app whose name you type in full always comes first. This uses the
+  [usage stats](../Shared/README.md#usage-stats) of the last 90 days, so it
+  stops (and matching goes back to names only) if you turn those off.
 - Both the name Finder shows and the file name count, so system apps match
   in English and in your language (`calculator` and `calculatrice`).
 - Workflow keywords always win: `weather` runs the `weather` workflow, not
@@ -127,6 +143,7 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `LauncherController.swift`: the launcher panel (input, hint line, Enter and
   `⌘↩` handling, routing of `alfresco://` URLs to the app).
 - `Workflows.swift`: the `workflows.json` model, reloading and command parsing.
-- `SuggestionListView.swift`: the keyword suggestion list under the input.
-- `AppIndex.swift`: installed apps and name matching.
+- `SuggestionListView.swift`: the list under the input (apps and keywords,
+  with icons and `⌘1` to `⌘9`).
+- `AppIndex.swift`: installed apps, name matching and ranking by use.
 - `PreviewFetcher.swift`: fetches a workflow's `preview` URL for the hint.

@@ -14,6 +14,9 @@ struct AppEntry: Sendable {
     /// localized name and the file name, which differ for system apps in
     /// other languages ("Calculatrice" / "Calculator").
     let searchNames: [String]
+    /// For ranking by how often it is opened (UsageStats); nil for the rare
+    /// bundle without one.
+    let bundleID: String?
 }
 
 /// Keeps the list of installed apps and finds the best one for some input.
@@ -45,23 +48,46 @@ final class AppIndex {
         }
     }
 
-    /// The app whose name best matches the whole input, or nil. In order:
-    /// the exact name, a name starting with the input, a word of the name
-    /// starting with the input ("code" for "Visual Studio Code"), then the
-    /// initials ("vsc"). Ties go to the shorter name.
-    func bestMatch(for raw: String) -> AppEntry? {
-        guard Config.appSearch else { return nil }
+    /// The apps whose name matches the whole input, best first, at most
+    /// `limit`. Each match has a tier: the exact name, a name starting with
+    /// the input, a word of the name starting with the input ("code" for
+    /// "Visual Studio Code"), then the initials ("vsc"). `openCounts` (bundle
+    /// ID → times opened) lifts an app by up to `maxUsageBoost` tiers, one
+    /// tier per `opensPerTier`-ish opens (logarithmic), so a much-used app can
+    /// beat a closer-matching one; an exact name always comes first. Ties go
+    /// to the shorter name, then alphabetical order.
+    func matches(for raw: String, limit: Int, openCounts: [String: Int] = [:]) -> [AppEntry] {
+        guard Config.appSearch, limit > 0 else { return [] }
         let input = Self.fold(raw.trimmingCharacters(in: .whitespacesAndNewlines))
-        guard !input.isEmpty else { return nil }
+        guard !input.isEmpty else { return [] }
 
-        var best: (rank: Int, length: Int, app: AppEntry)?
-        for app in apps {
-            guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { continue }
-            let length = app.name.count
-            if let current = best, (current.rank, current.length) <= (rank, length) { continue }
-            best = (rank, length, app)
+        let ranked = apps.compactMap { app -> (score: Double, length: Int, name: String, app: AppEntry)? in
+            guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
+            let opens = app.bundleID.flatMap { openCounts[$0] } ?? 0
+            return (Self.score(rank: rank, opens: opens), app.name.count, app.name, app)
         }
-        return best?.app
+        return ranked
+            .sorted { ($0.score, $0.length, $0.name) < ($1.score, $1.length, $1.name) }
+            .prefix(limit)
+            .map(\.app)
+    }
+
+    /// The best of `matches(for:limit:openCounts:)`, or nil.
+    func bestMatch(for raw: String, openCounts: [String: Int] = [:]) -> AppEntry? {
+        matches(for: raw, limit: 1, openCounts: openCounts).first
+    }
+
+    /// Opens worth one tier: about 31 opens lift an app one tier, about
+    /// 1000 two (log2(1 + opens) / 5).
+    private static let opensPerTier = 5.0
+    private static let maxUsageBoost = 2.0
+
+    /// Lower is better.
+    private static func score(rank: Int, opens: Int) -> Double {
+        // An exact name stays first whatever the counts.
+        if rank == 0 { return -maxUsageBoost - 1 }
+        let boost = min(maxUsageBoost, log2(1 + Double(opens)) / opensPerTier)
+        return Double(rank) - boost
     }
 
     private static func rank(_ input: String, in name: String) -> Int? {
@@ -100,7 +126,8 @@ final class AppIndex {
             var display = fileManager.displayName(atPath: url.path)
             if display.lowercased().hasSuffix(".app") { display = String(display.dropLast(4)) }
             let names = Set([fold(display), fold(fileName)])
-            entries.append(AppEntry(url: url, name: display, searchNames: Array(names)))
+            let bundleID = Bundle(url: url)?.bundleIdentifier
+            entries.append(AppEntry(url: url, name: display, searchNames: Array(names), bundleID: bundleID))
         }
 
         func contents(_ folder: URL) -> [URL] {
