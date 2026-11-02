@@ -14,6 +14,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# The job only reads the repo (uploading artifacts needs no token scope), so
+# the token can't push or change anything, whatever the code under test does.
+permissions:
+  contents: read
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true

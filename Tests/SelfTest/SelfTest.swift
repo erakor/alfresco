@@ -79,6 +79,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
         SelfTest.log("Self-test \(suite) (\(mode))")
         switch suite {
         case "unit":
+            SecurityTests.run()
             PomodoroTests.run()
             UsageStatsTests.run()
             ClipboardTests.run()

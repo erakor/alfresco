@@ -262,6 +262,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 enum LauncherApp {
     @MainActor
     static func main() {
+        // Owner-only from the moment anything is created: the clipboard
+        // history, its images, usage.json. Setting 0600 after a save left a
+        // moment where an atomic write's temporary file had the default 0644.
+        umask(0o077)
+
         #if SELFTEST
         // Never returns: runs the suite inside a real NSApplication and exits.
         if let index = CommandLine.arguments.firstIndex(of: "--self-test") {

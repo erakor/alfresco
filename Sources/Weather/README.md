@@ -12,11 +12,20 @@ low and chance of rain or snow. Enter still opens the `weather` workflow's page.
 
 1. Create a free account at weatherapi.com and copy your API key from the
    dashboard.
-2. Save it, alone on the first line, in `~/.config/alfresco/weatherapi-key`:
+2. Save it, alone on the first line, in `~/.config/alfresco/weatherapi-key`.
+   Type or paste it at the prompt (it isn't shown) rather than piping it from
+   the clipboard, so it doesn't stay in the clipboard history:
 
    ```bash
-   mkdir -p ~/.config/alfresco && pbpaste > ~/.config/alfresco/weatherapi-key && chmod 600 ~/.config/alfresco/weatherapi-key
+   mkdir -p ~/.config/alfresco
+   (umask 077; trap 'stty echo' EXIT; trap 'exit 1' INT TERM
+    printf 'WeatherAPI key: '; stty -echo; read -r key; stty echo; echo
+    [ -n "$key" ] && printf '%s\n' "$key" > ~/.config/alfresco/weatherapi-key &&
+      chmod 600 ~/.config/alfresco/weatherapi-key)
    ```
+
+   If you copied the key, select it in the history (`⌘⌥C`) and press `⌘⌫`
+   to delete it there.
 
    Or set `ALFRESCO_WEATHERAPI_KEY` in the launcher's environment. The key is
    read each time the launcher opens, so no restart is needed.

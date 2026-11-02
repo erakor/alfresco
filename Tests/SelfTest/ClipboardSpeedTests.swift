@@ -193,6 +193,34 @@ enum ThumbnailTests {
         _ = loader.image(for: broken)
         check("thumbnails: removeAll forgets failures", !loader.isIdleForSelfTest)
         await waitUntilIdle(loader)
+
+        // The history was cleared: only the files still in it keep anything.
+        loader.removeAll()
+        log.names.removeAll()
+        _ = loader.image(for: wide)
+        _ = loader.image(for: broken)
+        await waitUntilIdle(loader)
+        _ = loader.image(for: tall)
+        await waitUntilIdle(loader)
+        loader.keepOnly([tall.path])
+        check("thumbnails: keepOnly drops the pictures of files left out",
+              loader.cachedImageForSelfTest(wide) == nil && loader.cachedImageForSelfTest(tall) != nil)
+        check("thumbnails: keepOnly drops the failures of files left out", !loader.hasFailed(broken))
+        loader.keepOnly([])
+        check("thumbnails: an emptied history keeps no picture", loader.cachedImageForSelfTest(tall) == nil)
+
+        log.names.removeAll()
+        _ = loader.image(for: wide)
+        _ = loader.image(for: tall)
+        loader.keepOnly([])
+        await waitUntilIdle(loader)
+        check("thumbnails: keepOnly drops a running decode's result and the waiting requests",
+              log.names.isEmpty && loader.cachedImageForSelfTest(wide) == nil
+                  && loader.cachedImageForSelfTest(tall) == nil, "loaded \(log.names)")
+        _ = loader.image(for: wide)
+        check("thumbnails: a file dropped by keepOnly can be asked for again", !loader.isIdleForSelfTest)
+        await waitUntilIdle(loader)
+        check("thumbnails: and is decoded then", loader.cachedImageForSelfTest(wide) != nil, "loaded \(log.names)")
     }
 
     private static func waitUntilIdle(_ loader: ThumbnailLoader) async {

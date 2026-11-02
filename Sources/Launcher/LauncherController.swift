@@ -185,11 +185,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         return inputCanNameApp(input) ? apps.bestMatch(for: input, openCounts: usage.apps) : nil
     }
 
-    /// Whether the input would go to the fallback search, which is the only
-    /// input apps take (never a workflow keyword).
+    /// Whether the input would go to the fallback search (or nowhere, when
+    /// workflows.json's fallback was refused), which is the only input apps
+    /// take (never a workflow keyword).
     private func inputCanNameApp(_ input: String) -> Bool {
         store.current.workflowAwaitingArgument(input) == nil
-            && CommandParser.parse(input, using: store.current)?.isFallback == true
+            && CommandParser.isUnmatched(input, using: store.current)
     }
 
     private func open(_ app: AppEntry) {
@@ -226,6 +227,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             return
         }
         guard let command = CommandParser.parse(textField.stringValue, using: store.current) else {
+            if store.current.fallback == nil, CommandParser.isUnmatched(textField.stringValue, using: store.current) {
+                // workflows.json's fallback was refused: nowhere to send this,
+                // and the hint says why. Never another search instead.
+                NSSound.beep()
+                return
+            }
             hide()
             return
         }
@@ -244,7 +251,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         // On failure the text stays, so didHide counts a close with text
         // typed instead of a launch.
         if opened {
-            UsageStats.shared.recordLaunch(command.source, input: textField.stringValue)
+            UsageStats.shared.recordLaunch(
+                command.source, input: textField.stringValue,
+                keywords: store.current.keywords
+            )
             didLaunch = true
             textField.stringValue = ""
         }
@@ -342,7 +352,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             hintLabel.stringValue = suggestion.workflow.takesArgument ? "↩ \(title)…" : "↩ \(title)"
             hintLabel.toolTip = nil
         } else if let app {
-            hintLabel.stringValue = "↩ Open \(app.name)  ⌘↩ \(store.current.fallback.title)"
+            hintLabel.stringValue = "↩ Open \(app.name)" + (store.current.fallback.map { "  ⌘↩ \($0.title)" } ?? "")
             hintLabel.toolTip = app.url.path
         } else if let workflow = store.current.workflowAwaitingArgument(textField.stringValue) {
             // The keyword is typed but its argument is not: show its help.
@@ -489,8 +499,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private func placeholder() -> String {
         let set = store.current
         let keywords = set.workflows.compactMap(\.keywords.first).prefix(4)
-        guard !keywords.isEmpty else { return set.fallback.title }
-        return "\(set.fallback.title), or type \(keywords.joined(separator: ", "))…"
+        let list = keywords.joined(separator: ", ")
+        guard let search = set.fallback?.title else { return keywords.isEmpty ? "" : "Type \(list)…" }
+        return keywords.isEmpty ? search : "\(search), or type \(list)…"
     }
 
     /// ⌘↩ ignores a matching app and runs the search (or workflow) instead.

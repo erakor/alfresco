@@ -24,13 +24,16 @@ for f in "$workflows" "$config"; do
 done
 grep -q 'static let defaultWorkflowsJSON' "$config" || {
   echo "check.sh: Config.defaultWorkflowsJSON changed; update this script" >&2; exit 2; }
+grep -q '^ *static let workflowURLSchemes: Set<String> = \[.*\]$' "$config" || {
+  echo "check.sh: Config.workflowURLSchemes changed; update this script" >&2; exit 2; }
 
 # The real Config.swift needs Carbon and the app bundle, so only the default
-# workflows JSON is taken from it.
+# workflows JSON and the allowed URL schemes are taken from it.
 {
   echo 'import Foundation'
   echo 'enum Config {'
   echo '    static let workflowsSource: (url: URL, isFallback: Bool) = (URL(fileURLWithPath: "/dev/null"), false)'
+  grep '^ *static let workflowURLSchemes: Set<String> = ' "$config"
   awk '/static let defaultWorkflowsJSON/{on=1} on{print} on && /"""#/{exit}' "$config"
   echo '}'
 } > "$work/config.swift"
@@ -43,7 +46,15 @@ if let error = store.loadError {
     exit(1)
 }
 let set = store.current
-print("OK: \(set.workflows.count) workflows, fallback \"\(set.fallback.title)\"")
+print("OK: \(set.workflows.count) workflows, fallback \(set.fallback.map { "\"\($0.title)\"" } ?? "none (refused)")")
+// Where what is typed goes without a keyword (Enter on anything unmatched)
+// and while typing (previews): worth a look whenever the file changes.
+func host(_ template: String) -> String {
+    URLComponents(string: template.replacingOccurrences(of: "{query}", with: "x"))?.host ?? template
+}
+if let fallback = set.fallback { print("Fallback sends unmatched input to: \(host(fallback.url))") }
+let previewHosts = Set(set.workflows.compactMap { $0.preview.map(host) }).sorted()
+if !previewHosts.isEmpty { print("Previews send typed arguments to: \(previewHosts.joined(separator: ", "))") }
 // A keyword may appear once with {query} and once without; a second use of
 // the same form is unreachable.
 var seen: [String: String] = [:]

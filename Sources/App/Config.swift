@@ -57,6 +57,19 @@ enum Config {
     /// macOS has no clipboard-change notification, so the clipboard's change
     /// counter is checked this often (in seconds). The check itself is cheap.
     static let clipboardPollInterval: TimeInterval = 0.5
+    /// Copies made while one of these apps is in front are not recorded, for
+    /// apps that hold secrets but don't mark them on the clipboard (apps that
+    /// do are skipped anyway, see ClipboardMonitor.ignoredTypes). Bundle IDs,
+    /// e.g. "com.googlecode.iterm2" to keep nothing copied in a terminal.
+    /// Best effort: macOS doesn't say which app made a copy, so this is the
+    /// app in front when the clipboard is next checked (up to
+    /// clipboardPollInterval later). A copy from a menu bar extra or an
+    /// autofill popup, which leaves another app in front, isn't caught, and
+    /// switching apps right after copying can catch the wrong one.
+    static let clipboardIgnoredApps: Set<String> = [
+        "com.apple.keychainaccess",
+        "com.apple.Passwords",
+    ]
 
     /// Where workflows.json is read from, first match wins:
     /// 1. the `ALFRESCO_WORKFLOWS` environment variable;
@@ -81,6 +94,12 @@ enum Config {
         let home = fileManager.homeDirectoryForCurrentUser
         return (home.appendingPathComponent(".config/alfresco/workflows.json"), true)
     }()
+    /// The URL schemes a workflow's `url` may use; workflows.json doesn't load
+    /// with any other. Enter opens the URL, and a file: URL would run a local
+    /// script or app, so an edit to workflows.json alone (a data file, read
+    /// live from the repo) can't do more than open web pages. To use an app's
+    /// own scheme in a workflow, add it here (lowercase) and rebuild.
+    static let workflowURLSchemes: Set<String> = ["alfresco", "http", "https", "mailto"]
 
     // MARK: Apps
 
@@ -110,8 +129,9 @@ enum Config {
     /// Nothing leaves the Mac. false records nothing and hides "Usage…".
     static let usageTracking = true
     /// Also keeps the first word of multi-word inputs that went to the
-    /// fallback (e.g. "jria" from "jria abc-42"), to spot missing or mistyped
-    /// keywords. The rest of the input is never kept.
+    /// fallback when it is a keyword or a typo away from one of 4 letters or
+    /// more (e.g. "jria" from "jria abc-42"), to spot mistyped keywords. Any
+    /// other word, and the rest of the input, is never kept.
     static let usageTrackFallbackWords = true
     /// Days of counters kept.
     static let usageRetentionDays = 90
