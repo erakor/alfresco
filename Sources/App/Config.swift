@@ -1,7 +1,7 @@
 // Config.swift
 //
-// Compile-time settings: hotkeys, menu bar icon, clipboard limits, and where
-// the workflows file is found. Edit and rebuild to change them.
+// Compile-time settings: hotkeys, menu bar icon, clipboard limits, weather,
+// calendar, pomodoro, usage stats, and where the workflows file is found. Edit and rebuild to change them.
 
 import Foundation
 import Carbon.HIToolbox
@@ -154,6 +154,33 @@ enum Config {
             .appendingPathComponent(".config/alfresco/weatherapi-key")
         return clean(try? String(contentsOf: file, encoding: .utf8))
     }
+
+    // MARK: Calendar
+
+    /// `cal` in the launcher lists upcoming events from the calendars macOS
+    /// Calendar knows (add a Google account in System Settings > Internet
+    /// Accounts), `cal <text>` searches them. Needs build/Launcher.app and the
+    /// Calendars permission. Enter still opens whatever workflows.json maps
+    /// the keyword to.
+    static let calendarKeyword = "cal"
+    /// Days listed by the bare keyword, today included.
+    static let calendarDays = 3
+    /// Days searched by `cal <text>`, today included.
+    static let calendarSearchDays = 30
+    /// Events listed at most by `cal <text>`; the rest are counted on a last
+    /// line. (`cal` shows the next event, then up to 4 per column.)
+    static let calendarMaxEvents = 8
+    /// Account names (System Settings > Internet Accounts, e.g. a Gmail
+    /// address) whose calendars are listed. Empty lists every account.
+    static let calendarAccounts: [String] = []
+    /// Calendar names left out, e.g. ["Jours fériés en France"].
+    static let calendarExcluded: [String] = []
+    static let calendarHidesBirthdays = true
+    /// Leaves out events you declined.
+    static let calendarHidesDeclined = true
+    /// Events are read again after this long; a change in a calendar
+    /// (EKEventStoreChanged) refreshes them at once anyway.
+    static let calendarCacheLifetime: TimeInterval = 5 * 60
 
     // MARK: Pomodoro
 

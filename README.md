@@ -2,7 +2,8 @@
 
 A small, Spotlight-style URL launcher for macOS. Press a global hotkey,
 type a command, hit Enter, and the URL opens in your default browser. Type an
-app's name instead and it opens the app. It also keeps a 24-hour clipboard
+app's name instead and it opens the app. Type `cal` to see your upcoming
+events (Google calendars included). It also keeps a 24-hour clipboard
 history on a second hotkey, and runs a pomodoro timer you start from the
 launcher.
 
@@ -19,6 +20,8 @@ launcher.
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
 | `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
 | `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
+| `cal`          | `https://calendar.google.com/calendar/r`; the launcher lists your next [events](Sources/Calendar/README.md) |
+| `cal standup`  | Google Calendar's search for `standup`; the launcher lists the matching events |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | `pomo`         | Starts a 25 min [pomodoro](Sources/Pomodoro/README.md), or pauses / resumes it (nothing opens) |
 | anything else  | `https://www.google.com/search?q=...`                             |
@@ -31,6 +34,7 @@ Each feature has its own README, next to its code in `Sources/`:
 | ------- | ------------ |
 | [Launcher](Sources/Launcher/README.md) | The `⌘⇧Space` bar: workflows (`workflows.json`, its format and where it is read from), keyword suggestions, and opening apps by name. |
 | [Weather](Sources/Weather/README.md) | The forecast under the input for `weather` / `weather <place>`, and the current weather above it. Needs a free WeatherAPI.com key. |
+| [Calendar](Sources/Calendar/README.md) | Your upcoming events under the input for `cal`, and a search with `cal <text>`, read from macOS Calendar (Google accounts included). Needs `build/Launcher.app`. |
 | [Pomodoro](Sources/Pomodoro/README.md) | A focus / break timer started with `pomo`, counting down in the menu bar. |
 | [Clipboard history](Sources/Clipboard/README.md) | 24 hours of copied text, images and files on `⌘⌥C`, pasted back into the app you were using. |
 | [Shared](Sources/Shared/README.md) | Local usage stats (menu bar **Usage…**), plus the hotkeys and the panel the features share. |

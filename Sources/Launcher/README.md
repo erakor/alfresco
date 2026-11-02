@@ -16,6 +16,8 @@ app.
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
 | `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
 | `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
+| `cal`          | `https://calendar.google.com/calendar/r`; the launcher lists your next [events](../Calendar/README.md) |
+| `cal standup`  | Google Calendar's search for `standup`; the launcher lists the matching events |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | `pomo`         | Starts a 25 min [pomodoro](../Pomodoro/README.md), or pauses / resumes it (nothing opens) |
 | anything else  | `https://www.google.com/search?q=...`                             |

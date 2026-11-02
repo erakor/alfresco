@@ -29,6 +29,7 @@ Recorded:
   keyword (letters, digits, `-`, `_`, up to 20 characters): `jria abc-42` keeps
   `jria`, a mistyped `jira`. The rest of the input is never kept.
 - Previews and weather: answers received and failures, by kind of error.
+- Calendar: how often the event list is shown, never what it lists.
 - Clipboard: copies by kind, copies and restores per app (by bundle ID), and
   skipped copies by reason. Never any content or file path.
 
@@ -57,3 +58,8 @@ In `Sources/App/Config.swift` (rebuild after a change):
   [launcher](../Launcher/README.md) and the
   [clipboard history](../Clipboard/README.md) are built on (positioning on the
   screen under the mouse, fade in/out, dismissal on Esc, click-away or hotkey).
+- `StatusRow.swift`: the loading / error line (spinner or icon, then text)
+  that the [weather](../Weather/README.md) and
+  [calendar](../Calendar/README.md) areas show under the input.
+- `KeywordInput.swift`: reads input as `<keyword> [argument]`, for the
+  features that own a keyword.

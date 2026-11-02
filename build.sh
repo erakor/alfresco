@@ -55,6 +55,10 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <string>12.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Typing "cal" in the launcher lists your upcoming events.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Typing "cal" in the launcher lists your upcoming events.</string>
 </dict>
 </plist>
 PLIST

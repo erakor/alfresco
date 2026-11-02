@@ -48,14 +48,10 @@ final class WeatherProvider {
     /// nil for anything else, and always nil without an API key, so the
     /// launcher then behaves as if this feature did not exist.
     func query(for input: String) -> WeatherQuery? {
-        guard apiKey != nil else { return nil }
-        let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parts = input.split(maxSplits: 1, whereSeparator: \.isWhitespace)
-        guard let keyword = parts.first, keyword.lowercased() == Config.weatherKeyword else { return nil }
-        if parts.count == 2 {
-            let place = parts[1].trimmingCharacters(in: .whitespaces)
-            if !place.isEmpty { return .place(place.lowercased()) }
+        guard apiKey != nil, let parsed = KeywordInput(input), parsed.keyword == Config.weatherKeyword else {
+            return nil
         }
+        if let place = parsed.argument { return .place(place.lowercased()) }
         return homeQuery()
     }
 

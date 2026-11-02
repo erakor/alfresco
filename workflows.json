@@ -35,6 +35,18 @@
       "preview": "https://wttr.in/{query}?format=%25l:+%25c+%25t+%25w&lang=fr&m"
     },
     {
+      "keywords": ["cal"],
+      "title": "Google Calendar",
+      "description": "Upcoming events, Enter opens Google Calendar",
+      "url": "https://calendar.google.com/calendar/r"
+    },
+    {
+      "keywords": ["cal"],
+      "title": "Search Google Calendar",
+      "description": "Find events, e.g. cal standup",
+      "url": "https://calendar.google.com/calendar/r/search?q={query}"
+    },
+    {
       "keywords": ["pomo"],
       "title": "Pomodoro",
       "description": "Start a focus session, or pause / resume the running one",
