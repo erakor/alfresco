@@ -91,8 +91,8 @@ private struct StoredUsage: Codable {
 
     init() {}
 
-    /// Another version (written by a newer build) is refused, so load()
-    /// sets the file aside instead of a later save overwriting it.
+    /// Another version is refused: load() leaves a newer build's file where
+    /// it is and doesn't save over it (see StoredUsageVersion).
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         version = try container.decode(Int.self, forKey: .version)
@@ -105,6 +105,12 @@ private struct StoredUsage: Codable {
     }
 }
 
+/// Just the version of usage.json, to tell a newer build's file from a
+/// damaged one when StoredUsage refuses it.
+private struct StoredUsageVersion: Decodable {
+    var version: Int
+}
+
 @MainActor
 final class UsageStats: NSObject {
     static let shared = UsageStats()
@@ -115,8 +121,9 @@ final class UsageStats: NSObject {
     private let calendar: Calendar
     private var stored = StoredUsage()
     private var saveTimer: Timer?
-    /// False when an unreadable usage.json couldn't be set aside: saving
-    /// would overwrite it, so nothing is saved until the next launch.
+    /// False when usage.json is from a newer build, or is unreadable and
+    /// couldn't be set aside: saving would overwrite it, so nothing is saved
+    /// until the next launch.
     private var canSave = true
     /// Key of the newest bucket, so old days are pruned once a day.
     private var lastDayKey: String?
@@ -133,7 +140,9 @@ final class UsageStats: NSObject {
                   now: { Date() }, calendar: .autoupdatingCurrent)
     }
 
-    init(fileURL: URL, now: @escaping @MainActor () -> Date, calendar: Calendar) {
+    /// Private, so `shared` is the only instance on usage.json: two would
+    /// overwrite each other's counts. The self-test uses makeForSelfTest.
+    private init(fileURL: URL, now: @escaping @MainActor () -> Date, calendar: Calendar) {
         self.fileURL = fileURL
         self.now = now
         self.calendar = calendar
@@ -333,6 +342,10 @@ final class UsageStats: NSObject {
     }
 
     #if SELFTEST
+    static func makeForSelfTest(fileURL: URL, now: @escaping @MainActor () -> Date, calendar: Calendar) -> UsageStats {
+        UsageStats(fileURL: fileURL, now: now, calendar: calendar)
+    }
+
     /// The days that have counters, oldest first.
     var dayKeys: [String] { stored.days.keys.sorted() }
     func firstDayKeyForSelfTest(keeping days: Int) -> String { firstDayKey(keeping: days) }
@@ -347,7 +360,7 @@ final class UsageStats: NSObject {
     }
 
     private func scheduleSave() {
-        guard saveTimer == nil else { return }
+        guard canSave, saveTimer == nil else { return }
         let timer = Timer(timeInterval: 5, target: self, selector: #selector(saveTimerFired), userInfo: nil, repeats: false)
         timer.tolerance = 2
         RunLoop.main.add(timer, forMode: .common)
@@ -361,11 +374,6 @@ final class UsageStats: NSObject {
     /// Writes any pending change; called on quit.
     func saveNow() {
         guard saveTimer != nil else { return }
-        guard canSave else {
-            saveTimer?.invalidate()
-            saveTimer = nil
-            return
-        }
         saveTimer?.invalidate()
         saveTimer = nil
 
@@ -382,46 +390,39 @@ final class UsageStats: NSObject {
     }
 
     private func load() {
+        let data: Data
         do {
-            let data = try Data(contentsOf: fileURL)
-            stored = try JSONDecoder().decode(StoredUsage.self, from: data)
+            data = try Data(contentsOf: fileURL)
         } catch CocoaError.fileReadNoSuchFile {
-            // First launch: nothing recorded yet.
+            return  // First launch: nothing recorded yet.
         } catch {
-            // Unreadable, undecodable or from a newer build: set it aside
-            // rather than overwrite it on the next save, in case it can be
-            // recovered by hand (or the newer build runs again).
-            if let backup = setAside() {
-                NSLog("Launcher: unreadable usage stats moved to \(backup.path): \(error)")
-            } else {
+            setAside(error)
+            return
+        }
+        do {
+            stored = try JSONDecoder().decode(StoredUsage.self, from: data)
+        } catch {
+            if let version = try? JSONDecoder().decode(StoredUsageVersion.self, from: data).version,
+               version > StoredUsage.currentVersion {
+                // A newer build's file: left where it is, so that build keeps
+                // its counts when it runs again. This run saves nothing.
                 canSave = false
-                NSLog("Launcher: could not set aside unreadable usage stats, so they won't be saved this run: \(error)")
+                NSLog("Launcher: usage.json is version \(version), from a newer build; usage stats won't be saved this run")
+            } else {
+                setAside(error)
             }
         }
     }
 
-    /// Set-aside files kept at most. With all of them taken, usage.json stays
-    /// where it is and this run saves nothing (see canSave).
-    static let maxSetAsideFiles = 100
-
-    /// Moves the file to usage.unreadable.json, or usage.unreadable-2.json and
-    /// so on when that exists: an earlier backup is never replaced, so
-    /// switching between an older and a newer build loses nothing. nil when
-    /// every name up to maxSetAsideFiles is taken or the move fails.
-    private func setAside() -> URL? {
-        let base = fileURL.deletingPathExtension()
-        for number in 1...Self.maxSetAsideFiles {
-            let suffix = number == 1 ? "unreadable" : "unreadable-\(number)"
-            let backup = base.appendingPathExtension(suffix).appendingPathExtension("json")
-            do {
-                try FileManager.default.moveItem(at: fileURL, to: backup)
-                return backup
-            } catch CocoaError.fileWriteFileExists {
-                continue
-            } catch {
-                return nil
-            }
+    /// Moves an unreadable usage.json out of the way rather than overwrite it
+    /// on the next save, in case it can be recovered by hand. If it can't be
+    /// moved, nothing is saved this run.
+    private func setAside(_ error: Error) {
+        if let backup = SetAsideFile.move(fileURL) {
+            NSLog("Launcher: unreadable usage stats moved to \(backup.path): \(error)")
+        } else {
+            canSave = false
+            NSLog("Launcher: could not set aside unreadable usage stats, so they won't be saved this run: \(error)")
         }
-        return nil
     }
 }

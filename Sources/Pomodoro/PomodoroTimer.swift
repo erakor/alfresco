@@ -235,15 +235,33 @@ final class PomodoroTimer: NSObject {
         }
     }
 
-    /// A phase that ran out during sleep ends (with its alert) right away.
-    /// Otherwise the ticker is restarted on purpose: the old one would catch
-    /// up by itself, but its ticks no longer line up with whole seconds of
-    /// the countdown, so the menu bar title would change mid-second. (A phase
-    /// change has already restarted it.)
+    /// A phase that ran out during sleep ends right away, with its alert. If
+    /// it ran out long ago (more than `lateWakeLimit`), it ends quietly and
+    /// the next phase waits paused, as after a relaunch: an hours-old alert,
+    /// or a break started unseen, helps no one. The ticker is restarted so
+    /// its ticks line up with the countdown again.
     @objc private func systemDidWake() {
-        let before = state
-        tick()
-        if state == before { updateTicker() }
+        if case .running(let phase, let endsAt) = state,
+           now().timeIntervalSince(endsAt) > lateWakeLimit(for: phase) {
+            finish(phase, alert: false, autoStart: false)
+        } else {
+            tick()
+        }
+        updateTicker()
+    }
+
+    /// How long after its end a phase still gets its alert on wake: the
+    /// length of the break that follows a focus session, or of the break
+    /// itself. Past that, the break would already be over.
+    private func lateWakeLimit(for phase: PomodoroPhase) -> TimeInterval {
+        switch phase {
+        case .focus:
+            let next: PomodoroPhase = completedFocusSessions + 1 >= Config.pomodoroSessionsBeforeLongBreak
+                ? .longBreak : .shortBreak
+            return next.duration
+        case .shortBreak, .longBreak:
+            return phase.duration
+        }
     }
 
     #if SELFTEST
@@ -286,9 +304,14 @@ final class PomodoroTimer: NSObject {
         completedFocusSessions = min(max(0, stored.completedFocusSessions), Config.pomodoroSessionsBeforeLongBreak)
 
         switch (stored.phase, stored.endsAt, stored.remaining) {
-        case (let phase?, let endsAt?, nil) where endsAt.timeIntervalSince(now()) <= longest:
+        case (let phase?, let endsAt?, nil):
+            let left = endsAt.timeIntervalSince(now())
+            guard left <= longest else {
+                state = .idle
+                break
+            }
             state = .running(phase, endsAt: endsAt)
-            if endsAt.timeIntervalSince(now()) <= 0 {
+            if left <= 0 {
                 finish(phase, alert: false, autoStart: false)
             }
         case (let phase?, nil, let remaining?) where remaining > 0 && remaining <= longest:

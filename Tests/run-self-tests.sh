@@ -18,14 +18,14 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 OUT_DIR="${OUT_DIR:-build/self-test}"
-# It is deleted first, so only a folder inside build/ is accepted.
-case "$OUT_DIR" in
-  build/?*) ;;
-  *) echo "run-self-tests.sh: OUT_DIR must be a folder inside build/ (got '$OUT_DIR')" >&2; exit 2 ;;
-esac
-case "/$OUT_DIR/" in
-  */../*) echo "run-self-tests.sh: OUT_DIR must not contain '..'" >&2; exit 2 ;;
-esac
+# It is deleted first, so only a folder strictly inside build/ is accepted:
+# plain names separated by single slashes, no ".", ".." or empty parts (so
+# not "build//" or "build/.", which would delete build/ itself).
+OUT_DIR="${OUT_DIR%/}"
+if ! [[ "$OUT_DIR" =~ ^build(/[A-Za-z0-9_][A-Za-z0-9._-]*)+$ ]]; then
+  echo "run-self-tests.sh: OUT_DIR must be a folder inside build/, like build/self-test (got '$OUT_DIR')" >&2
+  exit 2
+fi
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"

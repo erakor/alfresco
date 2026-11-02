@@ -317,6 +317,27 @@ enum PomodoroTests {
         clock.advance(Config.pomodoroFocus * 2)
         wake.post(name: NSWorkspace.didWakeNotification, object: NSWorkspace.shared)
         check("wake: a paused session stays paused", timer.state == paused, "state is \(timer.state)")
+
+        // Asleep long past the end (overnight): no stale alert, and the break
+        // waits paused instead of starting unseen, as after a relaunch.
+        timer.stop()
+        recorder.reset()
+        timer.startFocus()
+        clock.advance(Config.pomodoroFocus + Config.pomodoroShortBreak + 60)
+        wake.post(name: NSWorkspace.didWakeNotification, object: NSWorkspace.shared)
+        check("late wake: the focus session ends quietly", recorder.sounds.isEmpty && recorder.notifications.isEmpty,
+              "sounds \(recorder.sounds)")
+        check("late wake: the break waits paused", timer.state == .paused(.shortBreak, remaining: Config.pomodoroShortBreak),
+              "state is \(timer.state)")
+        check("late wake: the focus session still counts", timer.completedFocusSessions == 1,
+              "count \(timer.completedFocusSessions)")
+
+        // A break slept through entirely ends quietly too.
+        timer.resume()
+        clock.advance(Config.pomodoroShortBreak * 2 + 60)
+        wake.post(name: NSWorkspace.didWakeNotification, object: NSWorkspace.shared)
+        check("late wake: a break slept through ends quietly", timer.state == .idle && recorder.sounds.isEmpty,
+              "state is \(timer.state), sounds \(recorder.sounds)")
         timer.stop()
     }
 

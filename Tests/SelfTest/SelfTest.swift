@@ -81,6 +81,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
         case "unit":
             PomodoroTests.run()
             UsageStatsTests.run()
+            ClipboardTests.run()
         case "relaunch-write":
             PomodoroTests.relaunchWrite()
         case "relaunch-read":

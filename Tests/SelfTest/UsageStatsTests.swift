@@ -1,8 +1,9 @@
 // UsageStatsTests.swift
 //
-// usage.json: files from another version are set aside rather than
-// overwritten, and the day cutoffs count calendar days, so daylight saving
-// changes don't move them and exactly Config.usageRetentionDays days are kept.
+// usage.json: a newer build's file is left alone, a damaged one is set
+// aside rather than overwritten, and the day cutoffs count calendar days, so
+// daylight saving changes don't move them and exactly
+// Config.usageRetentionDays days are kept.
 
 import Foundation
 
@@ -28,7 +29,7 @@ enum UsageStatsTests {
     }
 
     private static func makeStats(_ clock: UsageClock, file: URL? = nil) -> UsageStats {
-        UsageStats(fileURL: file ?? SelfTest.scratchFile("usage"), now: { clock.date }, calendar: paris)
+        UsageStats.makeForSelfTest(fileURL: file ?? SelfTest.scratchFile("usage"), now: { clock.date }, calendar: paris)
     }
 
     static func run() {
@@ -49,46 +50,54 @@ enum UsageStatsTests {
         let loaded = makeStats(clock, file: current)
         check("usage: a version 1 file loads", loaded.dayKeys == ["2026-01-01"], "days \(loaded.dayKeys)")
 
+        // A newer build's file stays where it is, untouched, so that build
+        // keeps its counts; this run saves nothing over it.
         let newer = SelfTest.scratchFile("usage-v2")
         let newerJSON = Data(#"{"version":2,"days":{},"somethingNew":true}"#.utf8)
         try? newerJSON.write(to: newer)
-        let backup = newer.deletingPathExtension().appendingPathExtension("unreadable.json")
+        let newerBackup = newer.deletingPathExtension().appendingPathExtension("unreadable.json")
         let stats = makeStats(clock, file: newer)
         check("usage: a version 2 file is not loaded", stats.dayKeys.isEmpty, "days \(stats.dayKeys)")
-        check("usage: a version 2 file is set aside as .unreadable.json",
-              (try? Data(contentsOf: backup)) == newerJSON, "at \(backup.path)")
+        check("usage: a version 2 file is left in place, not set aside",
+              !FileManager.default.fileExists(atPath: newerBackup.path))
         stats.record(.launcherOpened)
         stats.saveNow()
-        check("usage: saving afterwards keeps the version 2 file",
-              (try? Data(contentsOf: backup)) == newerJSON)
-        check("usage: and writes a new version 1 file",
-              (try? String(contentsOf: newer, encoding: .utf8))?.contains(#""version" : 1"#) == true)
+        check("usage: saving afterwards doesn't touch the version 2 file", (try? Data(contentsOf: newer)) == newerJSON)
 
-        // The newer build runs again and writes version 2 again: the next
-        // launch of this one keeps both of its files.
-        let newerAgain = Data(#"{"version":2,"days":{},"run":2}"#.utf8)
-        try? newerAgain.write(to: newer)
-        let secondBackup = newer.deletingPathExtension().appendingPathExtension("unreadable-2.json")
-        let again = makeStats(clock, file: newer)
-        check("usage: a second version 2 file is not loaded", again.dayKeys.isEmpty, "days \(again.dayKeys)")
-        check("usage: the first set-aside file is kept", (try? Data(contentsOf: backup)) == newerJSON)
+        // A damaged file is set aside, and a second one doesn't replace the first.
+        let damaged = SelfTest.scratchFile("usage-damaged")
+        let firstDamaged = Data("{not json".utf8)
+        try? firstDamaged.write(to: damaged)
+        let backup = damaged.deletingPathExtension().appendingPathExtension("unreadable.json")
+        let first = makeStats(clock, file: damaged)
+        check("usage: a damaged file is set aside as .unreadable.json",
+              (try? Data(contentsOf: backup)) == firstDamaged, "at \(backup.path)")
+        first.record(.launcherOpened)
+        first.saveNow()
+        check("usage: then a new version 1 file is written",
+              (try? String(contentsOf: damaged, encoding: .utf8))?.contains(#""version" : 1"#) == true)
+        let secondDamaged = Data("{also not json".utf8)
+        try? secondDamaged.write(to: damaged)
+        let secondBackup = damaged.deletingPathExtension().appendingPathExtension("unreadable-2.json")
+        _ = makeStats(clock, file: damaged)
+        check("usage: the first set-aside file is kept", (try? Data(contentsOf: backup)) == firstDamaged)
         check("usage: the second goes to .unreadable-2.json",
-              (try? Data(contentsOf: secondBackup)) == newerAgain, "at \(secondBackup.path)")
+              (try? Data(contentsOf: secondBackup)) == secondDamaged, "at \(secondBackup.path)")
 
-        // Every set-aside name taken: the newer file stays put, and this run
+        // Every set-aside name taken: the damaged file stays put, and this run
         // doesn't save over it.
         let full = SelfTest.scratchFile("usage-full")
         let fullBase = full.deletingPathExtension()
-        for number in 1...UsageStats.maxSetAsideFiles {
+        for number in 1...SetAsideFile.maxFiles {
             let suffix = number == 1 ? "unreadable" : "unreadable-\(number)"
             try? Data("old".utf8).write(to: fullBase.appendingPathExtension(suffix).appendingPathExtension("json"))
         }
-        try? newerJSON.write(to: full)
+        try? firstDamaged.write(to: full)
         let blocked = makeStats(clock, file: full)
         blocked.record(.launcherOpened)
         blocked.saveNow()
-        check("usage: with no set-aside name free, the version 2 file is not overwritten",
-              (try? Data(contentsOf: full)) == newerJSON)
+        check("usage: with no set-aside name free, the damaged file is not overwritten",
+              (try? Data(contentsOf: full)) == firstDamaged)
     }
 
     private static func daylightSaving() {

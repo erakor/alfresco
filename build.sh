@@ -4,12 +4,21 @@
 # The app reads workflows from this repo's workflows.json.
 #
 # Environment (all optional, used by Tests/run-self-tests.sh):
-#   BUILD_DIR     where Launcher.app goes (default: build)
+#   BUILD_DIR     where Launcher.app goes (default: build in the repo)
 #   EXECUTABLE    an already built binary to bundle instead of compiling
 #   BUNDLE_ID     CFBundleIdentifier (default: local.launcher). Give a test
 #                 bundle its own, so LaunchServices and notification
 #                 permission never mistake it for the real app.
 set -euo pipefail
+
+# Relative paths are the caller's, so they are made absolute before the cd.
+absolute() { case "$1" in /*) echo "$1" ;; *) echo "$PWD/$1" ;; esac; }
+[ -n "${BUILD_DIR:-}" ] && BUILD_DIR="$(absolute "$BUILD_DIR")"
+[ -n "${EXECUTABLE:-}" ] && EXECUTABLE="$(absolute "$EXECUTABLE")"
+if [ -n "${EXECUTABLE:-}" ] && [ ! -f "$EXECUTABLE" ]; then
+    echo "build.sh: EXECUTABLE $EXECUTABLE not found" >&2
+    exit 1
+fi
 
 cd "$(dirname "$0")"
 
