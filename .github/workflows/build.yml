@@ -4,8 +4,13 @@
 # AppKit and Carbon only exist on macOS, hence the runner.
 name: Build
 
+# Pushes build only on main: a push to a PR branch is already built by its
+# pull_request run (the branch merged with main), and building it on push
+# as well ran the same job twice. A branch with no PR open can be built by
+# hand (workflow_dispatch).
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
