@@ -1,10 +1,11 @@
 // CalendarProvider.swift
 //
-// Main-actor side of the calendar area: turns launcher input into a
-// CalendarQuery and reads the events macOS Calendar knows about (Google
-// accounts added in System Settings > Internet Accounts included) through
-// EventKit, off the main thread. Needs the Calendars permission, so it only
-// works in build/Launcher.app, whose Info.plist carries the usage description.
+// Main-actor side of the calendar area: answers a CalendarQuery (the
+// launcher builds it from the `cal` workflow's input) with the events macOS
+// Calendar knows about (Google accounts added in System Settings > Internet
+// Accounts included), read through EventKit off the main thread. Needs the
+// Calendars permission, so it only works in build/Launcher.app, whose
+// Info.plist carries the usage description.
 
 import Cocoa
 import EventKit
@@ -66,31 +67,38 @@ private final class EventStoreBox: @unchecked Sendable {
     init(_ store: EKEventStore) { self.store = store }
 }
 
+/// Calendars exist but the Config filters left none of them.
+private struct FilteredOut: Sendable {
+    /// The settings that removed at least one calendar.
+    let settings: [String]
+    /// Account names as Internet Accounts shows them, to fix calendarAccounts.
+    let accounts: [String]
+}
+
 private struct FetchResult: Sendable {
     let events: [CalendarEvent]
     let hasCalendars: Bool
-    /// The account names when calendars exist but the Config filters left
-    /// none of them; nil otherwise.
-    let filteredOutAccounts: [String]?
+    let filteredOut: FilteredOut?
 }
 
 @MainActor
 final class CalendarProvider {
     /// Called when new events arrive or the calendars change.
     var onUpdate: (@MainActor () -> Void)?
-    /// Called once the permission prompt is answered (the launcher closes
-    /// behind it, so it may need to open again).
-    var onAccessAnswered: (@MainActor () -> Void)?
+    /// Called once the permission prompt is answered, with whether access
+    /// was granted (the launcher closes behind it, so it may open again).
+    var onAccessAnswered: (@MainActor (Bool) -> Void)?
 
     private var store: EKEventStore?
     private var storeObserver: NSObjectProtocol?
-    /// Every included event from the start of today over the longest window,
+    /// Every included event from the start of today over `fetchedDays`,
     /// from the last fetch; still shown while a newer one runs.
     private var events: [CalendarEvent] = []
     private var fetchedAt: Date?
-    private var hasFetched = false
+    /// 0 until a fetch finishes.
+    private var fetchedDays = 0
     private var hasCalendars = true
-    private var filteredOutAccounts: [String]?
+    private var filteredOut: FilteredOut?
     private var fetchTask: Task<Void, Never>?
     /// Bumped when the calendars change, so a fetch started before is not
     /// taken as fresh.
@@ -114,17 +122,16 @@ final class CalendarProvider {
         return Bundle.main.object(forInfoDictionaryKey: key) != nil
     }
 
-    /// `cal` → `.upcoming`, `cal <text>` → `.search`, nil for anything else.
-    /// The launcher also checks that a workflow takes the input.
-    func query(for input: String) -> CalendarQuery? {
-        let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parts = input.split(maxSplits: 1, whereSeparator: \.isWhitespace)
-        guard let keyword = parts.first, keyword.lowercased() == Config.calendarKeyword else { return nil }
-        if parts.count == 2 {
-            let text = AppIndex.fold(parts[1].trimmingCharacters(in: .whitespaces))
-            if !text.isEmpty { return .search(text) }
+    /// Whether the permission prompt is up.
+    var isAwaitingAccess: Bool { isRequestingAccess }
+
+    /// Days of events a query needs: `.search` also covers `.upcoming`, so
+    /// going back to `cal` after a search reuses the events.
+    private static func days(for query: CalendarQuery) -> Int {
+        switch query {
+        case .upcoming: return Config.calendarDays
+        case .search: return max(Config.calendarDays, Config.calendarSearchDays)
         }
-        return .upcoming
     }
 
     /// What to show for `query` right now. Asks for access the first time,
@@ -144,14 +151,20 @@ final class CalendarProvider {
             break
         }
 
-        if !isFresh { startFetch() }
-        guard hasFetched else { return .loading("Lecture de l'agenda…") }
+        let needed = Self.days(for: query)
+        if !isFresh || fetchedDays < needed { startFetch(days: needed) }
+        guard fetchedDays >= needed else {
+            return .loading(fetchedDays == 0 ? "Lecture de l'agenda…" : "Recherche dans l'agenda…")
+        }
         guard hasCalendars else {
             return .message("Aucun calendrier : ajoutez votre compte Google dans Réglages Système › Comptes Internet")
         }
-        if let accounts = filteredOutAccounts {
-            let names = accounts.isEmpty ? "" : " (comptes : \(accounts.joined(separator: ", ")))"
-            return .message("Aucun calendrier ne correspond à calendarAccounts / calendarExcluded\(names)")
+        if let filteredOut {
+            var text = "Tous les calendriers sont écartés par \(filteredOut.settings.joined(separator: ", "))"
+            if filteredOut.settings.contains("calendarAccounts"), !filteredOut.accounts.isEmpty {
+                text += " (comptes : \(filteredOut.accounts.joined(separator: ", ")))"
+            }
+            return .message(text)
         }
         let now = Date()
         let today = Calendar.current.startOfDay(for: now)
@@ -175,20 +188,21 @@ final class CalendarProvider {
         return Date().timeIntervalSince(fetchedAt) < Config.calendarCacheLifetime
     }
 
-    /// Reads the events in a detached task (recurring events are expanded
-    /// there, which can take a while), one fetch at a time.
-    private func startFetch() {
+    /// Reads `days` of events in a detached task (recurring events are
+    /// expanded there, which can take a while), one fetch at a time. A wider
+    /// one asked for meanwhile starts on the redraw that follows.
+    private func startFetch(days: Int) {
         guard fetchTask == nil else { return }
         let box = EventStoreBox(eventStore())
         let startedGeneration = generation
         fetchTask = Task { [weak self] in
-            let result = await Task.detached(priority: .userInitiated) { Self.fetch(from: box) }.value
+            let result = await Task.detached(priority: .userInitiated) { Self.fetch(from: box, days: days) }.value
             guard let self else { return }
             self.fetchTask = nil
             self.events = result.events
             self.hasCalendars = result.hasCalendars
-            self.filteredOutAccounts = result.filteredOutAccounts
-            self.hasFetched = true
+            self.filteredOut = result.filteredOut
+            self.fetchedDays = days
             // A change during the fetch leaves it stale: the next state()
             // fetches again.
             self.fetchedAt = startedGeneration == self.generation ? Date() : nil
@@ -196,23 +210,25 @@ final class CalendarProvider {
         }
     }
 
-    nonisolated private static func fetch(from box: EventStoreBox) -> FetchResult {
+    nonisolated private static func fetch(from box: EventStoreBox, days: Int) -> FetchResult {
         let store = box.store
         let allCalendars = store.calendars(for: .event)
-        let calendars = allCalendars.filter { isIncluded($0) }
-        let today = Calendar.current.startOfDay(for: Date())
-        let days = max(Config.calendarDays, Config.calendarSearchDays)
-        // An empty list would mean every calendar to EventKit.
         guard !allCalendars.isEmpty else {
-            return FetchResult(events: [], hasCalendars: false, filteredOutAccounts: nil)
+            return FetchResult(events: [], hasCalendars: false, filteredOut: nil)
         }
+        let reasons = allCalendars.map { exclusion(of: $0) }
+        let calendars = zip(allCalendars, reasons).filter { $0.1 == nil }.map { $0.0 }
+        // An empty list would mean every calendar to EventKit.
         guard !calendars.isEmpty else {
-            // Named as Internet Accounts shows them, to fix calendarAccounts.
+            let settings = Set(reasons.compactMap { $0 }).sorted()
             let accounts = Set(allCalendars.compactMap { $0.source?.title }).sorted()
-            return FetchResult(events: [], hasCalendars: true, filteredOutAccounts: accounts)
+            return FetchResult(
+                events: [], hasCalendars: true, filteredOut: FilteredOut(settings: settings, accounts: accounts)
+            )
         }
+        let today = Calendar.current.startOfDay(for: Date())
         guard let end = Calendar.current.date(byAdding: .day, value: days, to: today) else {
-            return FetchResult(events: [], hasCalendars: true, filteredOutAccounts: nil)
+            return FetchResult(events: [], hasCalendars: true, filteredOut: nil)
         }
         let predicate = store.predicateForEvents(withStart: today, end: end, calendars: calendars)
         let events = store.events(matching: predicate)
@@ -222,18 +238,20 @@ final class CalendarProvider {
                 if lhs.isAllDay != rhs.isAllDay { return lhs.isAllDay }
                 return lhs.title < rhs.title
             }
-        return FetchResult(events: events, hasCalendars: true, filteredOutAccounts: nil)
+        return FetchResult(events: events, hasCalendars: true, filteredOut: nil)
     }
 
-    nonisolated private static func isIncluded(_ calendar: EKCalendar) -> Bool {
-        if Config.calendarHidesBirthdays, calendar.type == .birthday { return false }
+    /// The Config setting that leaves `calendar` out, or nil to list it.
+    nonisolated private static func exclusion(of calendar: EKCalendar) -> String? {
+        if Config.calendarHidesBirthdays, calendar.type == .birthday { return "calendarHidesBirthdays" }
         let title = calendar.title
         if Config.calendarExcluded.contains(where: { $0.caseInsensitiveCompare(title) == .orderedSame }) {
-            return false
+            return "calendarExcluded"
         }
-        guard !Config.calendarAccounts.isEmpty else { return true }
+        guard !Config.calendarAccounts.isEmpty else { return nil }
         let account = calendar.source?.title ?? ""
-        return Config.calendarAccounts.contains { $0.caseInsensitiveCompare(account) == .orderedSame }
+        let listed = Config.calendarAccounts.contains { $0.caseInsensitiveCompare(account) == .orderedSame }
+        return listed ? nil : "calendarAccounts"
     }
 
     nonisolated private static func makeEvent(_ event: EKEvent) -> CalendarEvent? {
@@ -305,19 +323,19 @@ final class CalendarProvider {
     private func requestAccess() {
         guard !isRequestingAccess else { return }
         isRequestingAccess = true
-        Self.askForAccess(eventStore()) { _ in
-            Task { @MainActor in self.accessAnswered() }
+        Self.askForAccess(eventStore()) { granted in
+            Task { @MainActor in self.accessAnswered(granted: granted) }
         }
     }
 
-    private func accessAnswered() {
+    private func accessAnswered(granted: Bool) {
         isRequestingAccess = false
         // A store made before access was granted can stay empty: start over.
         if let storeObserver { NotificationCenter.default.removeObserver(storeObserver) }
         storeObserver = nil
         store = nil
         invalidate()
-        onAccessAnswered?()
+        onAccessAnswered?(granted)
     }
 
     /// Kept out of main-actor code: the completion handler runs on a

@@ -45,3 +45,8 @@ In `Sources/App/Config.swift` (rebuild after a change):
   [launcher](../Launcher/README.md) and the
   [clipboard history](../Clipboard/README.md) are built on (positioning on the
   screen under the mouse, fade in/out, dismissal on Esc, click-away or hotkey).
+- `StatusRow.swift`: the loading / error line (spinner or icon, then text)
+  that the [weather](../Weather/README.md) and
+  [calendar](../Calendar/README.md) areas show under the input.
+- `KeywordInput.swift`: reads input as `<keyword> [argument]`, for the
+  features that own a keyword.

@@ -44,9 +44,16 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private var usage = UsageTotals()
     /// Whether the calendar list was shown since the panel was (usage stats).
     private var didShowCalendar = false
-    /// The last input that showed the calendar, to type again when the
-    /// permission prompt (which closes the launcher) is answered.
-    private var lastCalendarInput: String?
+    /// The input that brought up the calendar permission prompt (which
+    /// closes the launcher), to open again on if access is granted; cleared
+    /// whenever the launcher opens, so a later session is never replaced.
+    private var accessPromptInput: String?
+    /// The next show reopens the launcher for the prompt's answer, which is
+    /// not an opening to count.
+    private var isReopeningForAccess = false
+    /// Height of the weather strip above the input, 0 while hidden; set by
+    /// updateWeather, read by updateHeight.
+    private var stripHeight: CGFloat = 0
     /// Redraws the calendar while it is shown, so countdowns and "en cours"
     /// follow the clock.
     private var calendarTimer: Timer?
@@ -59,11 +66,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
         weather.onUpdate = { [weak self] in self?.updateWeather() }
-        calendar.onUpdate = { [weak self] in
-            self?.updateCalendar()
-            self?.updateHeight()
-        }
-        calendar.onAccessAnswered = { [weak self] in self?.calendarAccessAnswered() }
+        calendar.onUpdate = { [weak self] in self?.updateCalendar() }
+        calendar.onAccessAnswered = { [weak self] in self?.calendarAccessAnswered(granted: $0) }
         apps.onUpdate = { [weak self] in self?.inputDidChange() }
         suggestionList.onPick = { [weak self] in self?.activate($0) }
     }
@@ -77,7 +81,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     override func prepareToShow() {
-        UsageStats.shared.record(.launcherOpened)
+        if !isReopeningForAccess { UsageStats.shared.record(.launcherOpened) }
+        isReopeningForAccess = false
+        accessPromptInput = nil
         didLaunch = false
         didShowCalendar = false
         usage = UsageStats.shared.totals()
@@ -96,7 +102,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     override func didHide() {
-        if !didLaunch {
+        // Closed by the calendar permission prompt, not by the user.
+        if !didLaunch, !calendar.isAwaitingAccess {
             let typed = !textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             UsageStats.shared.record(typed ? .launcherClosedTyped : .launcherClosedEmpty)
         }
@@ -114,8 +121,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private func inputDidChange() {
         updateSuggestions()
         updateHint()
-        updateCalendar()
-        updateWeather()
+        // Both change what is under the input: resize once, after both.
+        updateCalendar(resize: false)
+        updateWeather(resize: false)
+        updateHeight()
     }
 
     /// The installed app the input names, when no workflow keyword claims
@@ -316,7 +325,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// forecast below it (while the input reads `weather [place]`), resizes
     /// the panel to fit (the suggestion list included), and asks for
     /// whatever is missing.
-    private func updateWeather() {
+    private func updateWeather(resize: Bool = true) {
         let homeQuery = Config.weatherStrip ? weather.homeQuery() : nil
         let panelQuery = weather.query(for: textField.stringValue)
 
@@ -324,14 +333,14 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             weatherStrip.show(weather.state(for: homeQuery))
         }
         weatherStrip.isHidden = homeQuery == nil
-        let stripHeight = homeQuery == nil ? 0 : WeatherStripView.height
+        stripHeight = homeQuery == nil ? 0 : WeatherStripView.height
         rowTop?.constant = stripHeight
 
         if let panelQuery {
             weatherView.show(weather.state(for: panelQuery), for: panelQuery)
         }
         weatherView.isHidden = panelQuery == nil
-        updateHeight()
+        if resize { updateHeight() }
 
         // One request at a time: what the input asks for first, then home.
         if let panelQuery, !weather.hasFreshResult(for: panelQuery) {
@@ -343,20 +352,21 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         }
     }
 
-    /// The calendar query for `input`, only while a workflow takes it (the
-    /// `cal` workflows in workflows.json), so Enter does what the hint says:
-    /// without them, `cal` stays a fallback and can open an app.
+    /// The calendar query for `input`: only while it runs a workflow whose
+    /// first keyword is Config.calendarKeyword (the `cal` workflows in
+    /// workflows.json), so Enter does what the list is about. Without one,
+    /// `cal` stays a fallback and can open an app.
     private func calendarQuery(for input: String) -> CalendarQuery? {
-        guard let query = calendar.query(for: input),
-              store.current.workflowAwaitingArgument(input) == nil,
-              CommandParser.parse(input, using: store.current)?.isFallback == false
+        guard case .workflow(let keyword, let withArgument)? = CommandParser.parse(input, using: store.current)?.source,
+              keyword == Config.calendarKeyword
         else { return nil }
-        return query
+        guard withArgument, let text = KeywordInput(input)?.argument else { return .upcoming }
+        return .search(AppIndex.fold(text))
     }
 
-    /// Fills the event list under the input while it reads `cal [text]`.
-    /// The panel is resized by updateHeight, which updateWeather calls.
-    private func updateCalendar() {
+    /// Fills the event list under the input while it reads `cal [text]`,
+    /// then resizes the panel unless the caller does (`resize: false`).
+    private func updateCalendar(resize: Bool = true) {
         let input = textField.stringValue
         let query = calendarQuery(for: input)
         if let query {
@@ -364,23 +374,31 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
                 didShowCalendar = true
                 UsageStats.shared.record(.calendarShown)
             }
-            lastCalendarInput = input
-            calendarView.show(calendar.state(for: query), for: query)
+            let state = calendar.state(for: query)
+            if calendar.isAwaitingAccess { accessPromptInput = input }
+            calendarView.show(state, for: query)
             calendarHeight?.constant = calendarView.preferredHeight
             startCalendarTimer()
         } else {
             stopCalendarTimer()
         }
         calendarView.isHidden = query == nil
+        if resize { updateHeight() }
     }
 
-    /// Clicking the permission prompt closes the launcher, so open it again
-    /// on what was typed.
-    private func calendarAccessAnswered() {
+    /// Clicking the permission prompt closes the launcher. If access was
+    /// granted and the launcher hasn't been opened since, open it again on
+    /// what was typed; otherwise just redraw (the next `cal` shows the
+    /// refusal).
+    private func calendarAccessAnswered(granted: Bool) {
+        let input = accessPromptInput
+        accessPromptInput = nil
         if isShown {
             updateCalendar()
-            updateHeight()
-        } else if let input = lastCalendarInput {
+        } else if granted, let input {
+            // A fade-out still running is cancelled by show() (see
+            // FloatingPanelController.finishHide).
+            isReopeningForAccess = true
             show(prefill: input)
         }
     }
@@ -403,13 +421,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     @objc private func calendarTimerFired() {
         updateCalendar()
-        updateHeight()
     }
 
     /// Sizes the panel for the strip, the input row, and whichever of the
     /// forecast, the event list or the suggestions is shown below it.
     private func updateHeight() {
-        let stripHeight = weatherStrip.isHidden ? 0 : WeatherStripView.height
         let below: CGFloat
         if !weatherView.isHidden {
             below = WeatherView.height

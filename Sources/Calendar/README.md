@@ -6,7 +6,9 @@ knows: your Google calendars once the account is added, plus iCloud, Exchange
 and the rest. Enter still runs the `cal` workflows in `workflows.json`: Google
 Calendar, or its search for the text.
 
-The list shows only while one of those workflows takes what you typed. Since
+The list shows only while what you typed runs a workflow whose first keyword
+is `cal` (`Config.calendarKeyword`), so Enter always opens what the list is
+about. Since
 `cal` is a workflow keyword, it no longer opens the Calendar or Calculator app
 ([workflow keywords win](../Launcher/README.md#apps)): type `calen` or `calc`
 for those. Remove the two `cal` workflows to get `cal` back for apps; the list
@@ -65,7 +67,9 @@ In `Sources/App/Config.swift` (rebuild after a change):
   calendar, `cal` says so and lists the account names it found.
 - `calendarExcluded` (empty): calendars left out by name, e.g. holidays.
 - `calendarHidesBirthdays`, `calendarHidesDeclined` (both `true`).
-- `calendarCacheLifetime` (60 s).
+- `calendarCacheLifetime` (5 min): how long events are reused; a change in a
+  calendar refreshes them at once anyway. `cal` reads `calendarDays` of
+  events, `cal <text>` the wider `calendarSearchDays`.
 
 ## Code
 

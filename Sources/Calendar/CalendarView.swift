@@ -62,7 +62,14 @@ final class CalendarView: NSView {
         fatalError("init(coder:) is not used")
     }
 
+    /// What is on screen, so an unchanged redraw (a keystroke in `cal st…`,
+    /// the launcher's 30 s tick, a fetch with the same events) is skipped.
+    private var shownKey: String?
+
     func show(_ state: CalendarState, for query: CalendarQuery) {
+        let key = Self.renderKey(state, for: query, now: Date())
+        guard key != shownKey else { return }
+        shownKey = key
         for view in stack.arrangedSubviews {
             stack.removeArrangedSubview(view)
             view.removeFromSuperview()
@@ -115,6 +122,28 @@ final class CalendarView: NSView {
         preferredHeight = contentHeight + 2 * Self.padding + 4
     }
 
+    /// Everything the drawing depends on: the state, the query, and the
+    /// minute for the countdowns (not for loading and messages, so the
+    /// spinner keeps turning).
+    private static func renderKey(_ state: CalendarState, for query: CalendarQuery, now: Date) -> String {
+        switch state {
+        case .loading(let text):
+            return "loading|\(text)"
+        case .message(let text):
+            return "message|\(text)"
+        case .loaded(let events, let hiddenCount):
+            let minute = Int(now.timeIntervalSince1970 / 60)
+            let items = events.map { event in
+                let color = event.calendarColor.map { "\($0.red),\($0.green),\($0.blue)" } ?? ""
+                return [
+                    "\(event.start.timeIntervalSince1970)", "\(event.end.timeIntervalSince1970)",
+                    "\(event.isAllDay)", event.title, event.location ?? "", event.calendarName, color,
+                ].joined(separator: "\u{1F}")
+            }
+            return "loaded|\(query)|\(hiddenCount)|\(minute)|" + items.joined(separator: "\u{1E}")
+        }
+    }
+
     // MARK: Formatting
 
     static func clock(_ date: Date) -> String {
@@ -123,6 +152,15 @@ final class CalendarView: NSView {
 
     static func shortDay(_ date: Date) -> String {
         shortDayFormatter.string(from: date)
+    }
+
+    /// "10:00 – 10:30", or "22:00 – dim. 9, 09:00" when it ends on a later
+    /// day.
+    static func cardTimeText(for event: CalendarEvent) -> String {
+        let end = Calendar.current.isDate(event.end, inSameDayAs: event.start)
+            ? clock(event.end)
+            : "\(shortDay(event.end)), \(clock(event.end))"
+        return "\(clock(event.start)) – \(end)"
     }
 
     /// "09:30 – 10:00", "Toute la journée", or "… – 18:00" for an event
@@ -224,10 +262,19 @@ final class CalendarView: NSView {
     }
 
     /// "En cours : Standup, se termine dans 10 min" (or "à 11:30" past the
-    /// hour), plus how many others are under way.
+    /// hour, "mer. 4 à 17:00" on a later day), plus how many others are
+    /// under way.
     private static func ongoingLine(_ event: CalendarEvent, others: Int, now: Date) -> NSView {
         let minutes = Int((event.end.timeIntervalSince(now) / 60).rounded(.up))
-        let ends = minutes < 60 ? "se termine dans \(max(1, minutes)) min" : "se termine à \(clock(event.end))"
+        let ends: String
+        if minutes < 60 {
+            ends = "se termine dans \(max(1, minutes)) min"
+        } else if Calendar.current.isDate(event.end, inSameDayAs: now) {
+            ends = "se termine à \(clock(event.end))"
+        } else {
+            // "se termine mer. 4 à 17:00", not a time that reads as today's.
+            ends = "se termine \(shortDay(event.end)) à \(clock(event.end))"
+        }
         var text = " : \(event.title), \(ends)"
         if others > 0 { text += others == 1 ? " (+ 1 autre)" : " (+ \(others) autres)" }
 
@@ -304,25 +351,14 @@ final class CalendarView: NSView {
         }
     }
 
+    /// The shared StatusRow: a spinner with nil, else that SF Symbol.
     private static func statusRow(symbolName: String?, text: String) -> NSView {
-        let leading: NSView
+        let row = StatusRow(frame: .zero)
         if let symbolName {
-            let icon = NSImageView()
-            icon.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
-            icon.contentTintColor = .secondaryLabelColor
-            leading = icon
+            row.showMessage(text, symbolName: symbolName)
         } else {
-            let spinner = NSProgressIndicator()
-            spinner.style = .spinning
-            spinner.controlSize = .small
-            spinner.startAnimation(nil)
-            leading = spinner
+            row.showLoading(text)
         }
-        let message = Self.label(text, size: 13, color: .secondaryLabelColor)
-        message.toolTip = text
-        let row = NSStackView(views: [leading, message])
-        row.orientation = .horizontal
-        row.spacing = 8
         row.translatesAutoresizingMaskIntoConstraints = false
 
         let container = NSView()
@@ -468,7 +504,7 @@ private final class NextCard: NSView {
         let tag = CalendarView.label("PROCHAIN", size: 10, color: .secondaryLabelColor, weight: .semibold)
         let title = CalendarView.label(event.title, size: 17, color: .labelColor, weight: .semibold)
         let details = [
-            "\(CalendarView.clock(event.start)) – \(CalendarView.clock(event.end))",
+            CalendarView.cardTimeText(for: event),
             event.location ?? "",
             event.calendarName,
         ].filter { !$0.isEmpty }.joined(separator: " · ")

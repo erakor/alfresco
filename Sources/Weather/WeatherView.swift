@@ -29,10 +29,7 @@ final class WeatherView: NSView {
     private var dayItems: [DayItem] = []
 
     // Loading and error
-    private let spinner = NSProgressIndicator()
-    private let statusLabel = NSTextField(labelWithString: "")
-    private let statusIcon = NSImageView()
-    private let statusStack = NSStackView()
+    private let statusStack = StatusRow(frame: .zero)
 
     /// The free plan asks for a link back to WeatherAPI.com.
     private let attribution = NSButton(title: "Powered by WeatherAPI.com", target: nil, action: nil)
@@ -50,21 +47,15 @@ final class WeatherView: NSView {
         switch state {
         case .loading:
             setContentVisible(false)
-            spinner.isHidden = false
-            spinner.startAnimation(nil)
-            statusIcon.isHidden = true
             switch query {
-            case .here: statusLabel.stringValue = "Météo autour de vous…"
-            case .place(let place): statusLabel.stringValue = "Météo pour \(place)…"
+            case .here: statusStack.showLoading("Météo autour de vous…")
+            case .place(let place): statusStack.showLoading("Météo pour \(place)…")
             }
         case .failed(let message):
             setContentVisible(false)
-            spinner.stopAnimation(nil)
-            spinner.isHidden = true
-            statusIcon.isHidden = false
-            statusLabel.stringValue = message
+            statusStack.showMessage(message)
         case .loaded(let forecast):
-            spinner.stopAnimation(nil)
+            statusStack.stopSpinner()
             setContentVisible(true)
             fill(with: forecast)
         }
@@ -211,19 +202,6 @@ final class WeatherView: NSView {
         daysStack.spacing = 12
         dayItems = (0..<Config.weatherDays).map { _ in DayItem(frame: .zero) }
         for item in dayItems { daysStack.addArrangedSubview(item) }
-
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
-        statusIcon.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)
-        statusIcon.contentTintColor = .secondaryLabelColor
-        statusLabel.font = .systemFont(ofSize: 13)
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.lineBreakMode = .byTruncatingTail
-        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        statusStack.setViews([spinner, statusIcon, statusLabel], in: .leading)
-        statusStack.orientation = .horizontal
-        statusStack.spacing = 8
 
         for view in [separator, currentRow, hoursStack, daysSeparator, daysStack, statusStack, attribution] {
             view.translatesAutoresizingMaskIntoConstraints = false

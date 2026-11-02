@@ -178,8 +178,9 @@ enum Config {
     static let calendarHidesBirthdays = true
     /// Leaves out events you declined.
     static let calendarHidesDeclined = true
-    /// Events are read again after this long, or as soon as a calendar changes.
-    static let calendarCacheLifetime: TimeInterval = 60
+    /// Events are read again after this long; a change in a calendar
+    /// (EKEventStoreChanged) refreshes them at once anyway.
+    static let calendarCacheLifetime: TimeInterval = 5 * 60
 
     // MARK: Pomodoro
 
