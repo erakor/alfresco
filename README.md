@@ -111,9 +111,15 @@ a title and a subtitle:
 
 - The installed apps whose name matches (with their path), best match first.
   That first app is highlighted because `Enter` opens it; `⌘↩` searches instead.
+  The list learns: apps you open often move up, enough to beat a closer name
+  (open Visual Studio Code a few dozen times and `s` puts it above Safari).
+  An app whose name you type in full always comes first.
 - While you type a single word, the workflows whose keyword starts with it
-  (`p` shows `pr`), with their keyword and description. Their icon is the app
-  that opens the URL (your browser for web links).
+  (`p` shows `pr`), with their keyword and description, the ones you run most
+  first. Their icon is the app that opens the URL (your browser for web links).
+
+The learning uses the [usage stats](#usage-stats) of the last 90 days, so it
+stops (and the list goes back to plain name matching) if you turn those off.
 
 Up to nine rows show (more keywords scroll). The highlighted row shows `↩`,
 the others `⌘2` to `⌘9`: that shortcut takes the row directly. `↑` `↓` move
@@ -270,8 +276,9 @@ Recorded:
 - Launcher: how often it opens, how often it closes without opening anything
   (and whether something was typed), Enter on a keyword still missing its
   argument, each workflow run (by its first keyword: `pr` or `pr …`, never what
-  you typed after it), how many installed apps were opened (not which), and
-  how often the fallback is used.
+  you typed after it), which installed apps were opened (by bundle ID), and
+  how often the fallback is used. The launcher list uses the app and keyword
+  counts to put what you use most first.
 - The first word of multi-word fallback inputs, lowercased, if it looks like a
   keyword (letters, digits, `-`, `_`, up to 20 characters): `jria abc-42` keeps
   `jria`, a mistyped `jira`. The rest of the input is never kept.

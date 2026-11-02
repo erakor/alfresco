@@ -35,6 +35,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private var pendingPrefill = ""
     /// Whether Enter opened a URL since the panel was shown (usage stats).
     private var didLaunch = false
+    /// How often each app and keyword was used, read when the panel opens,
+    /// to rank the list (and so what Enter opens).
+    private var usage = UsageTotals()
 
     init(store: WorkflowStore, internalURLHandler: @escaping (URL) -> Bool) {
         self.store = store
@@ -58,6 +61,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     override func prepareToShow() {
         UsageStats.shared.record(.launcherOpened)
         didLaunch = false
+        usage = UsageStats.shared.totals()
         store.reloadIfNeeded()
         weather.reloadKey()
         apps.refreshIfStale()
@@ -96,7 +100,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// the input (it would otherwise go to the fallback search).
     private func matchedApp() -> AppEntry? {
         let input = textField.stringValue
-        return inputCanNameApp(input) ? apps.bestMatch(for: input) : nil
+        return inputCanNameApp(input) ? apps.bestMatch(for: input, openCounts: usage.apps) : nil
     }
 
     /// Whether the input would go to the fallback search, which is the only
@@ -109,7 +113,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private func open(_ app: AppEntry) {
         // Counted when asked: opening an app reports failure later.
         AppIndex.open(app)
-        UsageStats.shared.record(.launcherOpenedApp)
+        UsageStats.shared.recordAppOpened(bundleID: app.bundleID)
         didLaunch = true
         textField.stringValue = ""
         hide()
@@ -190,9 +194,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         var items: [LauncherItem] = []
         var highlightFirst = false
         if weather.query(for: input) == nil {
-            let workflows = store.current.suggestions(for: input)
+            let workflows = sortedByUse(store.current.suggestions(for: input), input: input)
             let appLimit = max(1, SuggestionListView.maxVisibleRows - workflows.count)
-            let appMatches = inputCanNameApp(input) ? apps.matches(for: input, limit: appLimit) : []
+            let appMatches = inputCanNameApp(input)
+                ? apps.matches(for: input, limit: appLimit, openCounts: usage.apps) : []
             if let best = appMatches.first {
                 items.append(.app(best))
                 highlightFirst = true
@@ -203,6 +208,26 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         suggestionList.show(items, highlightFirst: highlightFirst)
         suggestionList.isHidden = items.isEmpty
         suggestionListHeight?.constant = suggestionList.preferredHeight
+    }
+
+    /// Keyword suggestions with the one typed in full first (as before),
+    /// then the most run ones; file order breaks ties.
+    private func sortedByUse(_ suggestions: [Suggestion], input: String) -> [Suggestion] {
+        let typed = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        func runs(_ suggestion: Suggestion) -> Int {
+            // Counted under the workflow's first keyword (Command.source).
+            guard let keyword = suggestion.workflow.keywords.first else { return 0 }
+            return usage.keywords[suggestion.workflow.takesArgument ? "\(keyword) …" : keyword] ?? 0
+        }
+        return suggestions.enumerated().sorted { lhs, rhs in
+            let lhsExact = lhs.element.keyword == typed
+            let rhsExact = rhs.element.keyword == typed
+            if lhsExact != rhsExact { return lhsExact }
+            let lhsRuns = runs(lhs.element)
+            let rhsRuns = runs(rhs.element)
+            if lhsRuns != rhsRuns { return lhsRuns > rhsRuns }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
     }
 
     private func updateHint() {
