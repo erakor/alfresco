@@ -79,8 +79,8 @@ final class CalendarView: NSView {
         }
 
         switch state {
-        case .loading:
-            add(Self.statusRow(symbolName: nil, text: "Accès à l'agenda…"), height: Self.statusHeight)
+        case .loading(let text):
+            add(Self.statusRow(symbolName: nil, text: text), height: Self.statusHeight)
         case .message(let text):
             add(Self.statusRow(symbolName: "exclamationmark.triangle", text: text), height: Self.statusHeight)
         case .loaded(let events, let hiddenCount):
@@ -108,8 +108,7 @@ final class CalendarView: NSView {
                 add(EventRow(event: event, day: day, now: now), height: Self.rowHeight)
             }
             if hiddenCount > 0 {
-                let more = hiddenCount == 1 ? "+ 1 autre événement" : "+ \(hiddenCount) autres événements"
-                add(Self.label(more, size: 11, color: .tertiaryLabelColor), height: Self.moreHeight)
+                add(Self.moreLabel(hiddenCount), height: Self.moreHeight)
             }
         }
         // The separator plus a little slack for its own height.
@@ -147,16 +146,20 @@ final class CalendarView: NSView {
     }
 
     private static func header(for day: Date, today: Date) -> NSView {
-        let text = dayTitle(day, today: today)
-        let container = NSView()
-        let title = Self.label(text, size: 11, color: .secondaryLabelColor, weight: .semibold)
-        title.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(title)
-        NSLayoutConstraint.activate([
-            title.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            title.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -4),
-        ])
-        return container
+        header(dayTitle(day, today: today))
+    }
+
+    /// "+ 3 autres événements", for what didn't fit.
+    private static func moreLabel(_ count: Int) -> NSTextField {
+        let text = count == 1 ? "+ 1 autre événement" : "+ \(count) autres événements"
+        return label(text, size: 11, color: .tertiaryLabelColor)
+    }
+
+    /// Title, calendar and place, one per line, for hovering an event.
+    static func tooltip(for event: CalendarEvent) -> String {
+        [event.title, event.calendarName, event.location ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 
     // MARK: Next up first
@@ -208,8 +211,7 @@ final class CalendarView: NSView {
         }
         let hidden = events.count - used.count - leftShown.count - rightShown.count
         if hidden > 0 {
-            let more = hidden == 1 ? "+ 1 autre événement" : "+ \(hidden) autres événements"
-            sections.append((label(more, size: 11, color: .tertiaryLabelColor), moreHeight))
+            sections.append((moreLabel(hidden), moreHeight))
         }
 
         // A gap between sections, with its height, so preferredHeight adds up.
@@ -375,10 +377,7 @@ private final class EventRow: NSView {
     init(event: CalendarEvent, day: Date, now: Date) {
         super.init(frame: .zero)
 
-        let dot = NSView()
-        dot.wantsLayer = true
-        dot.layer?.backgroundColor = event.color.cgColor
-        dot.layer?.cornerRadius = 4
+        let dot = CalendarView.colorDot(event.color)
 
         let time = NSTextField(labelWithString: CalendarView.timeText(for: event, on: day))
         time.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -398,9 +397,7 @@ private final class EventRow: NSView {
         }
         detail.alignment = .right
 
-        toolTip = [event.title, event.calendarName, event.location ?? ""]
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
+        toolTip = CalendarView.tooltip(for: event)
 
         for view in [dot, time, title, detail] {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -409,8 +406,6 @@ private final class EventRow: NSView {
         NSLayoutConstraint.activate([
             dot.leadingAnchor.constraint(equalTo: leadingAnchor),
             dot.centerYAnchor.constraint(equalTo: centerYAnchor),
-            dot.widthAnchor.constraint(equalToConstant: 8),
-            dot.heightAnchor.constraint(equalToConstant: 8),
 
             time.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 10),
             time.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -483,9 +478,7 @@ private final class NextCard: NSView {
         texts.alignment = .leading
         texts.spacing = 1
 
-        toolTip = [event.title, event.calendarName, event.location ?? ""]
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
+        toolTip = CalendarView.tooltip(for: event)
 
         for view in [countdown, texts] {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -526,9 +519,7 @@ private final class CompactRow: NSView {
         time.textColor = .secondaryLabelColor
         let name = [event.title, event.location ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
         let title = CalendarView.label(name, size: 12, color: .labelColor)
-        toolTip = [event.title, event.calendarName, event.location ?? ""]
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
+        toolTip = CalendarView.tooltip(for: event)
 
         for view in [time, title] {
             view.translatesAutoresizingMaskIntoConstraints = false

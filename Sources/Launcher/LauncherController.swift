@@ -44,6 +44,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private var usage = UsageTotals()
     /// Whether the calendar list was shown since the panel was (usage stats).
     private var didShowCalendar = false
+    /// The last input that showed the calendar, to type again when the
+    /// permission prompt (which closes the launcher) is answered.
+    private var lastCalendarInput: String?
+    /// Redraws the calendar while it is shown, so countdowns and "en cours"
+    /// follow the clock.
+    private var calendarTimer: Timer?
+    private static let calendarRefreshInterval: TimeInterval = 30
 
     init(store: WorkflowStore, internalURLHandler: @escaping (URL) -> Bool) {
         self.store = store
@@ -56,6 +63,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             self?.updateCalendar()
             self?.updateHeight()
         }
+        calendar.onAccessAnswered = { [weak self] in self?.calendarAccessAnswered() }
         apps.onUpdate = { [weak self] in self?.inputDidChange() }
         suggestionList.onPick = { [weak self] in self?.activate($0) }
     }
@@ -97,6 +105,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         weather.cancel()
         weatherView.isHidden = true
         calendarView.isHidden = true
+        stopCalendarTimer()
         suggestionList.show([])
         suggestionList.isHidden = true
         suggestionListHeight?.constant = 0
@@ -206,7 +215,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         let input = textField.stringValue
         var items: [LauncherItem] = []
         var highlightFirst = false
-        if weather.query(for: input) == nil, calendar.query(for: input) == nil {
+        if weather.query(for: input) == nil, calendarQuery(for: input) == nil {
             let workflows = sortedByUse(store.current.suggestions(for: input), input: input)
             let appLimit = max(1, SuggestionListView.maxVisibleRows - workflows.count)
             let appMatches = inputCanNameApp(input)
@@ -334,19 +343,67 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         }
     }
 
+    /// The calendar query for `input`, only while a workflow takes it (the
+    /// `cal` workflows in workflows.json), so Enter does what the hint says:
+    /// without them, `cal` stays a fallback and can open an app.
+    private func calendarQuery(for input: String) -> CalendarQuery? {
+        guard let query = calendar.query(for: input),
+              store.current.workflowAwaitingArgument(input) == nil,
+              CommandParser.parse(input, using: store.current)?.isFallback == false
+        else { return nil }
+        return query
+    }
+
     /// Fills the event list under the input while it reads `cal [text]`.
     /// The panel is resized by updateHeight, which updateWeather calls.
     private func updateCalendar() {
-        let query = calendar.query(for: textField.stringValue)
+        let input = textField.stringValue
+        let query = calendarQuery(for: input)
         if let query {
             if !didShowCalendar {
                 didShowCalendar = true
                 UsageStats.shared.record(.calendarShown)
             }
+            lastCalendarInput = input
             calendarView.show(calendar.state(for: query), for: query)
             calendarHeight?.constant = calendarView.preferredHeight
+            startCalendarTimer()
+        } else {
+            stopCalendarTimer()
         }
         calendarView.isHidden = query == nil
+    }
+
+    /// Clicking the permission prompt closes the launcher, so open it again
+    /// on what was typed.
+    private func calendarAccessAnswered() {
+        if isShown {
+            updateCalendar()
+            updateHeight()
+        } else if let input = lastCalendarInput {
+            show(prefill: input)
+        }
+    }
+
+    private func startCalendarTimer() {
+        guard calendarTimer == nil else { return }
+        let timer = Timer(
+            timeInterval: Self.calendarRefreshInterval, target: self,
+            selector: #selector(calendarTimerFired), userInfo: nil, repeats: true
+        )
+        timer.tolerance = 5
+        RunLoop.main.add(timer, forMode: .common)
+        calendarTimer = timer
+    }
+
+    private func stopCalendarTimer() {
+        calendarTimer?.invalidate()
+        calendarTimer = nil
+    }
+
+    @objc private func calendarTimerFired() {
+        updateCalendar()
+        updateHeight()
     }
 
     /// Sizes the panel for the strip, the input row, and whichever of the

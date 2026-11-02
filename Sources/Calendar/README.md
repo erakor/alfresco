@@ -6,6 +6,12 @@ knows: your Google calendars once the account is added, plus iCloud, Exchange
 and the rest. Enter still runs the `cal` workflows in `workflows.json`: Google
 Calendar, or its search for the text.
 
+The list shows only while one of those workflows takes what you typed. Since
+`cal` is a workflow keyword, it no longer opens the Calendar or Calculator app
+([workflow keywords win](../Launcher/README.md#apps)): type `calen` or `calc`
+for those. Remove the two `cal` workflows to get `cal` back for apps; the list
+then stays hidden.
+
 ## Set up
 
 1. System Settings > Internet Accounts > Add Account > Google, sign in, and
@@ -14,8 +20,8 @@ Calendar, or its search for the text.
    can't get the permission, since it has no Info.plist to explain why it
    asks, so `cal` there only says so.
 3. Type `cal`. macOS asks once whether the launcher may access your
-   calendars (the launcher closes behind the prompt); allow it and type `cal`
-   again.
+   calendars. Clicking the prompt closes the launcher; it opens again on
+   `cal` once you have answered.
 
 ## Use
 
@@ -35,6 +41,9 @@ Calendar, or its search for the text.
 - Events are read on your Mac through EventKit: nothing goes over the network
   and there is no Google sign-in in the launcher. They are as fresh as the
   Calendar app's sync, and a change in a calendar refreshes the list at once.
+  They are read in the background, so typing never waits for them.
+- While the list is open, the countdowns and "en cours" follow the clock
+  (redrawn every 30 seconds).
 - Declined events and the Birthdays calendar are left out.
 - `build.sh` signs the app ad hoc, so macOS may ask again after a rebuild, or
   keep refusing: then reset it with `tccutil reset Calendars local.launcher`.
@@ -46,8 +55,9 @@ Calendar, or its search for the text.
 
 In `Sources/App/Config.swift` (rebuild after a change):
 
-- `calendarKeyword` (`"cal"`): the keyword that shows the list. The two `cal`
-  workflows in `workflows.json` only decide what Enter opens.
+- `calendarKeyword` (`"cal"`): the keyword that shows the list, while a
+  workflow in `workflows.json` takes it; those workflows decide what Enter
+  opens.
 - `calendarDays` (3, today included) and `calendarSearchDays` (30).
 - `calendarMaxEvents` (8): results listed by `cal <text>`.
 - `calendarAccounts` (empty, every account): only these accounts, by the name
