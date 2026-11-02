@@ -133,7 +133,7 @@ enum WeatherLoader {
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         let result: (Data, URLResponse)
         do {
-            result = try await URLSession.shared.data(for: request)
+            result = try await HTTPSession.shared.data(for: request)
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         } catch is CancellationError {

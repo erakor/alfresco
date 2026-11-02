@@ -57,7 +57,7 @@ scratch() { mktemp -d "$SCRATCH_ROOT/run.XXXXXX"; }
 # its own bundle ID (never the real app's local.launcher).
 set -e
 BIN="$OUT_DIR/Launcher"
-swiftc -O -parse-as-library -swift-version 6 -D SELFTEST $(find Sources Tests -name '*.swift') -o "$BIN"
+swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.0" -D SELFTEST $(find Sources Tests -name '*.swift') -o "$BIN"
 BUILD_DIR="$OUT_DIR/bundle" EXECUTABLE="$BIN" BUNDLE_ID=local.launcher.selftest ./build.sh > /dev/null
 APP_BIN="$OUT_DIR/bundle/Launcher.app/Contents/MacOS/Launcher"
 set +e

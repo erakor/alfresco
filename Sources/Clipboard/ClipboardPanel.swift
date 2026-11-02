@@ -269,9 +269,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     /// ⌘1 to ⌘9: paste the Nth row of the (filtered) list. ⌘↩: copy the
     /// selected row without pasting.
     override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            .subtracting([.numericPad, .function, .capsLock])
-        guard modifiers == .command else { return false }
+        guard event.shortcutModifiers == .command else { return false }
         let keyCode = Int(event.keyCode)
         if keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter {
             pickSelected(paste: false)

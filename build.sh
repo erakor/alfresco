@@ -31,7 +31,9 @@ mkdir -p "$APP/Contents/MacOS"
 if [ -n "${EXECUTABLE:-}" ]; then
     cp "$EXECUTABLE" "$APP/Contents/MacOS/Launcher"
 else
-    swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o "$APP/Contents/MacOS/Launcher"
+    # The target sets the minimum macOS version; without it swiftc builds for
+    # the running one, whatever LSMinimumSystemVersion says.
+    swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.0" $(find Sources -name '*.swift') -o "$APP/Contents/MacOS/Launcher"
 fi
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
