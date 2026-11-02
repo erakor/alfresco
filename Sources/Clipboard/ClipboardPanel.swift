@@ -144,12 +144,14 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     override var initialFirstResponder: NSResponder? { searchField }
 
     override func prepareToShow() {
+        let signpost = Signposts.signposter.beginInterval("clipboard.open")
         store.expireOldItems()
         pasteTarget = nil
         pendingPaste?.cancel()
         pendingPaste = nil
         searchField.stringValue = ""
         reload(keepingSelection: false)
+        Signposts.signposter.endInterval("clipboard.open", signpost, "items=\(self.store.items.count, privacy: .public)")
     }
 
     override func didHide() {
@@ -189,10 +191,17 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     // MARK: Data
 
     private func reload(keepingSelection: Bool) {
+        let signposter = Signposts.signposter
+        let signpost = signposter.beginInterval("clipboard.reload")
+        defer { signposter.endInterval("clipboard.reload", signpost) }
         let selectedID = keepingSelection ? selectedItem?.id : nil
 
         let query = searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtering = signposter.beginInterval(
+            "clipboard.filter", "items=\(self.store.items.count, privacy: .public) queryLength=\(query.count, privacy: .public)"
+        )
         visibleItems = filter.items(matching: query, in: store.items)
+        signposter.endInterval("clipboard.filter", filtering, "matches=\(self.visibleItems.count, privacy: .public)")
         isReloading = true
         // The rows about to be drawn ask again for what they still need.
         rowThumbnails.cancelPending()
@@ -290,29 +299,40 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     /// Returns false, leaving the clipboard alone, when there's nothing left
     /// to put back.
     private func write(_ content: ClipContent, to pasteboard: NSPasteboard) -> Bool {
+        let signpost = Signposts.signposter.beginInterval("clipboard.restore.write")
+        var written = Signposts.Kind.failed
+        // What was put on the clipboard (the PNG plus any TIFF for an image).
+        var bytes = 0
+        defer { Signposts.end("clipboard.restore.write", signpost, written, bytes: bytes) }
         switch content {
         case .text(let text):
             pasteboard.clearContents()
             pasteboard.setString(text, forType: .string)
+            written = .text
+            bytes = text.utf8.count
 
         case .image(let image):
             guard let png = store.imageData(for: image) else { return false }
             let item = NSPasteboardItem()
             item.setData(png, forType: .png)
+            bytes = png.count
             // Some older apps only read TIFF. It is uncompressed (about 60 MB
             // for a 5K screenshot), so only smaller images get a copy.
             if image.pixelWidth * image.pixelHeight <= 4_000_000,
                let tiff = NSBitmapImageRep(data: png)?.tiffRepresentation {
                 item.setData(tiff, forType: .tiff)
+                bytes += tiff.count
             }
             pasteboard.clearContents()
             pasteboard.writeObjects([item])
+            written = .image
 
         case .files(let paths):
             let urls = paths
                 .filter { FileManager.default.fileExists(atPath: $0) }
                 .map { URL(fileURLWithPath: $0) }
             guard !urls.isEmpty else { return false }
+            written = .files
             // Like Finder: the files, plus their names for pasting as text.
             let items = urls.enumerated().map { index, url -> NSPasteboardItem in
                 let item = NSPasteboardItem()
@@ -473,9 +493,18 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
     private func updatePreview() {
         awaitedPreview = nil
+        let signpost = Signposts.signposter.beginInterval("clipboard.preview")
         guard let item = selectedItem else {
             preview.clear()
+            Signposts.end("clipboard.preview", signpost, .none)
             return
+        }
+        defer {
+            switch item.content {
+            case .text: Signposts.end("clipboard.preview", signpost, .text)
+            case .image: Signposts.end("clipboard.preview", signpost, .image)
+            case .files: Signposts.end("clipboard.preview", signpost, .files)
+            }
         }
 
         var copied = "Copied \(copiedFormatter.string(from: item.copiedAt))"
@@ -627,6 +656,35 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     private static func byteCount(_ bytes: Int) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
+
+    #if SELFTEST
+    /// Puts `text` in the search field as typing it would.
+    func typeForSelfTest(_ text: String) {
+        searchField.stringValue = text
+        controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: searchField))
+    }
+
+    /// Selects a row as ↑ / ↓ would (the preview follows).
+    func selectForSelfTest(row: Int) { select(row: row) }
+
+    var visibleCountForSelfTest: Int { visibleItems.count }
+
+    /// The rows that show image clips.
+    var imageRowsForSelfTest: [Int] {
+        visibleItems.indices.filter {
+            if case .image = visibleItems[$0].content { return true }
+            return false
+        }
+    }
+
+    /// Whether the preview is still waiting for its picture to be decoded.
+    var isAwaitingPreviewForSelfTest: Bool { awaitedPreview != nil }
+
+    /// What picking an item writes, to any pasteboard (not only the system one).
+    func writeForSelfTest(_ content: ClipContent, to pasteboard: NSPasteboard) -> Bool {
+        write(content, to: pasteboard)
+    }
+    #endif
 
     // MARK: Setup
 

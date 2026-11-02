@@ -112,6 +112,23 @@ enum WeatherLoader {
 
     /// One request. Throws WeatherError or CancellationError.
     static func load(_ query: WeatherQuery, key: String) async throws -> Forecast {
+        let signposter = Signposts.signposter
+        let signpost = signposter.beginInterval("weather.load", id: signposter.makeSignpostID())
+        var outcome = Signposts.Kind.failed
+        var bytes = 0
+        defer { Signposts.end("weather.load", signpost, outcome, bytes: bytes) }
+        do {
+            let forecast = try await request(query, key: key, bytes: &bytes)
+            outcome = .ok
+            return forecast
+        } catch is CancellationError {
+            outcome = .cancelled
+            throw CancellationError()
+        }
+    }
+
+    /// `bytes` is set to the size of the answer, once there is one.
+    private static func request(_ query: WeatherQuery, key: String, bytes: inout Int) async throws -> Forecast {
         let q: String
         switch query {
         case .here: q = "auto:ip"
@@ -141,6 +158,7 @@ enum WeatherLoader {
         } catch {
             throw WeatherError.offline
         }
+        bytes = result.0.count
         guard let http = result.1 as? HTTPURLResponse else { throw WeatherError.badResponse }
 
         let decoder = JSONDecoder()

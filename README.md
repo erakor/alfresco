@@ -86,6 +86,64 @@ screenshot of it, or with any vector editor.
 `./Launcher --check workflows.json` checks a workflows file and exits (see
 [Checking the file](Sources/Launcher/README.md#checking-the-file)).
 
+## Measuring performance
+
+The app marks its slow-prone work with signpost intervals (subsystem
+`local.launcher`, the bundle ID; category `performance`; defined in
+`Sources/Shared/Signposts.swift`). They cost next to nothing until something
+records them, and carry only counts, sizes and kinds, never what you typed or
+copied.
+
+| Interval | What it covers |
+| --- | --- |
+| `clipboard.store.init`, `clipboard.load` (`.decode`) | Reading the history at launch |
+| `clipboard.save` (`.encode`, `.write`) | Writing the history, 1 s after each copy |
+| `clipboard.poll` | A clipboard change being read (`kind=`) |
+| `clipboard.image.save` | Converting and storing a copied image (background) |
+| `clipboard.open`, `clipboard.reload`, `clipboard.filter` | Opening the history panel and each keystroke in it |
+| `clipboard.preview`, `thumbnail.decode`, `thumbnail.hit` / `.miss` | The selected item's preview and the picture decodes (background) |
+| `clipboard.restore.write` | Putting an item back on the clipboard |
+| `launcher.input`, `apps.match`, `apps.scan` | Each keystroke in the launcher, app ranking, the app scan (background) |
+| `calendar.fetch`, `calendar.storeChanged` | Reading events (background); each change macOS reports |
+| `weather.load`, `preview.load` | Network requests (`kind=ok`, `failed` or `cancelled`) |
+
+**Without Xcode**, watch them live while you use the app, one line per
+interval with its duration:
+
+```bash
+Tests/signposts.sh                       # every interval
+SIGNPOSTS_MIN_MS=8 Tests/signposts.sh    # only the ones that could cost a frame
+```
+
+It reads `/usr/bin/log stream --signpost --style ndjson` and pairs each begin
+with its end by signpost ID. In zsh, type `/usr/bin/log` in full if you use
+`log` yourself: zsh has a `log` builtin.
+
+**With Xcode** (Instruments), record a trace while you go through what you
+want to measure, then open it:
+
+```bash
+xcrun xctrace record --template 'Time Profiler' --instrument os_signpost \
+  --attach "$(pgrep -f build/Launcher.app/Contents/MacOS/Launcher)" \
+  --time-limit 30s --output launcher.trace
+open launcher.trace
+```
+
+The os_signpost track lists each interval with its duration and metadata; the
+Time Profiler track under it shows what the main thread ran during one (select
+the interval, then read the call tree for that range).
+
+**Repeatable numbers**: `PERF=1 Tests/run-self-tests.sh` adds the perf
+suite, which seeds a 500-item history (short texts, ten 200 KB texts, twenty
+5K screenshots) in a scratch folder and prints the median and p95 of each
+scenario (store load and save, opening and searching the panel, previews,
+restores, launcher keystrokes) to `build/self-test/perf.log`. It fails only if
+its setup does, never on a number. `PERF_RUNS` changes the 20 runs per
+scenario, `PERF_BIG_TEXTS=480` makes the history nearly as large as the limits
+allow, and `PERF_ONLY=<scenario>` runs one scenario so a profiler can be
+attached (see `Tests/SelfTest/PerfTests.swift`). The panels appear on screen
+while it runs; clicking elsewhere closes them, and those runs are left out.
+
 ## Install
 
 ```bash

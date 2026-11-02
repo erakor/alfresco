@@ -211,9 +211,15 @@ enum Config {
         if let key = clean(ProcessInfo.processInfo.environment["ALFRESCO_WEATHERAPI_KEY"]) {
             return key
         }
+        #if SELFTEST
+        // The self-test never uses the real key (a launcher it drives would
+        // fetch the forecast with it).
+        return nil
+        #else
         let file = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".config/alfresco/weatherapi-key")
         return clean(try? String(contentsOf: file, encoding: .utf8))
+        #endif
     }
 
     // MARK: Calendar

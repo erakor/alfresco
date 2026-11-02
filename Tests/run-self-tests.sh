@@ -7,6 +7,11 @@
 #   3. `Launcher --check` on the repo's workflows.json and on broken files
 #   4. a relaunch: one process saves a paused session, a second reads it back
 #   5. a running session held in the menu bar, with a screenshot
+#   6. only with PERF=1: the perf suite, which prints timings (median and
+#      p95) and checks only its setup. Not part of the default run or CI:
+#      its numbers depend on the machine and on what else is running.
+#      PERF_RUNS, PERF_ONLY and PERF_BIG_TEXTS are passed on (see
+#      Tests/SelfTest/PerfTests.swift). Its lines also go to perf.log.
 #
 # Every run uses a fresh scratch folder as ALFRESCO_SUPPORT_DIR, so the real
 # clipboard history and pomodoro state are never touched, and is killed
@@ -36,12 +41,13 @@ status=0
 
 say() { echo "$*" | tee -a "$LOG"; }
 
-# Runs a command with a time limit (macOS has no `timeout`), logging its output.
+# Runs a command with a time limit (macOS has no `timeout`; RUN_LIMIT seconds,
+# 60 by default), logging its output.
 run() {
   local name="$1"; shift
   say ""
   say "== $name"
-  perl -e 'alarm shift; exec @ARGV or die "exec: $!"' 60 "$@" 2>&1 | tee -a "$LOG"
+  perl -e 'alarm shift; exec @ARGV or die "exec: $!"' "${RUN_LIMIT:-60}" "$@" 2>&1 | tee -a "$LOG"
   local code="${PIPESTATUS[0]}"
   if [ "$code" -ne 0 ]; then
     say "FAIL $name: exit status $code"
@@ -142,6 +148,13 @@ tee -a "$LOG" < "$hold_log"
 if [ "$hold_code" -ne 0 ]; then
   say "FAIL menu bar hold: exit status $hold_code"
   status=1
+fi
+
+if [ "${PERF:-0}" = "1" ]; then
+  # The repo's workflows.json, for a realistic keyword list.
+  RUN_LIMIT=900 run "perf (timings only)" env ALFRESCO_SUPPORT_DIR="$(scratch)" ALFRESCO_WORKFLOWS="$PWD/workflows.json" \
+    "$BIN" --self-test perf
+  grep -E '^(PERF |== perf)' "$LOG" > "$OUT_DIR/perf.log"
 fi
 
 passed=$(grep -c '^PASS ' "$LOG")
