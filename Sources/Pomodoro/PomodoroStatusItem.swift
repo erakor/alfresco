@@ -12,13 +12,21 @@ final class PomodoroStatusItem: NSObject {
     private var item: NSStatusItem?
     /// Built once and handed to each new status item: a menu item can only
     /// belong to one menu.
-    private let menu = NSMenu()
+    let menu = NSMenu()
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "Pause", action: nil, keyEquivalent: "")
     private let skipItem = NSMenuItem(title: "Skip", action: nil, keyEquivalent: "")
     private let stopItem = NSMenuItem(title: "Stop", action: nil, keyEquivalent: "")
     /// The phase whose icon the button shows, so it is only set on change.
     private var shownPhase: PomodoroPhase?
+    /// The SF Symbol the button shows.
+    private(set) var symbolName: String?
+
+    // What the menu bar shows, for the self-test.
+    var isShown: Bool { item != nil }
+    var buttonTitle: String? { item?.button?.title }
+    var appearsDisabled: Bool { item?.button?.appearsDisabled ?? false }
+    var menuTitles: [String] { menu.items.map(\.title) }
 
     init(timer: PomodoroTimer) {
         self.timer = timer
@@ -35,6 +43,7 @@ final class PomodoroStatusItem: NSObject {
                 NSStatusBar.system.removeStatusItem(item)
                 self.item = nil
                 shownPhase = nil
+                symbolName = nil
             }
             return
         }
@@ -46,6 +55,7 @@ final class PomodoroStatusItem: NSObject {
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: phase.name)
             button.imagePosition = .imageLeading
             shownPhase = phase
+            symbolName = symbol
         }
         let paused = timer.state.isPaused
         button.title = " " + PomodoroTimer.format(remaining)

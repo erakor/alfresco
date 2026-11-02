@@ -33,11 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     func applicationDidFinishLaunching(_ notification: Notification) {
         let pomodoro = PomodoroTimer()
         let pomodoroStatusItem = PomodoroStatusItem(timer: pomodoro)
-        pomodoro.onChange = { [weak pomodoroStatusItem] in pomodoroStatusItem?.update() }
-        pomodoro.onPhaseEnd = { [weak pomodoro] phase in
-            guard let pomodoro else { return }
-            PomodoroAlert.play(ended: phase, next: pomodoro.state)
-        }
+        pomodoro.connect(to: pomodoroStatusItem)
         self.pomodoro = pomodoro
         self.pomodoroStatusItem = pomodoroStatusItem
 
@@ -156,6 +152,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         return true
     }
 
+    #if SELFTEST
+    /// Lets the self-test check validateMenuItem against its own timer,
+    /// without the rest of applicationDidFinishLaunching.
+    func useForSelfTest(pomodoro: PomodoroTimer) { self.pomodoro = pomodoro }
+    static let startPomodoroAction = #selector(startPomodoro)
+    #endif
+
     // MARK: NSMenuDelegate
 
     /// Rebuilds the Workflows submenu each time it opens, so it always
@@ -231,6 +234,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 enum LauncherApp {
     @MainActor
     static func main() {
+        #if SELFTEST
+        // Never returns: runs the suite inside a real NSApplication and exits.
+        if let index = CommandLine.arguments.firstIndex(of: "--self-test") {
+            let rest = CommandLine.arguments.dropFirst(index + 1)
+            SelfTest.main(suite: rest.first ?? "unit")
+        }
+        #endif
+
         // Two copies (say ./Launcher and build/Launcher.app) would fight over
         // the hotkeys and overwrite each other's clipboard history, so a
         // second copy quits. exit(0) also keeps a LaunchAgent's KeepAlive

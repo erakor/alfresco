@@ -2,15 +2,24 @@
 # Compiles the Swift sources under Sources/ and wraps them in a minimal, ad-hoc signed .app
 # bundle (LSUIElement, so it never shows a Dock icon) at build/Launcher.app.
 # The app reads workflows from this repo's workflows.json.
+#
+# Environment (all optional, used by Tests/run-self-tests.sh):
+#   BUILD_DIR     where Launcher.app goes (default: build)
+#   SOURCE_DIRS   folders whose .swift files are compiled (default: Sources)
+#   SWIFTC_FLAGS  extra swiftc flags, e.g. "-D SELFTEST"
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP="build/Launcher.app"
+BUILD_DIR="${BUILD_DIR:-build}"
+SOURCE_DIRS="${SOURCE_DIRS:-Sources}"
+APP="$BUILD_DIR/Launcher.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 
-swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o "$APP/Contents/MacOS/Launcher"
+# shellcheck disable=SC2086 # word splitting is intended
+swiftc -O -parse-as-library -swift-version 6 ${SWIFTC_FLAGS:-} $(find $SOURCE_DIRS -name '*.swift') \
+    -o "$APP/Contents/MacOS/Launcher"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

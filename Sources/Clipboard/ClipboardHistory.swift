@@ -208,6 +208,12 @@ final class ClipboardStore: NSObject {
     /// ~/Library/Application Support/Launcher. Also holds the lock file that
     /// keeps a second copy of the launcher from running (see LauncherApp).
     static let directory: URL = {
+        #if SELFTEST
+        // The self-test keeps its files out of the real support folder.
+        if let path = ProcessInfo.processInfo.environment["ALFRESCO_SUPPORT_DIR"], !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        #endif
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         return support.appendingPathComponent("Launcher", isDirectory: true)
