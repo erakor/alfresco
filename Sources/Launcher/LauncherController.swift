@@ -7,6 +7,31 @@
 import Carbon.HIToolbox
 import Cocoa
 
+// MARK: - Area under the input
+
+/// A view that takes the area under the input row in place of the
+/// suggestion list: the forecast, the event list. Each one is an entry in
+/// `LauncherController.inputAreas`, which lays them out, hides them with the
+/// panel, empties the suggestion list while one claims the input, and sizes
+/// the panel for the one shown. Its feature still fills it and sets
+/// `view.isHidden`; at most one is shown, since each claims its own keyword.
+@MainActor
+private final class InputArea {
+    let view: NSView
+    /// Its height while shown.
+    let height: () -> CGFloat
+    /// Whether `input` shows it, and so hides the suggestion list.
+    let claims: (String) -> Bool
+    /// Kept at `height()` by updateHeight.
+    var heightConstraint: NSLayoutConstraint?
+
+    init(view: NSView, height: @escaping () -> CGFloat, claims: @escaping (String) -> Bool) {
+        self.view = view
+        self.height = height
+        self.claims = claims
+    }
+}
+
 // MARK: - Launcher window
 
 @MainActor
@@ -32,7 +57,20 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let rowGuide = NSLayoutGuide()
     private var rowTop: NSLayoutConstraint?
     private var suggestionListHeight: NSLayoutConstraint?
-    private var calendarHeight: NSLayoutConstraint?
+    /// What can take the area under the input (see InputArea). A new one
+    /// goes here, and its feature shows it and fills it.
+    private lazy var inputAreas: [InputArea] = [
+        InputArea(
+            view: weatherView,
+            height: { WeatherView.height },
+            claims: { [unowned self] in self.weather.query(for: $0) != nil }
+        ),
+        InputArea(
+            view: calendarView,
+            height: { [unowned self] in self.calendarView.preferredHeight },
+            claims: { [unowned self] in self.calendarQuery(for: $0) != nil }
+        ),
+    ]
     /// Height of the input row, which is the whole panel without the weather.
     private static let rowHeight: CGFloat = 60
     /// Text to start with on the next show(prefill:).
@@ -110,8 +148,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         textField.stringValue = ""
         previews.cancel()
         weather.cancel()
-        weatherView.isHidden = true
-        calendarView.isHidden = true
+        for area in inputAreas { area.view.isHidden = true }
         stopCalendarTimer()
         suggestionList.show([])
         suggestionList.isHidden = true
@@ -232,13 +269,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// Fills the list under the input: the best matching app first (it is
     /// what Enter opens, so it starts highlighted), then the keywords that
     /// start with what is typed, then the other matching apps, up to nine
-    /// rows unless there are more keywords. The forecast or the calendar
-    /// takes that space while it is shown.
+    /// rows unless there are more keywords. Empty while an InputArea claims
+    /// the input (it takes that space).
     private func updateSuggestions() {
         let input = textField.stringValue
         var items: [LauncherItem] = []
         var highlightFirst = false
-        if weather.query(for: input) == nil, calendarQuery(for: input) == nil {
+        if !inputAreas.contains(where: { $0.claims(input) }) {
             let workflows = sortedByUse(store.current.suggestions(for: input), input: input)
             let appLimit = max(1, SuggestionListView.maxVisibleRows - workflows.count)
             let appMatches = inputCanNameApp(input)
@@ -391,7 +428,6 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             let state = calendar.state(for: query)
             if calendar.isAwaitingAccess { accessPromptInput = input }
             calendarView.show(state, for: query)
-            calendarHeight?.constant = calendarView.preferredHeight
             startCalendarTimer()
         } else {
             stopCalendarTimer()
@@ -437,14 +473,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateCalendar()
     }
 
-    /// Sizes the panel for the strip, the input row, and whichever of the
-    /// forecast, the event list or the suggestions is shown below it.
+    /// Sizes the panel for the strip, the input row, and the InputArea
+    /// shown below it, else the suggestion list.
     private func updateHeight() {
         let below: CGFloat
-        if !weatherView.isHidden {
-            below = WeatherView.height
-        } else if !calendarView.isHidden {
-            below = calendarView.preferredHeight
+        if let shown = inputAreas.first(where: { !$0.view.isHidden }) {
+            below = shown.height()
+            shown.heightConstraint?.constant = below
         } else {
             below = suggestionList.preferredHeight
         }
@@ -521,12 +556,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         hintLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         hintLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-        weatherView.isHidden = true
         weatherStrip.isHidden = true
-        calendarView.isHidden = true
         suggestionList.isHidden = true
 
-        for view in [weatherStrip, icon, textField, hintLabel, weatherView, calendarView, suggestionList] {
+        for view in [weatherStrip, icon, textField, hintLabel, suggestionList] {
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
@@ -535,8 +568,6 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         self.rowTop = rowTop
         let suggestionListHeight = suggestionList.heightAnchor.constraint(equalToConstant: 0)
         self.suggestionListHeight = suggestionListHeight
-        let calendarHeight = calendarView.heightAnchor.constraint(equalToConstant: 0)
-        self.calendarHeight = calendarHeight
 
         NSLayoutConstraint.activate([
             weatherStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -562,20 +593,27 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             hintLabel.centerYAnchor.constraint(equalTo: rowGuide.centerYAnchor),
             hintLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 340),
 
-            weatherView.topAnchor.constraint(equalTo: rowGuide.bottomAnchor),
-            weatherView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            weatherView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            weatherView.heightAnchor.constraint(equalToConstant: WeatherView.height),
-
-            calendarView.topAnchor.constraint(equalTo: rowGuide.bottomAnchor),
-            calendarView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            calendarView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            calendarHeight,
-
             suggestionList.topAnchor.constraint(equalTo: rowGuide.bottomAnchor),
             suggestionList.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             suggestionList.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             suggestionListHeight,
         ])
+
+        // Each area sits under the input row, inset like it, hidden until
+        // its feature shows it.
+        for area in inputAreas {
+            let view = area.view
+            view.isHidden = true
+            view.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(view)
+            let height = view.heightAnchor.constraint(equalToConstant: area.height())
+            area.heightConstraint = height
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: rowGuide.bottomAnchor),
+                view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+                view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+                height,
+            ])
+        }
     }
 }
