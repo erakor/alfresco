@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-alfresco is a Spotlight-style URL and app launcher for macOS with a 24-hour clipboard history on a second hotkey, a pomodoro timer driven from the launcher, and an upcoming-events list (`cal`) read from macOS Calendar. It's a few Swift files under `Sources/` compiled together with `swiftc` (AppKit + Carbon, no Xcode project, no package manager, no dependencies). The keyword → URL mappings live in `workflows.json`, which is data, not code, and is committed to the repo.
+alfresco is a Spotlight-style URL and app launcher for macOS with a 24-hour clipboard history on a second hotkey, a pomodoro timer and system commands (`sleep`, `lock`, `displaysleep`) driven from the launcher, and an upcoming-events list (`cal`) read from macOS Calendar. It's a few Swift files under `Sources/` compiled together with `swiftc` (AppKit + Carbon, no Xcode project, no package manager, no dependencies). The keyword → URL mappings live in `workflows.json`, which is data, not code, and is committed to the repo.
 
 ## Build & run
 
@@ -111,9 +111,13 @@ The pomodoro timer. No hotkey or panel: it's controlled through `alfresco://pomo
 - `PomodoroStatusItem.swift`: its own `NSStatusItem`, independent of `Config.showMenuBarIcon`, created while the timer isn't idle and removed when it is. Its `NSMenu` is built once and reused, since a menu item can only be in one menu.
 - `PomodoroAlert.swift`: through `PomodoroAlert.sink` (`SystemPomodoroAlertSink`: `NSSound` and `UNUserNotificationCenter`; the self-test swaps in a recorder), plays `Config.pomodoroSound`, and posts a `UNUserNotificationCenter` notification only when `Bundle.main.bundleIdentifier` is set (`UNUserNotificationCenter.current()` raises in the plain binary). The notification calls are kept out of main-actor code because their completion handlers run on a background queue.
 
+### System/
+
+`SystemCommand.swift`: `alfresco://system/<action>` (`sleep`, `lock`, `displaysleep`, the workflows of the same names in `workflows.json`), run by `AppDelegate.handleInternalURL` before the pomodoro commands. Sleep and display sleep run `/usr/bin/pmset sleepnow` / `displaysleepnow` after `SystemCommand.delay` (0.5 s, so releasing Enter doesn't wake the Mac); lock calls `SACLockScreenImmediate`, resolved with `dlopen`/`dlsym` from the private `login` framework, and returns false (beep) if it is missing. None needs a permission; don't switch lock to posting ⌃⌘Q, which would need Accessibility. The self-test checks the parsing and that the symbol resolves, never runs them.
+
 ### App/Launcher.swift
 
-`AppDelegate` runs as an accessory app, registers both hotkeys, owns the clipboard store/monitor and the pomodoro timer, routes `alfresco://` URLs (`handleInternalURL`), and builds the optional status-bar menu (its "Start Pomodoro" item is disabled through `validateMenuItem` while a session runs). The Workflows submenu is rebuilt in `menuNeedsUpdate`. `LauncherApp.main` first sets `umask(0o077)`, so everything the app writes is owner-only from creation (an atomic write's temporary file included), then takes an exclusive `flock` on `~/Library/Application Support/Launcher/launcher.lock`; a second copy (plain binary, `build/`, or the installed app) exits with status 0 instead of fighting over the hotkeys and clipboard history.
+`AppDelegate` runs as an accessory app, registers both hotkeys, owns the clipboard store/monitor and the pomodoro timer, routes `alfresco://` URLs (`handleInternalURL`: system commands, then pomodoro), and builds the optional status-bar menu (its "Start Pomodoro" item is disabled through `validateMenuItem` while a session runs). The Workflows submenu is rebuilt in `menuNeedsUpdate`. `LauncherApp.main` first sets `umask(0o077)`, so everything the app writes is owner-only from creation (an atomic write's temporary file included), then takes an exclusive `flock` on `~/Library/Application Support/Launcher/launcher.lock`; a second copy (plain binary, `build/`, or the installed app) exits with status 0 instead of fighting over the hotkeys and clipboard history.
 
 ### Clipboard/ClipboardHistory.swift
 

@@ -129,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// beeps) for an unknown URL, or a command that doesn't apply now, like
     /// pausing a timer that isn't running.
     private func handleInternalURL(_ url: URL) -> Bool {
+        if let command = SystemCommand(url: url) { return command.run() }
         guard let pomodoro, let command = PomodoroCommand(url: url) else { return false }
         switch command {
         case .toggle:

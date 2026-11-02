@@ -57,6 +57,24 @@
       "title": "Pomodoro",
       "description": "pomo 50 (focus for 50 min), pomo pause, resume, skip or stop",
       "url": "alfresco://pomodoro/{query}"
+    },
+    {
+      "keywords": ["sleep"],
+      "title": "Sleep",
+      "description": "Put the Mac to sleep",
+      "url": "alfresco://system/sleep"
+    },
+    {
+      "keywords": ["lock"],
+      "title": "Lock Screen",
+      "description": "Lock the screen",
+      "url": "alfresco://system/lock"
+    },
+    {
+      "keywords": ["displaysleep"],
+      "title": "Display Sleep",
+      "description": "Turn the display off",
+      "url": "alfresco://system/displaysleep"
     }
   ],
   "fallback": {
