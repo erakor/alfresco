@@ -5,7 +5,7 @@
 // resume, skip and stop. Saved on every change, so relaunching or
 // rebuilding the app mid-session keeps the countdown.
 
-import Foundation
+import AppKit
 
 enum PomodoroPhase: String, Codable, Sendable {
     case focus
@@ -63,13 +63,30 @@ final class PomodoroTimer: NSObject {
     var onPhaseEnd: ((PomodoroPhase) -> Void)?
 
     private var ticker: Timer?
-    /// In ~/Library/Application Support/Launcher, next to the clipboard history.
     private let fileURL: URL
+    /// The current time. Only the self-test passes another clock.
+    private let now: @MainActor () -> Date
 
-    override init() {
-        fileURL = ClipboardStore.directory.appendingPathComponent("pomodoro.json")
+    /// Saved in ~/Library/Application Support/Launcher, next to the
+    /// clipboard history.
+    override convenience init() {
+        self.init(
+            fileURL: ClipboardStore.directory.appendingPathComponent("pomodoro.json"),
+            now: { Date() },
+            wakeNotifications: NSWorkspace.shared.notificationCenter)
+    }
+
+    /// `wakeNotifications` posts NSWorkspace.didWakeNotification. The self-test
+    /// gives each timer its own center, so a wake reaches only that timer.
+    init(fileURL: URL, now: @escaping @MainActor () -> Date, wakeNotifications: NotificationCenter) {
+        self.fileURL = fileURL
+        self.now = now
         super.init()
         restore()
+        // A Timer doesn't fire while the Mac sleeps; catch up as soon as it
+        // wakes rather than on the next tick.
+        wakeNotifications.addObserver(
+            self, selector: #selector(systemDidWake), name: NSWorkspace.didWakeNotification, object: nil)
     }
 
     // MARK: Commands
@@ -81,7 +98,7 @@ final class PomodoroTimer: NSObject {
             completedFocusSessions = 0
         }
         let duration = minutes.map { TimeInterval($0) * 60 } ?? PomodoroPhase.focus.duration
-        transition(to: .running(.focus, endsAt: Date().addingTimeInterval(duration)))
+        transition(to: .running(.focus, endsAt: now().addingTimeInterval(duration)))
     }
 
     /// Idle: starts a focus session. Running: pauses. Paused: resumes.
@@ -98,10 +115,11 @@ final class PomodoroTimer: NSObject {
     @discardableResult
     func pause() -> Bool {
         guard case .running(let phase, let endsAt) = state else { return false }
-        if endsAt.timeIntervalSinceNow <= 0 {
+        let left = endsAt.timeIntervalSince(now())
+        if left <= 0 {
             finish(phase, alert: true)
         } else {
-            transition(to: .paused(phase, remaining: max(1, endsAt.timeIntervalSinceNow)))
+            transition(to: .paused(phase, remaining: max(1, left)))
         }
         return true
     }
@@ -109,7 +127,7 @@ final class PomodoroTimer: NSObject {
     @discardableResult
     func resume() -> Bool {
         guard case .paused(let phase, let remaining) = state else { return false }
-        transition(to: .running(phase, endsAt: Date().addingTimeInterval(remaining)))
+        transition(to: .running(phase, endsAt: now().addingTimeInterval(remaining)))
         return true
     }
 
@@ -134,10 +152,10 @@ final class PomodoroTimer: NSObject {
     // MARK: Reading
 
     /// Time left in the current phase; nil when idle.
-    func remaining(now: Date = Date()) -> TimeInterval? {
+    func remaining() -> TimeInterval? {
         switch state {
         case .idle: return nil
-        case .running(_, let endsAt): return max(0, endsAt.timeIntervalSince(now))
+        case .running(_, let endsAt): return max(0, endsAt.timeIntervalSince(now()))
         case .paused(_, let remaining): return remaining
         }
     }
@@ -175,7 +193,7 @@ final class PomodoroTimer: NSObject {
             let next: PomodoroPhase =
                 completedFocusSessions >= Config.pomodoroSessionsBeforeLongBreak ? .longBreak : .shortBreak
             transition(to: autoStart
-                ? .running(next, endsAt: Date().addingTimeInterval(next.duration))
+                ? .running(next, endsAt: now().addingTimeInterval(next.duration))
                 : .paused(next, remaining: next.duration))
         case .shortBreak:
             transition(to: .idle)
@@ -210,12 +228,45 @@ final class PomodoroTimer: NSObject {
     /// the Mac waking from sleep) just catches up.
     @objc private func tick() {
         guard case .running(let phase, let endsAt) = state else { return }
-        if endsAt.timeIntervalSinceNow <= 0 {
+        if endsAt.timeIntervalSince(now()) <= 0 {
             finish(phase, alert: true)
         } else {
             onChange?()
         }
     }
+
+    /// A phase that ran out during sleep ends right away, with its alert. If
+    /// it ran out long ago (more than `lateWakeLimit`), it ends quietly and
+    /// the next phase waits paused, as after a relaunch: an hours-old alert,
+    /// or a break started unseen, helps no one. The ticker is restarted so
+    /// its ticks line up with the countdown again.
+    @objc private func systemDidWake() {
+        if case .running(let phase, let endsAt) = state,
+           now().timeIntervalSince(endsAt) > lateWakeLimit(for: phase) {
+            finish(phase, alert: false, autoStart: false)
+        } else {
+            tick()
+        }
+        updateTicker()
+    }
+
+    /// How long after its end a phase still gets its alert on wake: the
+    /// length of the break that follows a focus session, or of the break
+    /// itself. Past that, the break would already be over.
+    private func lateWakeLimit(for phase: PomodoroPhase) -> TimeInterval {
+        switch phase {
+        case .focus:
+            let next: PomodoroPhase = completedFocusSessions + 1 >= Config.pomodoroSessionsBeforeLongBreak
+                ? .longBreak : .shortBreak
+            return next.duration
+        case .shortBreak, .longBreak:
+            return phase.duration
+        }
+    }
+
+    #if SELFTEST
+    func tickForSelfTest() { tick() }
+    #endif
 
     // MARK: Saving
 
@@ -253,9 +304,14 @@ final class PomodoroTimer: NSObject {
         completedFocusSessions = min(max(0, stored.completedFocusSessions), Config.pomodoroSessionsBeforeLongBreak)
 
         switch (stored.phase, stored.endsAt, stored.remaining) {
-        case (let phase?, let endsAt?, nil) where endsAt.timeIntervalSinceNow <= longest:
+        case (let phase?, let endsAt?, nil):
+            let left = endsAt.timeIntervalSince(now())
+            guard left <= longest else {
+                state = .idle
+                break
+            }
             state = .running(phase, endsAt: endsAt)
-            if endsAt.timeIntervalSinceNow <= 0 {
+            if left <= 0 {
                 finish(phase, alert: false, autoStart: false)
             }
         case (let phase?, nil, let remaining?) where remaining > 0 && remaining <= longest:
@@ -264,6 +320,18 @@ final class PomodoroTimer: NSObject {
             state = .idle
         }
         updateTicker()
+    }
+}
+
+extension PomodoroTimer {
+    /// The app's wiring: the menu bar item follows every change, and a phase
+    /// that runs out by itself plays the alert.
+    func connect(to statusItem: PomodoroStatusItem) {
+        onChange = { [weak statusItem] in statusItem?.update() }
+        onPhaseEnd = { [weak self] phase in
+            guard let self else { return }
+            PomodoroAlert.play(ended: phase, next: self.state)
+        }
     }
 }
 

@@ -204,10 +204,19 @@ final class ClipboardStore: NSObject {
     /// when unused: another running copy of the launcher (say ./Launcher and
     /// build/Launcher.app) shares the folder, and its images aren't ours.
     private var knownImageFiles = Set<String>()
+    /// False when an unreadable history file couldn't be set aside: saving
+    /// would overwrite it, so nothing is saved until the next launch.
+    private var canSave = true
 
     /// ~/Library/Application Support/Launcher. Also holds the lock file that
     /// keeps a second copy of the launcher from running (see LauncherApp).
     static let directory: URL = {
+        #if SELFTEST
+        // The self-test keeps its files out of the real support folder.
+        if let path = ProcessInfo.processInfo.environment["ALFRESCO_SUPPORT_DIR"], !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        #endif
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         return support.appendingPathComponent("Launcher", isDirectory: true)
@@ -331,6 +340,7 @@ final class ClipboardStore: NSObject {
 
     /// Coalesces bursts of changes into one write.
     private func scheduleSave() {
+        guard canSave else { return }
         saveTimer?.invalidate()
         let timer = Timer(timeInterval: 1, target: self, selector: #selector(saveTimerFired), userInfo: nil, repeats: false)
         RunLoop.main.add(timer, forMode: .common)
@@ -346,6 +356,7 @@ final class ClipboardStore: NSObject {
     func saveNow() {
         saveTimer?.invalidate()
         saveTimer = nil
+        guard canSave else { return }
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -399,18 +410,33 @@ final class ClipboardStore: NSObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL) else { return }
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch CocoaError.fileReadNoSuchFile {
+            return  // First launch: no history yet.
+        } catch {
+            setAside(error)
+            return
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
             items = try decoder.decode(StoredHistory.self, from: data).items
         } catch {
-            // Set it aside rather than overwrite it with an empty history on
-            // the next save, in case it can be recovered by hand.
-            let backup = fileURL.deletingPathExtension().appendingPathExtension("unreadable.json")
-            try? FileManager.default.removeItem(at: backup)
-            try? FileManager.default.moveItem(at: fileURL, to: backup)
+            setAside(error)
+        }
+    }
+
+    /// Moves an unreadable history file out of the way rather than overwrite
+    /// it with an empty history on the next save, in case it can be recovered
+    /// by hand. If it can't be moved, nothing is saved this run.
+    private func setAside(_ error: Error) {
+        if let backup = SetAsideFile.move(fileURL) {
             NSLog("Launcher: unreadable clipboard history moved to \(backup.path): \(error)")
+        } else {
+            canSave = false
+            NSLog("Launcher: could not set aside unreadable clipboard history, so it won't be saved this run: \(error)")
         }
     }
 }
