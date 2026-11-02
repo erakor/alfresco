@@ -2,6 +2,8 @@
 //
 // The clipboard history file: a damaged one is set aside, never over an
 // earlier set-aside file, and never overwritten when it can't be moved.
+// Set-aside files are deleted once past the retention period (counted from
+// when they were set aside), and the history is excluded from backups.
 
 import Foundation
 
@@ -38,5 +40,29 @@ enum ClipboardTests {
         blocked.saveNow()
         check("clipboard: with no set-aside name free, the damaged history is not overwritten",
               (try? Data(contentsOf: file)) == third)
+
+        // A set-aside file past the retention period is deleted at launch.
+        let longAgo = Date().addingTimeInterval(-Config.clipboardRetention - 24 * 60 * 60)
+        func age(_ url: URL) {
+            try? FileManager.default.setAttributes([.modificationDate: longAgo], ofItemAtPath: url.path)
+        }
+        age(backup("unreadable-50"))
+        stores.append(ClipboardStore())
+        check("clipboard: a set-aside file past the retention period is deleted",
+              !FileManager.default.fileExists(atPath: backup("unreadable-50").path))
+        check("clipboard: a recent set-aside file is kept",
+              FileManager.default.fileExists(atPath: backup("unreadable-49").path))
+
+        // A history last saved long ago is set aside with a fresh date, so it
+        // isn't deleted by the same launch.
+        age(file)
+        let recovered = ClipboardStore()
+        stores.append(recovered)
+        check("clipboard: an old damaged history is set aside and kept",
+              (try? Data(contentsOf: backup("unreadable-50"))) == third)
+
+        recovered.saveNow()
+        let excluded = (try? file.resourceValues(forKeys: [.isExcludedFromBackupKey]))?.isExcludedFromBackup
+        check("clipboard: the saved history is excluded from backups", excluded == true)
     }
 }

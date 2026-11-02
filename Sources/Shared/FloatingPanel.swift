@@ -35,7 +35,7 @@ final class LauncherPanel: NSPanel {
         if onKeyEquivalent?(event) == true {
             return true
         }
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+        if event.shortcutModifiers == .command,
            let key = event.charactersIgnoringModifiers?.lowercased(),
            let action = Self.editActions[key],
            NSApp.sendAction(action, to: nil, from: self) {

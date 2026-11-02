@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     private var pomodoroStatusItem: PomodoroStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        HTTPSession.removeLegacyCache()
         let pomodoro = PomodoroTimer()
         let pomodoroStatusItem = PomodoroStatusItem(timer: pomodoro)
         pomodoro.connect(to: pomodoroStatusItem)
