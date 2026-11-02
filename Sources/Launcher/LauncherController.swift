@@ -1,7 +1,8 @@
 // LauncherController.swift
 //
-// The launcher panel: input field, hint line, keyword suggestions, and
-// Enter handling, which opens a workflow's URL or an installed app.
+// The launcher panel: input field, hint line, keyword suggestions, the
+// weather and calendar areas, and Enter handling, which opens a workflow's
+// URL or an installed app.
 
 import Carbon.HIToolbox
 import Cocoa
@@ -24,17 +25,22 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let weather = WeatherProvider()
     private let weatherView = WeatherView(frame: .zero)
     private let weatherStrip = WeatherStripView(frame: .zero)
+    private let calendar = CalendarProvider()
+    private let calendarView = CalendarView(frame: .zero)
     private let suggestionList = SuggestionListView(frame: .zero)
     /// The input row (icon, field, hint); moves down when the strip is shown.
     private let rowGuide = NSLayoutGuide()
     private var rowTop: NSLayoutConstraint?
     private var suggestionListHeight: NSLayoutConstraint?
+    private var calendarHeight: NSLayoutConstraint?
     /// Height of the input row, which is the whole panel without the weather.
     private static let rowHeight: CGFloat = 60
     /// Text to start with on the next show(prefill:).
     private var pendingPrefill = ""
     /// Whether Enter opened a URL since the panel was shown (usage stats).
     private var didLaunch = false
+    /// Whether the calendar list was shown since the panel was (usage stats).
+    private var didShowCalendar = false
 
     init(store: WorkflowStore, internalURLHandler: @escaping (URL) -> Bool) {
         self.store = store
@@ -43,6 +49,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
         weather.onUpdate = { [weak self] in self?.updateWeather() }
+        calendar.onUpdate = { [weak self] in
+            self?.updateCalendar()
+            self?.updateHeight()
+        }
         apps.onUpdate = { [weak self] in self?.updateHint() }
         suggestionList.onPick = { [weak self] in self?.complete(with: $0) }
     }
@@ -58,6 +68,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     override func prepareToShow() {
         UsageStats.shared.record(.launcherOpened)
         didLaunch = false
+        didShowCalendar = false
         store.reloadIfNeeded()
         weather.reloadKey()
         apps.refreshIfStale()
@@ -81,6 +92,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         previews.cancel()
         weather.cancel()
         weatherView.isHidden = true
+        calendarView.isHidden = true
         suggestionList.show([])
         suggestionList.isHidden = true
         suggestionListHeight?.constant = 0
@@ -89,6 +101,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private func inputDidChange() {
         updateSuggestions()
         updateHint()
+        updateCalendar()
         updateWeather()
     }
 
@@ -159,10 +172,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     /// Fills the list under the input with the keywords that start with
-    /// what is typed. The forecast takes that space while it is shown.
+    /// what is typed. The forecast or the calendar takes that space while
+    /// it is shown.
     private func updateSuggestions() {
         let input = textField.stringValue
-        let suggestions = weather.query(for: input) == nil ? store.current.suggestions(for: input) : []
+        let takesSpace = weather.query(for: input) != nil || calendar.query(for: input) != nil
+        let suggestions = takesSpace ? [] : store.current.suggestions(for: input)
         suggestionList.show(suggestions)
         suggestionList.isHidden = suggestions.isEmpty
         suggestionListHeight?.constant = suggestionList.preferredHeight
@@ -242,8 +257,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             weatherView.show(weather.state(for: panelQuery), for: panelQuery)
         }
         weatherView.isHidden = panelQuery == nil
-        let below = panelQuery == nil ? suggestionList.preferredHeight : WeatherView.height
-        setHeight(stripHeight + Self.rowHeight + below)
+        updateHeight()
 
         // One request at a time: what the input asks for first, then home.
         if let panelQuery, !weather.hasFreshResult(for: panelQuery) {
@@ -253,6 +267,36 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         } else {
             weather.cancel()
         }
+    }
+
+    /// Fills the event list under the input while it reads `cal [text]`.
+    /// The panel is resized by updateHeight, which updateWeather calls.
+    private func updateCalendar() {
+        let query = calendar.query(for: textField.stringValue)
+        if let query {
+            if !didShowCalendar {
+                didShowCalendar = true
+                UsageStats.shared.record(.calendarShown)
+            }
+            calendarView.show(calendar.state(for: query), for: query)
+            calendarHeight?.constant = calendarView.preferredHeight
+        }
+        calendarView.isHidden = query == nil
+    }
+
+    /// Sizes the panel for the strip, the input row, and whichever of the
+    /// forecast, the event list or the suggestions is shown below it.
+    private func updateHeight() {
+        let stripHeight = weatherStrip.isHidden ? 0 : WeatherStripView.height
+        let below: CGFloat
+        if !weatherView.isHidden {
+            below = WeatherView.height
+        } else if !calendarView.isHidden {
+            below = calendarView.preferredHeight
+        } else {
+            below = suggestionList.preferredHeight
+        }
+        setHeight(stripHeight + Self.rowHeight + below)
     }
 
     private func placeholder() -> String {
@@ -323,9 +367,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
         weatherView.isHidden = true
         weatherStrip.isHidden = true
+        calendarView.isHidden = true
         suggestionList.isHidden = true
 
-        for view in [weatherStrip, icon, textField, hintLabel, weatherView, suggestionList] {
+        for view in [weatherStrip, icon, textField, hintLabel, weatherView, calendarView, suggestionList] {
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
@@ -334,6 +379,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         self.rowTop = rowTop
         let suggestionListHeight = suggestionList.heightAnchor.constraint(equalToConstant: 0)
         self.suggestionListHeight = suggestionListHeight
+        let calendarHeight = calendarView.heightAnchor.constraint(equalToConstant: 0)
+        self.calendarHeight = calendarHeight
 
         NSLayoutConstraint.activate([
             weatherStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -363,6 +410,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             weatherView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             weatherView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             weatherView.heightAnchor.constraint(equalToConstant: WeatherView.height),
+
+            calendarView.topAnchor.constraint(equalTo: rowGuide.bottomAnchor),
+            calendarView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            calendarView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            calendarHeight,
 
             suggestionList.topAnchor.constraint(equalTo: rowGuide.bottomAnchor),
             suggestionList.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),

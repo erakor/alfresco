@@ -2,7 +2,8 @@
 
 A small, Spotlight-style URL launcher for macOS. Press a global hotkey,
 type a command, hit Enter, and the URL opens in your default browser. Type an
-app's name instead and it opens the app. It also keeps a 24-hour clipboard
+app's name instead and it opens the app. Type `cal` to see your upcoming
+events (Google calendars included). It also keeps a 24-hour clipboard
 history on a second hotkey, and runs a pomodoro timer you start from the
 launcher.
 
@@ -21,6 +22,8 @@ launcher.
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
 | `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
 | `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
+| `cal`          | `https://calendar.google.com/calendar/r`; the launcher lists your next [events](#calendar) |
+| `cal standup`  | Google Calendar's search for `standup`; the launcher lists the matching events |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | `pomo`         | Starts a 25 min [pomodoro](#pomodoro), or pauses / resumes it (nothing opens) |
 | anything else  | `https://www.google.com/search?q=...`                             |
@@ -161,6 +164,42 @@ Turn it off with `Config.weatherStrip = false`.
 - "Powered by WeatherAPI.com" in the corner is the link back the free plan
   asks for.
 
+## Calendar
+
+Type `cal` and the launcher lists what is left of today and the next two
+days, from every calendar the macOS Calendar app knows: your Google calendars
+once the account is added, plus iCloud, Exchange and the rest. Each event
+shows its calendar's color, its time, and on the right "en cours", "dans
+12 min" (within the hour) or its place; hover a row for the calendar's name.
+`cal <text>` lists the events of the next 30 days whose title or place
+contains the text (case and accents ignored). Enter still runs the `cal`
+workflows: Google Calendar, or its search for the text.
+
+1. System Settings > Internet Accounts > Add Account > Google, sign in, and
+   turn on Calendars. Check that your events show up in the Calendar app.
+2. Run `build/Launcher.app` (`./build.sh`). The plain `./Launcher` binary
+   can't get the permission, since it has no Info.plist to explain why it
+   asks, so `cal` there only says so.
+3. Type `cal`. macOS asks once whether the launcher may access your
+   calendars (the launcher closes behind the prompt); allow it and type `cal`
+   again.
+
+Notes:
+
+- Events are read on your Mac through EventKit, nothing goes over the
+  network and no Google sign-in happens in the launcher. They are as fresh as
+  the Calendar app's sync.
+- Declined events and the Birthdays calendar are left out. Set
+  `Config.calendarAccounts` to list only some accounts (by the name shown in
+  Internet Accounts, usually the address), and `Config.calendarExcluded` to
+  leave out calendars by name, e.g. holidays.
+- `build.sh` signs the app ad hoc, so macOS may ask again after a rebuild, or
+  keep refusing: then reset it with `tccutil reset Calendars local.launcher`.
+  If you said no, allow it in System Settings > Privacy & Security >
+  Calendars.
+- The keyword is `Config.calendarKeyword`; the two `cal` workflows in
+  `workflows.json` only decide what Enter opens.
+
 ## Pomodoro
 
 Type `pomo` in the launcher and press Enter to start a 25 minute focus
@@ -266,6 +305,7 @@ Recorded:
   keyword (letters, digits, `-`, `_`, up to 20 characters): `jria abc-42` keeps
   `jria`, a mistyped `jira`. The rest of the input is never kept.
 - Previews and weather: answers received and failures, by kind of error.
+- Calendar: how often the event list is shown, never what it lists.
 - Clipboard: copies by kind, copies and restores per app (by bundle ID), and
   skipped copies by reason. Never any content or file path.
 
@@ -291,6 +331,11 @@ Edit the `Config` enum in `Sources/App/Config.swift`, then rebuild:
   (15 min), `pomodoroSessionsBeforeLongBreak` (4), `pomodoroAutoStartBreaks`
   (`true`; when `false`, a break waits paused in the menu bar until you resume
   it), `pomodoroSound` (`"Glass"`, any name from `/System/Library/Sounds`).
+- `calendarKeyword` (`"cal"`), `calendarDays` (3, today included),
+  `calendarSearchDays` (30), `calendarMaxEvents` (8), `calendarAccounts`,
+  `calendarExcluded`, `calendarHidesBirthdays`, `calendarHidesDeclined`,
+  `calendarCacheLifetime` (60 s; a change in a calendar refreshes the list
+  right away): see [Calendar](#calendar).
 - `usageTracking`, `usageTrackFallbackWords`, `usageRetentionDays` (90): see
   [Usage stats](#usage-stats).
 
@@ -303,6 +348,10 @@ The source lives in `Sources/`, one folder per feature:
   `LauncherController.swift` (the launcher panel).
 - `Clipboard/`: `ClipboardHistory.swift` (clipboard model, storage, watcher) and
   `ClipboardPanel.swift` (history panel).
+- `Weather/`: the WeatherAPI.com request, the forecast area and the strip
+  above the input.
+- `Calendar/`: `CalendarProvider.swift` (EventKit access and events) and
+  `CalendarView.swift` (the event list).
 - `Pomodoro/`: `PomodoroTimer.swift` (the timer), `PomodoroCommand.swift`
   (`alfresco://pomodoro/...` URLs), `PomodoroStatusItem.swift` (menu bar
   countdown) and `PomodoroAlert.swift` (sound and notification).

@@ -8,6 +8,7 @@
 //   first keyword, never the argument), fallback count, and the first word of
 //   multi-word fallback inputs (a missing or mistyped keyword);
 // - previews and weather: requests answered and failures, by error;
+// - calendar: how often the event list is shown (never what it lists);
 // - clipboard: copies and restores per source app (bundle ID), copies by
 //   kind, skipped copies by reason. Never any content or file path.
 // Turn it off with Config.usageTracking; the menu bar's "Usage…" shows a
@@ -33,6 +34,9 @@ enum UsageCounter: String, Sendable {
 
     case weatherLoaded = "weather.loaded"
     // Failures are counted as "weather.failed.<WeatherError.usageName>".
+
+    /// The event list was shown (once per launcher opening).
+    case calendarShown = "calendar.shown"
 
     case clipboardCopiedText = "clipboard.copied.text"
     case clipboardCopiedImage = "clipboard.copied.image"
@@ -226,6 +230,7 @@ final class UsageStats: NSObject {
             "Weather: \(count(.weatherLoaded)) loaded, \(weatherFailures.values.reduce(0, +)) failed",
         ]
         if !weatherFailures.isEmpty { lines.append(top(weatherFailures, 10)) }
+        lines.append("Calendar: shown \(count(.calendarShown))")
         let copied = "\(count(.clipboardCopiedText)) text, \(count(.clipboardCopiedImage)) images, "
             + "\(count(.clipboardCopiedFiles)) files"
         lines += [
