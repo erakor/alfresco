@@ -1,10 +1,12 @@
 // CalendarView.swift
 //
-// The event list under the launcher field while the input is `cal` or
-// `cal <text>`: events grouped under day headers, each with its calendar's
-// color, its time, its title, and "en cours" / "dans 12 min" or its place.
-// Its height follows the content (preferredHeight). Labels are in French, like
-// the weather.
+// The calendar area under the launcher field. `cal` shows "next up first":
+// a line for the event under way, a card for the next one with a countdown,
+// then two columns with the rest of today and the next day that has events.
+// `cal <text>` lists the matches under day headers, each row with its
+// calendar's color, its time, its title, and "en cours" / "dans 12 min" or
+// its place. The height follows the content (preferredHeight). Labels are in
+// French, like the weather.
 
 import Cocoa
 
@@ -14,6 +16,14 @@ final class CalendarView: NSView {
     private static let moreHeight: CGFloat = 22
     private static let statusHeight: CGFloat = 52
     private static let padding: CGFloat = 8
+    // "Next up first" (`cal`)
+    private static let ongoingHeight: CGFloat = 18
+    private static let cardHeight: CGFloat = 72
+    private static let columnHeaderHeight: CGFloat = 22
+    private static let compactRowHeight: CGFloat = 24
+    private static let sectionGap: CGFloat = 12
+    /// Rows in each of the two columns under the card.
+    private static let rowsPerColumn = 4
 
     private let separator = NSBox()
     private let stack = NSStackView()
@@ -32,6 +42,14 @@ final class CalendarView: NSView {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "fr_FR")
         formatter.setLocalizedDateFormatFromTemplate("EEEEdMMMM")
+        return formatter
+    }()
+
+    /// "mer. 4", under the card's clock for an event after tomorrow.
+    private static let shortDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "fr_FR")
+        formatter.setLocalizedDateFormatFromTemplate("EEEd")
         return formatter
     }()
 
@@ -71,6 +89,12 @@ final class CalendarView: NSView {
                 break
             }
             let now = Date()
+            if query == .upcoming {
+                for (view, height) in Self.nextUpSections(events, now: now) {
+                    add(view, height: height)
+                }
+                break
+            }
             let calendar = Calendar.current
             let today = calendar.startOfDay(for: now)
             var lastDay: Date?
@@ -98,6 +122,10 @@ final class CalendarView: NSView {
         clockFormatter.string(from: date)
     }
 
+    static func shortDay(_ date: Date) -> String {
+        shortDayFormatter.string(from: date)
+    }
+
     /// "09:30 – 10:00", "Toute la journée", or "… – 18:00" for an event
     /// that started on an earlier day.
     static func timeText(for event: CalendarEvent, on day: Date) -> String {
@@ -108,17 +136,18 @@ final class CalendarView: NSView {
         return "\(start) – \(end)"
     }
 
-    private static func header(for day: Date, today: Date) -> NSView {
-        let calendar = Calendar.current
-        let text: String
-        if day == today {
-            text = "Aujourd'hui"
-        } else if let tomorrow = calendar.date(byAdding: .day, value: 1, to: today), day == tomorrow {
-            text = "Demain"
-        } else {
-            let name = dayFormatter.string(from: day)
-            text = name.prefix(1).uppercased() + name.dropFirst()
+    /// "Aujourd'hui", "Demain", else "Mercredi 4 novembre".
+    static func dayTitle(_ day: Date, today: Date) -> String {
+        if day == today { return "Aujourd'hui" }
+        if let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today), day == tomorrow {
+            return "Demain"
         }
+        let name = dayFormatter.string(from: day)
+        return name.prefix(1).uppercased() + name.dropFirst()
+    }
+
+    private static func header(for day: Date, today: Date) -> NSView {
+        let text = dayTitle(day, today: today)
         let container = NSView()
         let title = Self.label(text, size: 11, color: .secondaryLabelColor, weight: .semibold)
         title.translatesAutoresizingMaskIntoConstraints = false
@@ -128,6 +157,138 @@ final class CalendarView: NSView {
             title.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -4),
         ])
         return container
+    }
+
+    // MARK: Next up first
+
+    /// The `cal` layout, as stacked sections with their heights: the events
+    /// under way, the next timed event's card, two columns (the rest of
+    /// today, and the next day with events), and how many are left out.
+    private static func nextUpSections(_ events: [CalendarEvent], now: Date) -> [(NSView, CGFloat)] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        func day(of event: CalendarEvent) -> Date { max(calendar.startOfDay(for: event.start), today) }
+
+        let ongoing = events.indices.filter { !events[$0].isAllDay && events[$0].start <= now && now < events[$0].end }
+        let next = events.indices.first { !events[$0].isAllDay && events[$0].start > now }
+        var used = Set(ongoing)
+        if let next { used.insert(next) }
+        let rest = events.indices.filter { !used.contains($0) }
+        let laterToday = rest.filter { day(of: events[$0]) == today }
+        let later = rest.filter { day(of: events[$0]) > today }
+        let nextDay = later.first.map { day(of: events[$0]) }
+        let nextDayEvents = later.filter { day(of: events[$0]) == nextDay }
+
+        var sections: [(NSView, CGFloat)] = []
+        if let first = ongoing.first {
+            sections.append((ongoingLine(events[first], others: ongoing.count - 1, now: now), ongoingHeight))
+        }
+        if let next {
+            sections.append((NextCard(event: events[next], now: now, today: today), cardHeight))
+        }
+        let leftShown = Array(laterToday.prefix(rowsPerColumn))
+        let rightShown = Array(nextDayEvents.prefix(rowsPerColumn))
+        if !leftShown.isEmpty || !rightShown.isEmpty {
+            let left = column(
+                title: "Plus tard aujourd'hui", events: leftShown.map { events[$0] },
+                day: today, emptyText: "Rien d'autre aujourd'hui"
+            )
+            let right = column(
+                title: nextDay.map { dayTitle($0, today: today) } ?? "Ensuite",
+                events: rightShown.map { events[$0] },
+                day: nextDay ?? today, emptyText: "Rien de prévu ensuite"
+            )
+            let columns = NSStackView(views: [left, right])
+            columns.orientation = .horizontal
+            columns.distribution = .fillEqually
+            columns.alignment = .top
+            columns.spacing = 24
+            let rows = max(leftShown.count, rightShown.count, 1)
+            sections.append((columns, columnHeaderHeight + CGFloat(rows) * compactRowHeight))
+        }
+        let hidden = events.count - used.count - leftShown.count - rightShown.count
+        if hidden > 0 {
+            let more = hidden == 1 ? "+ 1 autre événement" : "+ \(hidden) autres événements"
+            sections.append((label(more, size: 11, color: .tertiaryLabelColor), moreHeight))
+        }
+
+        // A gap between sections, with its height, so preferredHeight adds up.
+        var spaced: [(NSView, CGFloat)] = []
+        for (index, section) in sections.enumerated() {
+            if index > 0 { spaced.append((NSView(), sectionGap)) }
+            spaced.append(section)
+        }
+        return spaced
+    }
+
+    /// "En cours : Standup, se termine dans 10 min" (or "à 11:30" past the
+    /// hour), plus how many others are under way.
+    private static func ongoingLine(_ event: CalendarEvent, others: Int, now: Date) -> NSView {
+        let minutes = Int((event.end.timeIntervalSince(now) / 60).rounded(.up))
+        let ends = minutes < 60 ? "se termine dans \(max(1, minutes)) min" : "se termine à \(clock(event.end))"
+        var text = " : \(event.title), \(ends)"
+        if others > 0 { text += others == 1 ? " (+ 1 autre)" : " (+ \(others) autres)" }
+
+        let dot = colorDot(event.color)
+        let tag = label("En cours", size: 12, color: .systemGreen, weight: .semibold)
+        tag.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let rest = label(text, size: 12, color: .secondaryLabelColor)
+        let row = NSStackView(views: [dot, tag, rest])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 0
+        row.setCustomSpacing(8, after: dot)
+        return row
+    }
+
+    /// A header and up to rowsPerColumn compact rows, or one line saying
+    /// there is nothing.
+    private static func column(title: String, events: [CalendarEvent], day: Date, emptyText: String) -> NSView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 0
+        var views: [(NSView, CGFloat)] = [(header(title), columnHeaderHeight)]
+        if events.isEmpty {
+            views.append((label(emptyText, size: 12, color: .tertiaryLabelColor), compactRowHeight))
+        } else {
+            views += events.map { event -> (NSView, CGFloat) in (CompactRow(event: event, day: day), compactRowHeight) }
+        }
+        for (view, height) in views {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            stack.addArrangedSubview(view)
+            NSLayoutConstraint.activate([
+                view.heightAnchor.constraint(equalToConstant: height),
+                view.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            ])
+        }
+        return stack
+    }
+
+    private static func header(_ text: String) -> NSView {
+        let container = NSView()
+        let title = label(text, size: 11, color: .secondaryLabelColor, weight: .semibold)
+        title.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(title)
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor),
+            title.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -4),
+        ])
+        return container
+    }
+
+    static func colorDot(_ color: NSColor) -> NSView {
+        let dot = NSView()
+        dot.wantsLayer = true
+        dot.layer?.backgroundColor = color.cgColor
+        dot.layer?.cornerRadius = 4
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            dot.widthAnchor.constraint(equalToConstant: 8),
+            dot.heightAnchor.constraint(equalToConstant: 8),
+        ])
+        return dot
     }
 
     private static func emptyText(for query: CalendarQuery) -> String {
@@ -262,6 +423,130 @@ private final class EventRow: NSView {
             detail.trailingAnchor.constraint(equalTo: trailingAnchor),
             detail.centerYAnchor.constraint(equalTo: centerYAnchor),
             detail.widthAnchor.constraint(lessThanOrEqualToConstant: 220),
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+}
+
+/// The next timed event: a countdown on the left ("10 min", or its time and
+/// day), then "PROCHAIN", its title, and its time, place and calendar, on a
+/// tint of its calendar's color.
+private final class NextCard: NSView {
+    init(event: CalendarEvent, now: Date, today: Date) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = event.color.withAlphaComponent(0.16).cgColor
+        layer?.cornerRadius = 10
+
+        let calendar = Calendar.current
+        let minutes = Int((event.start.timeIntervalSince(now) / 60).rounded(.up))
+        let big: String
+        let unit: String
+        if minutes < 60 {
+            big = "\(max(1, minutes))"
+            unit = "min"
+        } else {
+            big = CalendarView.clock(event.start)
+            let day = calendar.startOfDay(for: event.start)
+            if day == today {
+                unit = "aujourd'hui"
+            } else if let tomorrow = calendar.date(byAdding: .day, value: 1, to: today), day == tomorrow {
+                unit = "demain"
+            } else {
+                unit = CalendarView.shortDay(event.start)
+            }
+        }
+        let bigLabel = NSTextField(labelWithString: big)
+        bigLabel.font = .monospacedDigitSystemFont(ofSize: minutes < 60 ? 26 : 20, weight: .semibold)
+        bigLabel.textColor = .labelColor
+        bigLabel.alignment = .center
+        let unitLabel = CalendarView.label(unit, size: 11, color: .secondaryLabelColor)
+        unitLabel.alignment = .center
+        let countdown = NSStackView(views: [bigLabel, unitLabel])
+        countdown.orientation = .vertical
+        countdown.alignment = .centerX
+        countdown.spacing = 0
+
+        let tag = CalendarView.label("PROCHAIN", size: 10, color: .secondaryLabelColor, weight: .semibold)
+        let title = CalendarView.label(event.title, size: 17, color: .labelColor, weight: .semibold)
+        let details = [
+            "\(CalendarView.clock(event.start)) – \(CalendarView.clock(event.end))",
+            event.location ?? "",
+            event.calendarName,
+        ].filter { !$0.isEmpty }.joined(separator: " · ")
+        let detailLabel = CalendarView.label(details, size: 12, color: .secondaryLabelColor)
+        let texts = NSStackView(views: [tag, title, detailLabel])
+        texts.orientation = .vertical
+        texts.alignment = .leading
+        texts.spacing = 1
+
+        toolTip = [event.title, event.calendarName, event.location ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+
+        for view in [countdown, texts] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            countdown.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            countdown.centerYAnchor.constraint(equalTo: centerYAnchor),
+            countdown.widthAnchor.constraint(equalToConstant: 76),
+
+            texts.leadingAnchor.constraint(equalTo: countdown.trailingAnchor, constant: 12),
+            texts.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -14),
+            texts.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+}
+
+/// One event in a column under the card: color dot, start time ("Journée"
+/// for all day), then the title and place.
+private final class CompactRow: NSView {
+    init(event: CalendarEvent, day: Date) {
+        super.init(frame: .zero)
+        let dot = CalendarView.colorDot(event.color)
+        let timeText: String
+        if event.isAllDay {
+            timeText = "Journée"
+        } else if Calendar.current.isDate(event.start, inSameDayAs: day) {
+            timeText = CalendarView.clock(event.start)
+        } else {
+            timeText = "…"
+        }
+        let time = NSTextField(labelWithString: timeText)
+        time.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        time.textColor = .secondaryLabelColor
+        let name = [event.title, event.location ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
+        let title = CalendarView.label(name, size: 12, color: .labelColor)
+        toolTip = [event.title, event.calendarName, event.location ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+
+        for view in [time, title] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+        }
+        addSubview(dot)
+        addSubview(time)
+        addSubview(title)
+        NSLayoutConstraint.activate([
+            dot.leadingAnchor.constraint(equalTo: leadingAnchor),
+            dot.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            time.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 8),
+            time.centerYAnchor.constraint(equalTo: centerYAnchor),
+            time.widthAnchor.constraint(equalToConstant: 52),
+
+            title.leadingAnchor.constraint(equalTo: time.trailingAnchor, constant: 4),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            title.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
 

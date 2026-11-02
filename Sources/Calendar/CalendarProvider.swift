@@ -35,7 +35,8 @@ enum CalendarState {
     case loading
     /// No access, no calendar, or not running as an app bundle.
     case message(String)
-    /// At most Config.calendarMaxEvents events; `hiddenCount` more matched.
+    /// Every upcoming event for `.upcoming` (the view picks what fits), at
+    /// most Config.calendarMaxEvents for `.search`; `hiddenCount` more matched.
     case loaded([CalendarEvent], hiddenCount: Int)
 }
 
@@ -110,7 +111,7 @@ final class CalendarProvider {
         case .search(let text):
             matching = all.filter { $0.end > now && $0.searchText.contains(text) }
         }
-        let shown = Array(matching.prefix(Config.calendarMaxEvents))
+        let shown = query == .upcoming ? matching : Array(matching.prefix(Config.calendarMaxEvents))
         return .loaded(shown, hiddenCount: matching.count - shown.count)
     }
 

@@ -167,7 +167,8 @@ enum Config {
     static let calendarDays = 3
     /// Days searched by `cal <text>`, today included.
     static let calendarSearchDays = 30
-    /// Events listed at most; the rest are counted on a last line.
+    /// Events listed at most by `cal <text>`; the rest are counted on a last
+    /// line. (`cal` shows the next event, then up to 4 per column.)
     static let calendarMaxEvents = 8
     /// Account names (System Settings > Internet Accounts, e.g. a Gmail
     /// address) whose calendars are listed. Empty lists every account.
