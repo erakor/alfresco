@@ -4,7 +4,7 @@ Copy and paste with `⌘C` / `⌘V` as usual; alfresco only watches the
 clipboard and records each copy: text, images (screenshots, "Copy Image" in a
 browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the history:
 
-- Type to filter, `↑` / `↓` to choose, `↩` (or double-click) to paste the
+- Type to filter (case and accents don't matter: `cafe` finds `Café`), `↑` / `↓` to choose, `↩` (or double-click) to paste the
   item into the app you were using. It is also put back on the clipboard.
 - `⌘1` to `⌘9` do the same for the first nine rows of the (filtered) list,
   without arrowing down. Each of those rows shows its shortcut on the right.
@@ -71,4 +71,7 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `ClipboardHistory.swift`: the clip model (`ClipContent`), storage
   (`ClipboardStore`) and the clipboard watcher (`ClipboardMonitor`).
 - `ClipboardPanel.swift`: the history panel and its preview.
+- `ClipFilter.swift`: the panel's search.
+- `ThumbnailLoader.swift`: decodes row thumbnails and preview pictures in the
+  background.
 - `PasteKeystroke.swift`: posts `⌘V` into the previous app after a pick.
