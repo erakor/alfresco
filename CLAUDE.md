@@ -35,7 +35,7 @@ Tests/run-self-tests.sh   # log and screenshot in build/self-test/
 
 ## Architecture
 
-Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wiring (`AppDelegate`, `main`, `Config`), `Shared/` holds code used by more than one feature.
+Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wiring (`AppDelegate`, `main`, `Config`), `Shared/` holds code used by more than one feature. Each folder has a user-facing `README.md` (what the feature does, its `Config` settings, its files); the root `README.md` is an overview that links to them, plus build and login-item setup.
 
 ### App/Config.swift
 
@@ -110,8 +110,8 @@ The pomodoro timer. No hotkey or panel: it's controlled through `alfresco://pomo
 
 ## Conventions
 
-- New top-level features (anything with its own hotkey or panel) get a folder under `Sources/`; additions to an existing feature stay in its folder. Code used by more than one feature goes in `Sources/Shared/` rather than being copied. A folder can hold a single file.
-- When changing the `workflows.json` schema, update the decoding in `Workflow`/`WorkflowSet`, the field table in `README.md`, and `Config.defaultWorkflowsJSON` if relevant. Decoding errors are turned into short user-facing messages by `WorkflowStore.describe`.
+- New top-level features (anything with its own hotkey or panel) get a folder under `Sources/` with its own `README.md`, linked from the Features table in the root `README.md`; additions to an existing feature stay in its folder. A user-visible change to a feature updates that folder's `README.md`. Code used by more than one feature goes in `Sources/Shared/` rather than being copied. A folder can hold a single file.
+- When changing the `workflows.json` schema, update the decoding in `Workflow`/`WorkflowSet`, the field table in `Sources/Launcher/README.md`, and `Config.defaultWorkflowsJSON` if relevant. Decoding errors are turned into short user-facing messages by `WorkflowStore.describe`.
 - New panels should subclass `FloatingPanelController` rather than duplicating panel setup.
 - Adding a clip kind means a new `ClipContent` case plus handling in `ClipboardMonitor` (read), `ClipboardController` (display and restore) and `UsageStats.recordClipboardCopy` (a `UsageCounter` for it).
 - New usage counters are `UsageCounter` cases recorded through `UsageStats.shared`; anything that would store what the user typed or copied needs its own `Config` switch.

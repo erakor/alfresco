@@ -46,7 +46,7 @@ finds the use sites.
 
 ## 4. Docs and defaults
 
-- **`README.md`**: update the field table under "## Workflows" (and the example
+- **`Sources/Launcher/README.md`**: update the field table under "## Workflows" (and the example
   JSON above it if the field is commonly used). For a transform, add it to the
   `transforms` row.
 - **`Config.defaultWorkflowsJSON`**: it seeds `~/.config/alfresco/workflows.json`

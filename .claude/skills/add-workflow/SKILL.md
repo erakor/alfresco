@@ -7,7 +7,7 @@ description: Add, change, or remove a keyword in alfresco's workflows.json (keyw
 
 `workflows.json` is data, not code. The running app re-reads it when its
 modification date changes, so there's no rebuild or relaunch. The field
-reference is the table under "Workflows" in `README.md`.
+reference is the table under "Workflows" in `Sources/Launcher/README.md`.
 
 ## 1. Work out the entry
 
