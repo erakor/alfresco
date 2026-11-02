@@ -9,6 +9,8 @@
 //   with Config.showMenuBarIcon.
 // - Workflows (keyword -> URL) live in workflows.json and are reloaded
 //   automatically, so adding one needs no rebuild.
+// - alfresco:// workflow URLs run inside the app instead of being opened;
+//   alfresco://pomodoro/... drives the pomodoro timer.
 //
 // Build:  ./build.sh   (or see README.md for a plain swiftc command)
 
@@ -17,7 +19,7 @@ import Cocoa
 // MARK: - App
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemValidation {
     private let workflowStore = WorkflowStore()
     private var launcher: LauncherController?
     private var clipboardStore: ClipboardStore?
@@ -25,9 +27,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var clipboardPanel: ClipboardController?
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
+    private var pomodoro: PomodoroTimer?
+    private var pomodoroStatusItem: PomodoroStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let launcher = LauncherController(store: workflowStore)
+        let pomodoro = PomodoroTimer()
+        let pomodoroStatusItem = PomodoroStatusItem(timer: pomodoro)
+        pomodoro.onChange = { [weak pomodoroStatusItem] in pomodoroStatusItem?.update() }
+        pomodoro.onPhaseEnd = { [weak pomodoro] phase in
+            guard let pomodoro else { return }
+            PomodoroAlert.play(ended: phase, next: pomodoro.state)
+        }
+        self.pomodoro = pomodoro
+        self.pomodoroStatusItem = pomodoroStatusItem
+
+        let launcher = LauncherController(store: workflowStore) { [weak self] url in
+            self?.handleInternalURL(url) ?? false
+        }
         self.launcher = launcher
 
         let store = ClipboardStore()
@@ -70,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(menuItem("Open Launcher (\(Config.hotKey.display))", #selector(openLauncher)))
         menu.addItem(menuItem("Clipboard History (\(Config.clipboardHotKey.display))", #selector(openClipboardHistory)))
         menu.addItem(menuItem("Clear Clipboard History", #selector(clearClipboardHistory)))
+        menu.addItem(menuItem("Start Pomodoro", #selector(startPomodoro)))
         menu.addItem(.separator())
         let workflows = NSMenuItem(title: "Workflows", action: nil, keyEquivalent: "")
         let workflowsMenu = NSMenu(title: "Workflows")
@@ -104,6 +121,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func clearClipboardHistory() {
         clipboardStore?.clear()
+    }
+
+    @objc private func startPomodoro() {
+        PomodoroAlert.requestPermission()
+        pomodoro?.startFocus()
+    }
+
+    /// Runs an alfresco:// URL from workflows.json. False (the launcher
+    /// beeps) for an unknown URL, or a command that doesn't apply now, like
+    /// pausing a timer that isn't running.
+    private func handleInternalURL(_ url: URL) -> Bool {
+        guard let pomodoro, let command = PomodoroCommand(url: url) else { return false }
+        switch command {
+        case .toggle:
+            if pomodoro.state == .idle { PomodoroAlert.requestPermission() }
+            pomodoro.toggle()
+            return true
+        case .start(let minutes):
+            PomodoroAlert.requestPermission()
+            pomodoro.startFocus(minutes: minutes)
+            return true
+        case .pause: return pomodoro.pause()
+        case .resume: return pomodoro.resume()
+        case .skip: return pomodoro.skip()
+        case .stop: return pomodoro.stop()
+        }
+    }
+
+    // MARK: NSMenuItemValidation
+
+    /// "Start Pomodoro" is only offered while no session is under way; the
+    /// pomodoro's own menu bar item handles a running one.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(startPomodoro) {
+            return pomodoro?.state == .idle
+        }
+        return true
     }
 
     // MARK: NSMenuDelegate

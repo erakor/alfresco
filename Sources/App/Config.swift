@@ -155,6 +155,22 @@ enum Config {
         return clean(try? String(contentsOf: file, encoding: .utf8))
     }
 
+    // MARK: Pomodoro
+
+    /// Controlled from the launcher through alfresco://pomodoro/... URLs in
+    /// workflows.json (the `pomo` keyword), and shown in the menu bar while
+    /// it runs. Lengths in seconds.
+    static let pomodoroFocus: TimeInterval = 25 * 60
+    static let pomodoroShortBreak: TimeInterval = 5 * 60
+    static let pomodoroLongBreak: TimeInterval = 15 * 60
+    /// A long break instead of a short one after this many focus sessions.
+    static let pomodoroSessionsBeforeLongBreak = 4
+    /// When off, a finished focus session leaves its break paused in the
+    /// menu bar until you resume it.
+    static let pomodoroAutoStartBreaks = true
+    /// A sound from /System/Library/Sounds, played when a phase runs out.
+    static let pomodoroSound = "Glass"
+
     /// Used until workflows.json loads, and to seed the ~/.config fallback.
     /// The real workflows live in the repo's workflows.json.
     static let defaultWorkflowsJSON = #"""
