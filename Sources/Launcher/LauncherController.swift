@@ -11,6 +11,9 @@ import Cocoa
 @MainActor
 final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let store: WorkflowStore
+    /// Runs alfresco:// URLs (e.g. alfresco://pomodoro/start) inside the
+    /// app. False means the URL was not understood.
+    private let internalURLHandler: (URL) -> Bool
     private let textField = NSTextField()
     private let hintLabel = FloatingPanelController.makeHintLabel()
     private let icon = FloatingPanelController.makeIcon(symbolName: "magnifyingglass")
@@ -31,8 +34,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// Text to start with on the next show(prefill:).
     private var pendingPrefill = ""
 
-    init(store: WorkflowStore) {
+    init(store: WorkflowStore, internalURLHandler: @escaping (URL) -> Bool) {
         self.store = store
+        self.internalURLHandler = internalURLHandler
         super.init(size: NSSize(width: 680, height: LauncherController.rowHeight), verticalOffset: 0.15)
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
@@ -104,7 +108,15 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             hide()
             return
         }
-        NSWorkspace.shared.open(command.url)
+        if command.url.scheme?.lowercased() == "alfresco" {
+            // Handled by the app itself; an unknown one keeps the bar open.
+            guard internalURLHandler(command.url) else {
+                NSSound.beep()
+                return
+            }
+        } else {
+            NSWorkspace.shared.open(command.url)
+        }
         textField.stringValue = ""
         hide()
     }

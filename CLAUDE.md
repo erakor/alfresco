@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-alfresco is a Spotlight-style URL and app launcher for macOS with a 24-hour clipboard history on a second hotkey. It's a few Swift files under `Sources/` compiled together with `swiftc` (AppKit + Carbon, no Xcode project, no package manager, no dependencies). The keyword → URL mappings live in `workflows.json`, which is data, not code, and is committed to the repo.
+alfresco is a Spotlight-style URL and app launcher for macOS with a 24-hour clipboard history on a second hotkey and a pomodoro timer driven from the launcher. It's a few Swift files under `Sources/` compiled together with `swiftc` (AppKit + Carbon, no Xcode project, no package manager, no dependencies). The keyword → URL mappings live in `workflows.json`, which is data, not code, and is committed to the repo.
 
 ## Build & run
 
@@ -29,7 +29,7 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 
 ### App/Config.swift
 
-`Config` enum holds compile-time settings: both hotkeys (`hotKey`, `clipboardHotKey`), `showMenuBarIcon`, app launching (`appSearch`, `appFolders`, `appRescanInterval`), the clipboard limits (`clipboardRetention`, `clipboardMaxItems`, `clipboardMaxTextBytes`, `clipboardMaxImageBytes`, `clipboardMaxImagePixels`, `clipboardPollInterval`), and `workflowsSource`, which resolves the workflows file in this order: `ALFRESCO_WORKFLOWS` env var → `AlfrescoWorkflowsFile` Info.plist key (written by `build.sh` as the repo's absolute path, so moving the repo requires a rebuild) → `workflows.json` next to the executable → `~/.config/alfresco/workflows.json` (the only location auto-created if missing).
+`Config` enum holds compile-time settings: both hotkeys (`hotKey`, `clipboardHotKey`), `showMenuBarIcon`, app launching (`appSearch`, `appFolders`, `appRescanInterval`), the clipboard limits (`clipboardRetention`, `clipboardMaxItems`, `clipboardMaxTextBytes`, `clipboardMaxImageBytes`, `clipboardMaxImagePixels`, `clipboardPollInterval`), the weather settings, the pomodoro settings (`pomodoroFocus`, `pomodoroShortBreak`, `pomodoroLongBreak`, `pomodoroSessionsBeforeLongBreak`, `pomodoroAutoStartBreaks`, `pomodoroSound`), and `workflowsSource`, which resolves the workflows file in this order: `ALFRESCO_WORKFLOWS` env var → `AlfrescoWorkflowsFile` Info.plist key (written by `build.sh` as the repo's absolute path, so moving the repo requires a rebuild) → `workflows.json` next to the executable → `~/.config/alfresco/workflows.json` (the only location auto-created if missing).
 
 ### Launcher/Workflows.swift
 
@@ -65,15 +65,24 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Launcher/LauncherController.swift
 
-`LauncherController` (a `FloatingPanelController`) runs the launcher: the input field, the hint line, the suggestion list, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone. When `matchedApp()` finds an app and no suggestion row is chosen, the search icon shows the app's icon, the hint reads `↩ Open <app>  ⌘↩ <fallback title>`, Enter opens the app, and ⌘↩ (`handleKeyEquivalent`) runs the fallback search instead.
+`LauncherController` (a `FloatingPanelController`) runs the launcher: the input field, the hint line, the suggestion list, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone. When `matchedApp()` finds an app and no suggestion row is chosen, the search icon shows the app's icon, the hint reads `↩ Open <app>  ⌘↩ <fallback title>`, Enter opens the app, and ⌘↩ (`handleKeyEquivalent`) runs the fallback search instead. A command whose URL has the `alfresco` scheme is not opened: it goes to the `internalURLHandler` closure from `AppDelegate`, and a `false` result beeps and keeps the bar open. That's how workflows.json reaches in-app features without a schema change.
 
 ### Launcher/SuggestionListView.swift
 
 `SuggestionListView` is the list under the input, filled from `WorkflowSet.suggestions(for:)` (workflows whose keyword starts with a single typed word; empty once the word is every match's whole keyword). The input keeps focus, so `LauncherController` routes Tab (completes `tabTarget`: the row chosen with ↑ ↓, else the first; `Suggestion.completion` adds a space when the workflow takes an argument), ↑ ↓ (only while the list has rows) and Enter (with a chosen row: complete, then run it if it takes no argument; otherwise unchanged). The list sits where the forecast goes and is empty while the forecast is shown; its height is part of `setHeight` in `updateWeather`.
 
+### Pomodoro/
+
+The pomodoro timer. No hotkey or panel: it's controlled through `alfresco://pomodoro/<action>` URLs (the `pomo` workflows in `workflows.json`) and shown in the menu bar.
+
+- `PomodoroTimer.swift`: main actor. `PomodoroState` is `.idle`, `.running(phase, endsAt:)` or `.paused(phase, remaining:)`; `PomodoroPhase` is focus / short break / long break. Time left is always computed from `endsAt`, and a 1 s `Timer` in the `.common` run loop mode runs only while running. A focus session leads to a break (long after `Config.pomodoroSessionsBeforeLongBreak`), and a break leads to idle. `skip` advances without the alert; `stop` resets the cycle. Every change is saved to `pomodoro.json` in `ClipboardStore.directory` and restored at launch; a phase that ran out meanwhile advances quietly into a paused next phase. `onChange` fires on each change and tick, `onPhaseEnd` when a phase runs out by itself.
+- `PomodoroCommand.swift`: parses the URL path (`toggle`, `start`, `pause`, `resume`, `skip`, `stop`, or 1 to 180 minutes); nil makes the launcher beep. `AppDelegate.handleInternalURL` runs it.
+- `PomodoroStatusItem.swift`: its own `NSStatusItem`, independent of `Config.showMenuBarIcon`, created while the timer isn't idle and removed when it is. Its `NSMenu` is built once and reused, since a menu item can only be in one menu.
+- `PomodoroAlert.swift`: plays `Config.pomodoroSound`, and posts a `UNUserNotificationCenter` notification only when `Bundle.main.bundleIdentifier` is set (`UNUserNotificationCenter.current()` raises in the plain binary). The notification calls are kept out of main-actor code because their completion handlers run on a background queue.
+
 ### App/Launcher.swift
 
-`AppDelegate` runs as an accessory app, registers both hotkeys, owns the clipboard store/monitor, and builds the optional status-bar menu. The Workflows submenu is rebuilt in `menuNeedsUpdate`. `LauncherApp.main` first takes an exclusive `flock` on `~/Library/Application Support/Launcher/launcher.lock`; a second copy (plain binary, `build/`, or the installed app) exits with status 0 instead of fighting over the hotkeys and clipboard history.
+`AppDelegate` runs as an accessory app, registers both hotkeys, owns the clipboard store/monitor and the pomodoro timer, routes `alfresco://` URLs (`handleInternalURL`), and builds the optional status-bar menu (its "Start Pomodoro" item is disabled through `validateMenuItem` while a session runs). The Workflows submenu is rebuilt in `menuNeedsUpdate`. `LauncherApp.main` first takes an exclusive `flock` on `~/Library/Application Support/Launcher/launcher.lock`; a second copy (plain binary, `build/`, or the installed app) exits with status 0 instead of fighting over the hotkeys and clipboard history.
 
 ### Clipboard/ClipboardHistory.swift
 
