@@ -6,8 +6,9 @@
 // - launcher: opens, closes without opening anything (empty or typed), Enter
 //   on a keyword still waiting for its argument, which workflow ran (by its
 //   first keyword, never the argument), fallback count, and the first word of
-//   multi-word fallback inputs when it is a keyword or one typo away from one
-//   (a mistyped keyword), and which apps were opened (by bundle ID);
+//   multi-word fallback inputs when it is a keyword or a typo away from one of
+//   4 letters or more (a mistyped keyword), and which apps were opened (by
+//   bundle ID);
 // - previews and weather: requests answered and failures, by error;
 // - calendar: how often the event list is shown (never what it lists);
 // - clipboard: copies and restores per source app (bundle ID), copies by
@@ -227,10 +228,11 @@ final class UsageStats: NSObject {
     }
 
     /// The first word of a fallback input with at least two words,
-    /// lowercased, if it is one of `keywords` or a typo away from one (one
-    /// letter added, missing, changed or swapped with the next; two for
-    /// keywords of 5 letters or more). Any other word is what was searched
-    /// for, and is not kept.
+    /// lowercased, if it is one of `keywords` or a typo away from one: one
+    /// letter added, missing, changed or swapped with the next for keywords
+    /// of 4 letters, two for 5 letters or more. A keyword of 1 to 3 letters
+    /// must match exactly, since a typo away from "pr" is any word like "pa"
+    /// or "or". Any other word is what was searched for, and is not kept.
     private static func fallbackWord(in input: String, keywords: Set<String>) -> String? {
         let parts = input.trimmingCharacters(in: .whitespacesAndNewlines)
             .split(maxSplits: 1, whereSeparator: \.isWhitespace)
@@ -240,9 +242,13 @@ final class UsageStats: NSObject {
               word.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })
         else { return nil }
         let isNearKeyword = keywords.contains { keyword in
-            typoDistance(word, keyword) <= (keyword.count >= 5 ? 2 : 1)
+            typoDistance(word, keyword) <= Self.allowedTypos(for: keyword)
         }
         return isNearKeyword ? word : nil
+    }
+
+    private static func allowedTypos(for keyword: String) -> Int {
+        keyword.count >= 5 ? 2 : keyword.count == 4 ? 1 : 0
     }
 
     /// Edits (insert, delete, replace, swap two neighbors) from `a` to `b`:

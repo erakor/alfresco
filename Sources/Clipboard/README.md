@@ -67,10 +67,14 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `clipboardRetention` (24 h), `clipboardMaxItems` (500),
   `clipboardMaxTextBytes` (256 KB), `clipboardMaxImageBytes` (20 MB),
   `clipboardMaxImagePixels` (40 MP), `clipboardPollInterval` (0.5 s).
-- `clipboardIgnoredApps`: bundle IDs of apps whose copies are never recorded.
+- `clipboardIgnoredApps`: bundle IDs of apps whose copies are not recorded.
   Add the apps that hold secrets but don't mark them, such as a terminal or a
   browser whose password manager you use (`osascript -e 'id of app "iTerm"'`
-  prints an app's bundle ID).
+  prints an app's bundle ID). It's best effort: macOS doesn't say which app
+  made a copy, so this is the app in front half a second later. A copy from a
+  menu bar extra or an autofill popup (which leave the browser in front)
+  isn't caught, and neither is one followed at once by `⌘Tab`. The markers
+  above are the reliable signal.
 
 ## Code
 

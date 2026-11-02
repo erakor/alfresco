@@ -18,7 +18,10 @@ low and chance of rain or snow. Enter still opens the `weather` workflow's page.
 
    ```bash
    mkdir -p ~/.config/alfresco
-   (umask 077; printf 'WeatherAPI key: '; stty -echo; read -r key; stty echo; echo; printf '%s\n' "$key" > ~/.config/alfresco/weatherapi-key)
+   (umask 077; trap 'stty echo' EXIT; trap 'exit 1' INT TERM
+    printf 'WeatherAPI key: '; stty -echo; read -r key; stty echo; echo
+    [ -n "$key" ] && printf '%s\n' "$key" > ~/.config/alfresco/weatherapi-key &&
+      chmod 600 ~/.config/alfresco/weatherapi-key)
    ```
 
    If you copied the key, select it in the history (`⌘⌥C`) and press `⌘⌫`

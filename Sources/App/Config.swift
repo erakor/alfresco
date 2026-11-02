@@ -61,6 +61,11 @@ enum Config {
     /// apps that hold secrets but don't mark them on the clipboard (apps that
     /// do are skipped anyway, see ClipboardMonitor.ignoredTypes). Bundle IDs,
     /// e.g. "com.googlecode.iterm2" to keep nothing copied in a terminal.
+    /// Best effort: macOS doesn't say which app made a copy, so this is the
+    /// app in front when the clipboard is next checked (up to
+    /// clipboardPollInterval later). A copy from a menu bar extra or an
+    /// autofill popup, which leaves another app in front, isn't caught, and
+    /// switching apps right after copying can catch the wrong one.
     static let clipboardIgnoredApps: Set<String> = [
         "com.apple.keychainaccess",
         "com.apple.Passwords",
@@ -124,9 +129,9 @@ enum Config {
     /// Nothing leaves the Mac. false records nothing and hides "Usage…".
     static let usageTracking = true
     /// Also keeps the first word of multi-word inputs that went to the
-    /// fallback when it is a keyword or one typo away from one (e.g. "jria"
-    /// from "jria abc-42"), to spot mistyped keywords. Any other word, and
-    /// the rest of the input, is never kept.
+    /// fallback when it is a keyword or a typo away from one of 4 letters or
+    /// more (e.g. "jria" from "jria abc-42"), to spot mistyped keywords. Any
+    /// other word, and the rest of the input, is never kept.
     static let usageTrackFallbackWords = true
     /// Days of counters kept.
     static let usageRetentionDays = 90

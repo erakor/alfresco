@@ -27,9 +27,10 @@ Recorded:
   counts to put what you use most first.
 - The first word of multi-word fallback inputs, lowercased, only when it is a
   workflow keyword or a typo away from one (one letter added, missing, changed
-  or swapped; two for keywords of 5 letters or more): `jria abc-42` keeps
-  `jria`, a mistyped `jira`, while `divorce lawyer` keeps nothing. Any other
-  word, and the rest of the input, is never kept.
+  or swapped for a keyword of 4 letters, two for 5 letters or more; keywords
+  of 1 to 3 letters must match exactly): `jria abc-42` keeps `jria`, a
+  mistyped `jira`, while `divorce lawyer` or `pa taxes` keep nothing. Any
+  other word, and the rest of the input, is never kept.
 - Previews and weather: answers received and failures, by kind of error.
 - Calendar: how often the event list is shown, never what it lists.
 - Clipboard: copies by kind, copies and restores per app (by bundle ID), and

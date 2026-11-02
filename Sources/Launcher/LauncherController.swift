@@ -246,7 +246,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         if opened {
             UsageStats.shared.recordLaunch(
                 command.source, input: textField.stringValue,
-                keywords: Set(store.current.workflows.flatMap(\.keywords))
+                keywords: store.current.keywords
             )
             didLaunch = true
             textField.stringValue = ""

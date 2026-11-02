@@ -208,11 +208,13 @@ final class ClipboardStore: NSObject {
         return support.appendingPathComponent("Launcher", isDirectory: true)
     }()
 
-    override init() {
-        let directory = Self.directory
+    /// `directory` is only ever another one in the self-test.
+    init(directory: URL = ClipboardStore.directory) {
         fileURL = directory.appendingPathComponent("clipboard-history.json")
         imagesDirectory = directory.appendingPathComponent("clipboard-images", isDirectory: true)
         super.init()
+        ClipImageFile.makePrivate(directory)
+        ClipImageFile.makePrivate(imagesDirectory)
 
         load()
         let lostImages = dropItemsWithMissingImages()
@@ -733,15 +735,25 @@ enum ClipImageFile {
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
     }
 
-    /// Creates the folder if needed, and makes it owner-only even when it
-    /// already existed (the attributes only apply to a folder created here).
     static func createPrivateDirectory(_ url: URL) throws {
         try FileManager.default.createDirectory(
             at: url,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+    }
+
+    /// Makes an existing folder owner-only: createPrivateDirectory's
+    /// attributes only apply to a folder it creates, and earlier builds made
+    /// these without them. Run once at launch; a folder that can't be changed
+    /// is left as it is (saving still works, as before).
+    static func makePrivate(_ url: URL) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        } catch {
+            NSLog("Launcher: could not make %@ owner-only: %@", url.path, error.localizedDescription)
+        }
     }
 
     private static func pngData(from data: Data, type: NSPasteboard.PasteboardType) -> Data? {
@@ -751,17 +763,37 @@ enum ClipImageFile {
            let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
             return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
         }
-        // PDF and anything else ImageIO doesn't read, at its natural size.
-        // Its header gave no pixel size (see recordImage), so the size is
-        // checked here, before drawing it: a huge PDF page would take
-        // gigabytes before the PNG size limit could turn it down.
-        guard let image = NSImage(data: data) else { return nil }
-        let width = image.size.width
-        let height = image.size.height
-        guard width > 0, height > 0, width <= 100_000, height <= 100_000,
-              isAcceptable((width: Int(width.rounded(.up)), height: Int(height.rounded(.up)))),
-              let tiff = image.tiffRepresentation
+        // ImageIO can't read it: in practice a PDF (NSImage.imageTypes lists
+        // it, so the clipboard is read for it).
+        return pdfPNGData(from: data)
+    }
+
+    /// The first page of a PDF, drawn at one pixel per point into a bitmap
+    /// of exactly that size. Its header gave no pixel size (see recordImage),
+    /// so the size is checked here, before anything is drawn: the bitmap's
+    /// size is set here, not by the screen's scale, so a huge page is turned
+    /// down instead of taking gigabytes.
+    private static func pdfPNGData(from data: Data) -> Data? {
+        guard let provider = CGDataProvider(data: data as CFData),
+              let document = CGPDFDocument(provider),
+              let page = document.page(at: 1)
         else { return nil }
-        return NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+        var box = page.getBoxRect(.cropBox).size
+        if page.rotationAngle % 180 != 0 { box = CGSize(width: box.height, height: box.width) }
+        let width = box.width.rounded(.up)
+        let height = box.height.rounded(.up)
+        guard width >= 1, height >= 1, width <= 100_000, height <= 100_000 else { return nil }
+        let size = (width: Int(width), height: Int(height))
+        guard isAcceptable(size),
+              let context = CGContext(
+                  data: nil, width: size.width, height: size.height, bitsPerComponent: 8, bytesPerRow: 0,
+                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              )
+        else { return nil }
+        let bounds = CGRect(x: 0, y: 0, width: size.width, height: size.height)
+        context.concatenate(page.getDrawingTransform(.cropBox, rect: bounds, rotate: 0, preserveAspectRatio: true))
+        context.drawPDFPage(page)
+        guard let image = context.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
     }
 }

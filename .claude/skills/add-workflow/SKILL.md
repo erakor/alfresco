@@ -39,7 +39,8 @@ reference is the table under "Workflows" in `Sources/Launcher/README.md`.
     become several path segments.
   - It must start with `https:`, `http:`, `mailto:` or `alfresco:`
     (`Config.workflowURLSchemes`), with `{query}` after the scheme; anything
-    else (`file:` above all) makes the whole file fail to load. An app's own
+    else (`file:` above all) leaves that workflow out, and `check.sh` reports
+    it as INVALID. An app's own
     scheme (`obsidian:`, `things:`) needs adding to that set and a rebuild:
     that's a code change, so say so rather than doing it silently.
 - **`transforms`**: cleanup applied to the argument, in order, before encoding:

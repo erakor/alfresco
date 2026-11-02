@@ -67,9 +67,14 @@ struct Workflow: Decodable, Sendable {
     /// menu bar's Workflows submenu. Written as "description" in JSON.
     let help: String?
     let transforms: [ArgumentTransform]
-    /// http(s) URL template fetched while the input matches this workflow;
+    /// https URL template fetched while the input matches this workflow;
     /// the first line of its plain-text response is shown in the hint.
     let preview: String?
+    /// Why this workflow can't be used (a url scheme outside
+    /// Config.workflowURLSchemes, or an http preview), or nil. WorkflowSet
+    /// leaves such a workflow out and reports it, rather than refusing the
+    /// whole file: one old entry shouldn't take every keyword down with it.
+    let refusal: String?
 
     var takesArgument: Bool { url.contains("{query}") }
 
@@ -98,21 +103,18 @@ struct Workflow: Decodable, Sendable {
                 debugDescription: "keywords must be single words"
             )
         }
-        guard let scheme = Self.scheme(of: url), Config.workflowURLSchemes.contains(scheme) else {
+        if let scheme = Self.scheme(of: url), Config.workflowURLSchemes.contains(scheme) {
+            if let preview, Self.scheme(of: preview) != "https" {
+                // https only: what is typed after the keyword goes into it.
+                refusal = "preview must be an https URL"
+            } else {
+                refusal = nil
+            }
+        } else {
             let allowed = Config.workflowURLSchemes.sorted().map { "\($0):" }.joined(separator: ", ")
-            throw DecodingError.dataCorruptedError(
-                forKey: .url, in: container,
-                debugDescription: "url must start with one of \(allowed) (see Config.workflowURLSchemes)"
-            )
+            refusal = "url must start with one of \(allowed) (see Config.workflowURLSchemes)"
         }
         if let preview {
-            // https only: what is typed after the keyword goes into it.
-            if Self.scheme(of: preview) != "https" {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .preview, in: container,
-                    debugDescription: "preview must be an https URL"
-                )
-            }
             if preview.contains("{query}") && !takesArgument {
                 throw DecodingError.dataCorruptedError(
                     forKey: .preview, in: container,
@@ -140,22 +142,41 @@ struct Workflow: Decodable, Sendable {
 }
 
 struct WorkflowSet: Decodable, Sendable {
+    /// The usable workflows, in file order.
     let workflows: [Workflow]
     let fallback: Workflow
+    /// Every keyword of `workflows`.
+    let keywords: Set<String>
+    /// The workflows left out (see Workflow.refusal), one message each, e.g.
+    /// "\"Notes\": url must start with one of ...". WorkflowStore reports
+    /// them; the rest of the file is used.
+    let refused: [String]
 
     private enum CodingKeys: String, CodingKey { case workflows, fallback }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        workflows = try container.decode([Workflow].self, forKey: .workflows)
-        fallback = try container.decodeIfPresent(Workflow.self, forKey: .fallback) ?? Self.builtIn.fallback
-
-        if let index = workflows.firstIndex(where: { $0.keywords.isEmpty }) {
+        let all = try container.decode([Workflow].self, forKey: .workflows)
+        if let index = all.firstIndex(where: { $0.keywords.isEmpty }) {
             throw DecodingError.dataCorruptedError(
                 forKey: .workflows, in: container,
-                debugDescription: "workflow #\(index + 1) (\(workflows[index].title)) has no keywords"
+                debugDescription: "workflow #\(index + 1) (\(all[index].title)) has no keywords"
             )
         }
+        var refused = all.compactMap { workflow in workflow.refusal.map { "\"\(workflow.title)\": \($0)" } }
+        workflows = all.filter { $0.refusal == nil }
+        keywords = Set(workflows.flatMap(\.keywords))
+
+        let decodedFallback = try container.decodeIfPresent(Workflow.self, forKey: .fallback)
+        if let decodedFallback, let refusal = decodedFallback.refusal {
+            // The built-in search instead, so unmatched input still goes somewhere.
+            refused.append("fallback: \(refusal)")
+            fallback = Self.builtIn.fallback
+        } else {
+            fallback = decodedFallback ?? Self.builtIn.fallback
+        }
+        self.refused = refused
+
         if !fallback.takesArgument {
             throw DecodingError.dataCorruptedError(
                 forKey: .fallback, in: container,
@@ -272,7 +293,9 @@ final class WorkflowStore {
         do {
             let data = try Data(contentsOf: fileURL)
             current = try JSONDecoder().decode(WorkflowSet.self, from: data)
-            loadError = nil
+            // The file is used without its refused workflows, which are reported.
+            loadError = current.refused.isEmpty ? nil : "left out " + current.refused.joined(separator: "; ")
+            if let loadError { NSLog("Launcher: %@: %@", fileURL.path, loadError) }
         } catch {
             loadError = Self.describe(error)
             NSLog("Launcher: ignoring %@: %@", fileURL.path, loadError ?? "")
