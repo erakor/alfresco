@@ -6,12 +6,14 @@
 // - launcher: opens, closes without opening anything (empty or typed), Enter
 //   on a keyword still waiting for its argument, which workflow ran (by its
 //   first keyword, never the argument), fallback count, and the first word of
-//   multi-word fallback inputs (a missing or mistyped keyword);
+//   multi-word fallback inputs (a missing or mistyped keyword), and which
+//   apps were opened (by bundle ID);
 // - previews and weather: requests answered and failures, by error;
 // - clipboard: copies and restores per source app (bundle ID), copies by
 //   kind, skipped copies by reason. Never any content or file path.
 // Turn it off with Config.usageTracking; the menu bar's "Usage…" shows a
-// summary.
+// summary. The launcher also ranks its list with the totals (`totals()`):
+// apps you open more often, and keywords you run more often, come first.
 
 import Cocoa
 
@@ -25,7 +27,7 @@ enum UsageCounter: String, Sendable {
     /// Enter on a keyword that needs an argument, typed alone.
     case launcherEnterNeedsArgument = "launcher.enterNeedsArgument"
     case launcherFallback = "launcher.fallback"
-    /// Enter opened an installed app (which one is not kept).
+    /// An installed app was opened; which one is in UsageDay.appsOpened.
     case launcherOpenedApp = "launcher.openedApp"
 
     case previewLoaded = "preview.loaded"
@@ -56,6 +58,9 @@ struct UsageDay: Codable {
     /// Keyed by bundle ID ("unknown" when the app had none).
     var clipboardCopies: [String: Int] = [:]
     var clipboardRestores: [String: Int] = [:]
+    /// Apps opened from the launcher, keyed by bundle ID ("unknown" when
+    /// the app had none).
+    var appsOpened: [String: Int] = [:]
 
     init() {}
 
@@ -66,7 +71,16 @@ struct UsageDay: Codable {
         fallbackWords = try container.decodeIfPresent([String: Int].self, forKey: .fallbackWords) ?? [:]
         clipboardCopies = try container.decodeIfPresent([String: Int].self, forKey: .clipboardCopies) ?? [:]
         clipboardRestores = try container.decodeIfPresent([String: Int].self, forKey: .clipboardRestores) ?? [:]
+        appsOpened = try container.decodeIfPresent([String: Int].self, forKey: .appsOpened) ?? [:]
     }
+}
+
+/// Counts over every kept day, for ranking the launcher's list.
+struct UsageTotals: Sendable {
+    /// Bundle ID → times opened.
+    var apps: [String: Int] = [:]
+    /// Same keys as UsageDay.keywords: "pr", or "pr …" with an argument.
+    var keywords: [String: Int] = [:]
 }
 
 /// File format: { "version": 1, "days": { "2026-11-01": {...}, ... } }.
@@ -165,6 +179,14 @@ final class UsageStats: NSObject {
         }
     }
 
+    /// The launcher opened the app with this bundle ID.
+    func recordAppOpened(bundleID: String?) {
+        update { day in
+            day.counts[UsageCounter.launcherOpenedApp.rawValue, default: 0] += 1
+            day.appsOpened[bundleID ?? "unknown", default: 0] += 1
+        }
+    }
+
     /// An item copied from `bundleID` was put back on the clipboard.
     func recordClipboardRestore(bundleID: String?) {
         update { $0.clipboardRestores[bundleID ?? "unknown", default: 0] += 1 }
@@ -196,6 +218,21 @@ final class UsageStats: NSObject {
         return word
     }
 
+    // MARK: Totals
+
+    /// Apps opened and keywords run over every kept day (up to
+    /// Config.usageRetentionDays). Empty when Config.usageTracking is off.
+    func totals() -> UsageTotals {
+        var totals = UsageTotals()
+        guard Config.usageTracking else { return totals }
+        for day in stored.days.values {
+            totals.apps.merge(day.appsOpened, uniquingKeysWith: +)
+            totals.keywords.merge(day.keywords, uniquingKeysWith: +)
+        }
+        totals.apps["unknown"] = nil
+        return totals
+    }
+
     // MARK: Summary
 
     /// A plain-text summary of the last `days` days, for the "Usage…" alert.
@@ -208,6 +245,7 @@ final class UsageStats: NSObject {
             total.fallbackWords.merge(day.fallbackWords, uniquingKeysWith: +)
             total.clipboardCopies.merge(day.clipboardCopies, uniquingKeysWith: +)
             total.clipboardRestores.merge(day.clipboardRestores, uniquingKeysWith: +)
+            total.appsOpened.merge(day.appsOpened, uniquingKeysWith: +)
         }
         func count(_ counter: UsageCounter) -> Int { total.counts[counter.rawValue] ?? 0 }
         func top(_ map: [String: Int], _ limit: Int) -> String {
@@ -222,6 +260,10 @@ final class UsageStats: NSObject {
         var weatherFailures: [String: Int] = [:]
         for (name, value) in total.counts where name.hasPrefix(failurePrefix) {
             weatherFailures[String(name.dropFirst(failurePrefix.count))] = value
+        }
+        var appsOpened: [String: Int] = [:]
+        for (id, value) in total.appsOpened {
+            appsOpened[Self.appName(for: id), default: 0] += value
         }
         let skipped = count(.clipboardSkippedMarked) + count(.clipboardSkippedText) + count(.clipboardSkippedImage)
         // Spelled out step by step: as one chain it is too slow to type-check.
@@ -245,6 +287,7 @@ final class UsageStats: NSObject {
             "Keywords:",
             top(total.keywords, 10),
             "Apps opened: \(count(.launcherOpenedApp))",
+            top(appsOpened, 10),
             "Fallback: \(count(.launcherFallback)), first words:",
             top(total.fallbackWords, 10),
             "Previews: \(count(.previewLoaded)) loaded, \(count(.previewFailed)) failed",

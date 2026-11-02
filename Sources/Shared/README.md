@@ -19,8 +19,9 @@ Recorded:
 - Launcher: how often it opens, how often it closes without opening anything
   (and whether something was typed), Enter on a keyword still missing its
   argument, each workflow run (by its first keyword: `pr` or `pr …`, never what
-  you typed after it), how many installed apps were opened (not which), and
-  how often the fallback is used.
+  you typed after it), which installed apps were opened (by bundle ID), and
+  how often the fallback is used. The launcher list uses the app and keyword
+  counts to put what you use most first.
 - The first word of multi-word fallback inputs, lowercased, if it looks like a
   keyword (letters, digits, `-`, `_`, up to 20 characters): `jria abc-42` keeps
   `jria`, a mistyped `jira`. The rest of the input is never kept.
@@ -39,6 +40,7 @@ In `Sources/App/Config.swift` (rebuild after a change):
 ## Code
 
 - `UsageStats.swift`: the usage counters above.
+- `DigitShortcuts.swift`: the `⌘1` to `⌘9` key codes both panels use.
 - `HotKeys.swift`: global hotkeys through Carbon `RegisterEventHotKey`, so
   neither hotkey needs the Accessibility or Input Monitoring permission.
 - `FloatingPanel.swift`: the frosted, non-activating panel that both the

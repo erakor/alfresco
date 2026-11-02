@@ -10,7 +10,7 @@ launcher.
 - Accessory agent: no Dock icon (optional menu bar icon with Open / Clipboard History / Edit Workflows / Quit).
 - Workflows live in a JSON file and reload automatically: no rebuild to add one.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
-- Keyword suggestions as you type: `p` lists `pr`, `Tab` completes, `↑` `↓` choose.
+- Suggestions as you type, with icons: matching apps and keywords (`p` lists `pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
 
 | Input          | Opens                                                             |
 | -------------- | ----------------------------------------------------------------- |
