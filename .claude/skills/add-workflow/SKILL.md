@@ -40,7 +40,7 @@ reference is the table under "Workflows" in `Sources/Launcher/README.md`.
   - It must start with `https:`, `http:`, `mailto:` or `alfresco:`
     (`Config.workflowURLSchemes`), with `{query}` after the scheme; anything
     else (`file:` above all) leaves that workflow out, and `check.sh` reports
-    it as INVALID. An app's own
+    it as INVALID. A refused `fallback` leaves unmatched input going nowhere. An app's own
     scheme (`obsidian:`, `things:`) needs adding to that set and a rebuild:
     that's a code change, so say so rather than doing it silently.
 - **`transforms`**: cleanup applied to the argument, in order, before encoding:
@@ -51,7 +51,7 @@ reference is the table under "Workflows" in `Sources/Launcher/README.md`.
   jira abc-42"). It's the only help shown while typing and in the menu bar's
   Workflows submenu.
 - **`title`**: short. It's shown as "<title> <argument>" in the hint.
-- **`preview`** (optional): an https URL (http is refused) returning one short line of plain
+- **`preview`** (optional): an https URL (an http one is left out and reported) returning one short line of plain
   text, shown in the hint before Enter (the `weather` workflows use wttr.in's
   `?format=`). Same `{query}` rules as `url`. Pre-encode literal `%` as `%25`
   (`format=%25t`), since a bare `%t` is not a valid URL. Only add one when the

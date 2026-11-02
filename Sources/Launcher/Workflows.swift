@@ -68,13 +68,18 @@ struct Workflow: Decodable, Sendable {
     let help: String?
     let transforms: [ArgumentTransform]
     /// https URL template fetched while the input matches this workflow;
-    /// the first line of its plain-text response is shown in the hint.
+    /// the first line of its plain-text response is shown in the hint. nil
+    /// when the file's was refused (see previewRefusal).
     let preview: String?
     /// Why this workflow can't be used (a url scheme outside
-    /// Config.workflowURLSchemes, or an http preview), or nil. WorkflowSet
-    /// leaves such a workflow out and reports it, rather than refusing the
-    /// whole file: one old entry shouldn't take every keyword down with it.
+    /// Config.workflowURLSchemes), or nil. WorkflowSet leaves such a
+    /// workflow out and reports it, rather than refusing the whole file: one
+    /// old entry shouldn't take every keyword down with it.
     let refusal: String?
+    /// Why the file's preview was left out (not https, or {query} in it but
+    /// not in url), or nil. Only the preview goes: the workflow still runs,
+    /// so its input doesn't fall through to the fallback search instead.
+    let previewRefusal: String?
 
     var takesArgument: Bool { url.contains("{query}") }
 
@@ -93,9 +98,18 @@ struct Workflow: Decodable, Sendable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }
         transforms = try container.decodeIfPresent([ArgumentTransform].self, forKey: .transforms) ?? []
-        preview = try container.decodeIfPresent(String.self, forKey: .preview)
+        let preview = try container.decodeIfPresent(String.self, forKey: .preview)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }
+        if let preview, Self.scheme(of: preview) != "https" {
+            // https only: what is typed after the keyword goes into it.
+            previewRefusal = "preview must be an https URL"
+        } else if let preview, preview.contains("{query}"), !url.contains("{query}") {
+            previewRefusal = "preview uses {query} but url does not"
+        } else {
+            previewRefusal = nil
+        }
+        self.preview = previewRefusal == nil ? preview : nil
 
         if keywords.contains(where: { $0.isEmpty || $0.contains(where: \.isWhitespace) }) {
             throw DecodingError.dataCorruptedError(
@@ -104,23 +118,10 @@ struct Workflow: Decodable, Sendable {
             )
         }
         if let scheme = Self.scheme(of: url), Config.workflowURLSchemes.contains(scheme) {
-            if let preview, Self.scheme(of: preview) != "https" {
-                // https only: what is typed after the keyword goes into it.
-                refusal = "preview must be an https URL"
-            } else {
-                refusal = nil
-            }
+            refusal = nil
         } else {
             let allowed = Config.workflowURLSchemes.sorted().map { "\($0):" }.joined(separator: ", ")
             refusal = "url must start with one of \(allowed) (see Config.workflowURLSchemes)"
-        }
-        if let preview {
-            if preview.contains("{query}") && !takesArgument {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .preview, in: container,
-                    debugDescription: "preview uses {query} but url does not"
-                )
-            }
         }
     }
 
@@ -144,12 +145,16 @@ struct Workflow: Decodable, Sendable {
 struct WorkflowSet: Decodable, Sendable {
     /// The usable workflows, in file order.
     let workflows: [Workflow]
-    let fallback: Workflow
+    /// Where input no workflow takes goes: the file's, else the built-in
+    /// Google search when the file has none. nil when the file's was refused:
+    /// that input then goes nowhere (the launcher beeps) rather than to a
+    /// search the user didn't choose.
+    let fallback: Workflow?
     /// Every keyword of `workflows`.
     let keywords: Set<String>
-    /// The workflows left out (see Workflow.refusal), one message each, e.g.
-    /// "\"Notes\": url must start with one of ...". WorkflowStore reports
-    /// them; the rest of the file is used.
+    /// What was left out (see Workflow.refusal and previewRefusal), one
+    /// message each, e.g. "\"Notes\": url must start with one of ...".
+    /// WorkflowStore reports them; the rest of the file is used.
     let refused: [String]
 
     private enum CodingKeys: String, CodingKey { case workflows, fallback }
@@ -163,33 +168,41 @@ struct WorkflowSet: Decodable, Sendable {
                 debugDescription: "workflow #\(index + 1) (\(all[index].title)) has no keywords"
             )
         }
-        var refused = all.compactMap { workflow in workflow.refusal.map { "\"\(workflow.title)\": \($0)" } }
+        var refused: [String] = []
+        for workflow in all {
+            if let refusal = workflow.refusal {
+                refused.append("\"\(workflow.title)\": \(refusal)")
+            } else if let refusal = workflow.previewRefusal {
+                refused.append("\"\(workflow.title)\": \(refusal) (its preview is left out)")
+            }
+        }
         workflows = all.filter { $0.refusal == nil }
         keywords = Set(workflows.flatMap(\.keywords))
 
         let decodedFallback = try container.decodeIfPresent(Workflow.self, forKey: .fallback)
-        if let decodedFallback, let refusal = decodedFallback.refusal {
-            // The built-in search instead, so unmatched input still goes somewhere.
-            refused.append("fallback: \(refusal)")
-            fallback = Self.builtIn.fallback
+        if let decodedFallback {
+            if !decodedFallback.takesArgument {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .fallback, in: container,
+                    debugDescription: "fallback url must contain {query}"
+                )
+            }
+            // A fallback preview would send everything typed to that server.
+            if decodedFallback.preview != nil || decodedFallback.previewRefusal != nil {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .fallback, in: container,
+                    debugDescription: "fallback cannot have a preview"
+                )
+            }
+        }
+        if let refusal = decodedFallback?.refusal {
+            // Fail closed: never send what is typed to a search the user didn't pick.
+            refused.append("fallback: \(refusal); input no keyword takes goes nowhere until it is fixed")
+            fallback = nil
         } else {
             fallback = decodedFallback ?? Self.builtIn.fallback
         }
         self.refused = refused
-
-        if !fallback.takesArgument {
-            throw DecodingError.dataCorruptedError(
-                forKey: .fallback, in: container,
-                debugDescription: "fallback url must contain {query}"
-            )
-        }
-        // A fallback preview would send everything typed to that server.
-        if fallback.preview != nil {
-            throw DecodingError.dataCorruptedError(
-                forKey: .fallback, in: container,
-                debugDescription: "fallback cannot have a preview"
-            )
-        }
     }
 
     // swiftlint:disable:next force_try
@@ -354,10 +367,27 @@ enum CommandParser {
     )
 
     /// Parses `<keyword> [argument]`, falling back to the fallback workflow.
+    /// nil for empty input, or input no workflow takes when there is no
+    /// fallback (WorkflowSet.fallback).
     static func parse(_ raw: String, using set: WorkflowSet) -> Command? {
         let input = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return nil }
+        if let command = workflowCommand(input, using: set) { return command }
+        guard let fallback = set.fallback,
+              let url = expand(fallback.url, with: fallback.prepare(input))
+        else { return nil }
+        return Command(url: url, label: fallback.title, source: .fallback)
+    }
 
+    /// Whether the input is something no workflow takes, so it goes to the
+    /// fallback search, if there is one. Installed apps only take such input.
+    static func isUnmatched(_ raw: String, using set: WorkflowSet) -> Bool {
+        let input = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !input.isEmpty && workflowCommand(input, using: set) == nil
+    }
+
+    /// The workflow command for trimmed, non-empty input, if a workflow takes it.
+    private static func workflowCommand(_ input: String, using set: WorkflowSet) -> Command? {
         let parts = input.split(maxSplits: 1, whereSeparator: \.isWhitespace)
         let keyword = String(parts[0])
         if parts.count == 2, let workflow = set.workflow(for: keyword, withArgument: true) {
@@ -377,9 +407,7 @@ enum CommandParser {
                 preview: workflow.preview.flatMap { URL(string: $0) }
             )
         }
-
-        guard let url = expand(set.fallback.url, with: set.fallback.prepare(input)) else { return nil }
-        return Command(url: url, label: set.fallback.title, source: .fallback)
+        return nil
     }
 
     private static func expand(_ template: String, with argument: String) -> URL? {

@@ -529,10 +529,20 @@ final class ClipboardMonitor: NSObject {
         lastChangeCount = pasteboard.changeCount
     }
 
-    /// Every image format NSImage reads, PNG and TIFF first since those
-    /// need the least conversion.
-    private static let imageTypes: [NSPasteboard.PasteboardType] =
-        [.png, .tiff] + NSImage.imageTypes.map { NSPasteboard.PasteboardType($0) }
+    /// The image formats ClipImageFile.save can turn into a PNG: what ImageIO
+    /// reads, and PDF (pdfPNGData). PNG and TIFF first since those need the
+    /// least conversion. Other formats NSImage lists (EPS, say) are left out,
+    /// so such a copy records its text or files instead of an image that
+    /// could not be saved.
+    private static let imageTypes: [NSPasteboard.PasteboardType] = {
+        let readable = Set((CGImageSourceCopyTypeIdentifiers() as? [String]) ?? []).union(["com.adobe.pdf"])
+        let others = NSImage.imageTypes.filter { readable.contains($0) }
+        return [.png, .tiff] + others.map { NSPasteboard.PasteboardType($0) }
+    }()
+
+    #if SELFTEST
+    static var imageTypesForSelfTest: [NSPasteboard.PasteboardType] { imageTypes }
+    #endif
 
     /// Only reads the clipboard's contents when its change counter moved.
     ///
@@ -702,8 +712,8 @@ enum ClipImageFile {
     /// `directory` (or refreshes the date of an identical file already there).
     static func save(_ data: Data, type: NSPasteboard.PasteboardType, in directory: URL) -> ClipImage? {
         // recordImage checked this already; repeated so no caller can have a
-        // huge image decoded.
-        if let size = pixelSize(of: data), !isAcceptable(size) { return nil }
+        // huge image decoded. A PNG is kept as is and checked just below.
+        if type != .png, let size = pixelSize(of: data), !isAcceptable(size) { return nil }
         guard let png = pngData(from: data, type: type),
               png.count <= Config.clipboardMaxImageBytes,
               let size = pixelSize(of: png),
@@ -763,8 +773,8 @@ enum ClipImageFile {
            let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
             return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
         }
-        // ImageIO can't read it: in practice a PDF (NSImage.imageTypes lists
-        // it, so the clipboard is read for it).
+        // ImageIO can't read it: a PDF (the only other type the monitor
+        // reads, see ClipboardMonitor.imageTypes).
         return pdfPNGData(from: data)
     }
 

@@ -13,6 +13,7 @@
 // never sees any of it.
 
 import Cocoa
+import ImageIO
 
 @MainActor
 enum SecurityTests {
@@ -47,10 +48,13 @@ enum SecurityTests {
         return workflow
     }
 
+    private static func decode(_ data: Data) -> WorkflowSet? {
+        try? JSONDecoder().decode(WorkflowSet.self, from: data)
+    }
+
     /// Whether a file with just this workflow loads it.
     private static func loads(_ url: String, preview: String? = nil) -> Bool {
-        guard let set = try? JSONDecoder().decode(WorkflowSet.self, from: json([workflow(url, preview: preview)]))
-        else { return false }
+        guard let set = decode(json([workflow(url, preview: preview)])) else { return false }
         return set.workflows.count == 1 && set.refused.isEmpty
     }
 
@@ -67,13 +71,27 @@ enum SecurityTests {
         check("workflows: a url without a scheme is refused", !loads("example.com/{query}"))
         check("workflows: an https preview loads",
               loads("https://example.com/{query}", preview: "https://example.com/p/{query}"))
-        check("workflows: an http preview is refused",
-              !loads("https://example.com/{query}", preview: "http://example.com/p/{query}"))
+        // A refused preview goes alone: the keyword still runs its url,
+        // rather than its input going to the fallback search.
+        let httpPreview = decode(json([workflow("https://example.com/{query}", preview: "http://example.com/p/{query}")]))
+        check("workflows: an http preview is left out, its workflow kept",
+              httpPreview?.workflows.count == 1 && httpPreview?.workflows.first?.preview == nil
+                  && httpPreview?.refused.first?.hasSuffix("(its preview is left out)") == true,
+              "\(httpPreview?.refused ?? [])")
+        let command = httpPreview.flatMap { CommandParser.parse("kw 12", using: $0) }
+        check("workflows: its keyword still runs its url, with no preview",
+              command?.url.absoluteString == "https://example.com/12" && command?.preview == nil,
+              command?.url.absoluteString ?? "nil")
+        let queryPreview = decode(json([workflow("https://example.com/", preview: "https://example.com/p/{query}")]))
+        check("workflows: a preview using {query} when url doesn't is left out, its workflow kept",
+              queryPreview?.workflows.count == 1 && queryPreview?.workflows.first?.preview == nil
+                  && queryPreview?.refused.count == 1,
+              "\(queryPreview.map { "\($0.refused)" } ?? "the file was refused")")
         check("workflows: Workflow.scheme reads the scheme",
               Workflow.scheme(of: "Mailto:{query}") == "mailto" && Workflow.scheme(of: "x-y.z+1://a") == "x-y.z+1")
         check("workflows: Workflow.scheme has none before {query}",
               Workflow.scheme(of: "{query}:x") == nil && Workflow.scheme(of: "no-colon") == nil)
-        check("workflows: the built-in fallback still loads", WorkflowSet.builtIn.fallback.takesArgument)
+        check("workflows: the built-in fallback still loads", WorkflowSet.builtIn.fallback?.takesArgument == true)
 
         // One refused workflow costs only itself.
         let mixed = json(
@@ -83,8 +101,18 @@ enum SecurityTests {
         let set = try? JSONDecoder().decode(WorkflowSet.self, from: mixed)
         check("workflows: a refused workflow is left out, the others load",
               set?.workflows.map(\.url) == ["https://example.com/{query}"], "\(String(describing: set?.workflows.count))")
-        check("workflows: a refused fallback is replaced by the built-in one",
-              set?.fallback.url == WorkflowSet.builtIn.fallback.url)
+        check("workflows: a refused fallback is not replaced by another search", set != nil && set?.fallback == nil)
+        if let set {
+            check("workflows: with no fallback, input no keyword takes runs nothing",
+                  CommandParser.parse("secret search", using: set) == nil
+                      && CommandParser.isUnmatched("secret search", using: set))
+            check("workflows: with no fallback, keywords still run",
+                  CommandParser.parse("kw 12", using: set)?.url.absoluteString == "https://example.com/12"
+                      && !CommandParser.isUnmatched("kw 12", using: set))
+        }
+        let noFallback = decode(json([workflow("https://example.com/{query}")]))
+        check("workflows: a file without a fallback uses the built-in one",
+              noFallback?.fallback?.url == WorkflowSet.builtIn.fallback?.url && noFallback?.refused.isEmpty == true)
         check("workflows: each refusal is reported",
               set?.refused.count == 2 && set?.refused.first?.hasPrefix("\"Notes\": url must start with") == true,
               "\(set?.refused ?? [])")
@@ -145,11 +173,45 @@ enum SecurityTests {
         ClipImageFile.makePrivate(root.appendingPathComponent("missing", isDirectory: true))
         check("files: making a missing folder private creates nothing",
               !FileManager.default.fileExists(atPath: root.appendingPathComponent("missing").path))
+
+        // The modes the code sets itself, under the usual umask (022) rather
+        // than the app's 077, so these pass only if the code sets them.
+        do {
+            let previous = umask(0o022)
+            defer { umask(previous) }
+            let control = root.appendingPathComponent("control.json")
+            try? Data("{}".utf8).write(to: control, options: .atomic)
+            check("files: under umask 022, a plain write is readable by others", mode(control) == 0o644, octal(control))
+
+            let folder = root.appendingPathComponent("umask022", isDirectory: true)
+            let store = ClipboardStore(directory: folder)
+            stores.append(store)
+            store.saveNow()
+            let history = folder.appendingPathComponent("clipboard-history.json")
+            check("files: under umask 022, the store's new folder is owner-only", mode(folder) == 0o700, octal(folder))
+            check("files: under umask 022, the saved history is owner-only", mode(history) == 0o600, octal(history))
+
+            let images = folder.appendingPathComponent("clipboard-images", isDirectory: true)
+            let image = ClipImageFile.save(pdf(width: 20, height: 10), type: .pdf, in: images)
+            let imageFile = images.appendingPathComponent(image?.fileName ?? "missing")
+            check("files: under umask 022, a saved image and its folder are owner-only",
+                  mode(imageFile) == 0o600 && mode(images) == 0o700, "\(octal(imageFile)), folder \(octal(images))")
+        }
     }
 
     // MARK: Clipboard
 
     private static func clipboardMonitor(in root: URL) {
+        let types = ClipboardMonitor.imageTypesForSelfTest.map(\.rawValue)
+        check("clipboard: images are read as PNG and TIFF first, and as PDF",
+              types.prefix(2) == [NSPasteboard.PasteboardType.png.rawValue, NSPasteboard.PasteboardType.tiff.rawValue]
+                  && types.contains("com.adobe.pdf"), "\(types)")
+        // NSImage lists more (EPS on older macOS): those copies keep their
+        // text or files rather than becoming an image that can't be saved.
+        let saveable = Set((CGImageSourceCopyTypeIdentifiers() as? [String]) ?? []).union(["com.adobe.pdf"])
+        let unsaveable = types.filter { !saveable.contains($0) }
+        check("clipboard: only types that can be saved are read as images", unsaveable.isEmpty, "\(unsaveable)")
+
         check("clipboard: copies in Passwords are ignored",
               ClipboardMonitor.isIgnoredForSelfTest(ClipSource(name: "Passwords", bundleID: "com.apple.Passwords")))
         check("clipboard: copies in other apps are not",

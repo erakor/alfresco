@@ -46,13 +46,13 @@ if let error = store.loadError {
     exit(1)
 }
 let set = store.current
-print("OK: \(set.workflows.count) workflows, fallback \"\(set.fallback.title)\"")
+print("OK: \(set.workflows.count) workflows, fallback \(set.fallback.map { "\"\($0.title)\"" } ?? "none (refused)")")
 // Where what is typed goes without a keyword (Enter on anything unmatched)
 // and while typing (previews): worth a look whenever the file changes.
 func host(_ template: String) -> String {
     URLComponents(string: template.replacingOccurrences(of: "{query}", with: "x"))?.host ?? template
 }
-print("Fallback sends unmatched input to: \(host(set.fallback.url))")
+if let fallback = set.fallback { print("Fallback sends unmatched input to: \(host(fallback.url))") }
 let previewHosts = Set(set.workflows.compactMap { $0.preview.map(host) }).sorted()
 if !previewHosts.isEmpty { print("Previews send typed arguments to: \(previewHosts.joined(separator: ", "))") }
 // A keyword may appear once with {query} and once without; a second use of
