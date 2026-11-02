@@ -79,7 +79,7 @@ private enum PreviewLoader {
     /// with something that is not HTML.
     static func load(_ url: URL) async throws -> String {
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await HTTPSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }

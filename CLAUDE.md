@@ -12,7 +12,7 @@ Needs the Xcode 16+ Command Line Tools only (Swift 6 compiler, for `-swift-versi
 
 ```bash
 # Plain binary (finds workflows.json next to itself)
-swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o Launcher && ./Launcher
+swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.0" $(find Sources -name '*.swift') -o Launcher && ./Launcher
 
 # .app bundle -> build/Launcher.app (ad-hoc signed, LSUIElement)
 ./build.sh
@@ -21,7 +21,7 @@ swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o 
 ALFRESCO_WORKFLOWS=/path/to/workflows.json ./Launcher
 ```
 
-`-parse-as-library` is required because `Sources/App/Launcher.swift` uses `@main`. `-swift-version 6` turns on Swift 6 language mode, so data-race safety violations are compile errors rather than warnings; keep it on every build command. Every `.swift` file under `Sources/` (any depth) is compiled in as one module, so new source files are picked up automatically and folders have no effect on visibility. There is no linter or formatter. The checks are "compiles with `swiftc`" and the runtime self-test (below), both run by CI (`.github/workflows/build.yml`, on a macOS runner). `build/` is gitignored, but a plain `Launcher` binary built in the repo root is not, so don't commit it.
+`-parse-as-library` is required because `Sources/App/Launcher.swift` uses `@main`. `-swift-version 6` turns on Swift 6 language mode, so data-race safety violations are compile errors rather than warnings; keep it on every build command. `-target …-apple-macos12.0` sets the minimum macOS version to match `LSMinimumSystemVersion` in `build.sh`; without it the binary only runs on the macOS it was built on or newer, and `#available` fallbacks never run. Keep it on every build command too, including `Tests/run-self-tests.sh`. Every `.swift` file under `Sources/` (any depth) is compiled in as one module, so new source files are picked up automatically and folders have no effect on visibility. There is no linter or formatter. The checks are "compiles with `swiftc`" and the runtime self-test (below), both run by CI (`.github/workflows/build.yml`, on a macOS runner). `build/` is gitignored, but a plain `Launcher` binary built in the repo root is not, so don't commit it.
 
 ## Self-test
 
@@ -65,6 +65,14 @@ The forecast area under the launcher input, shown while the input is `Config.wea
 
 `LauncherController.updateWeather` shows or hides it and resizes the panel with `FloatingPanelController.setHeight`; while it is shown, the one-line hint `preview` is not fetched. It also lays out `WeatherStripView`, the line above the input that shows `WeatherProvider.homeQuery()` whenever `Config.weatherStrip` is on and a key is set: the input row is positioned by a layout guide (`rowGuide`) whose top moves down by the strip's height. Requests go one at a time, the typed query first, then home.
 
+### Shared/HTTPSession.swift
+
+`HTTPSession.shared` is an ephemeral `URLSession` used by `WeatherLoader` and `PreviewLoader` instead of `URLSession.shared`: the WeatherAPI key is in the request URL, so it has no URL cache and no cookie storage at all (not even ephemeral's in-memory ones). `removeLegacyCache`, at launch, empties `URLCache.shared`, which earlier builds filled with weather URLs holding the key.
+
+### Shared/ShortcutModifiers.swift
+
+`NSEvent.shortcutModifiers` is the event's ⌘ ⌃ ⌥ ⇧ only. Every ⌘-shortcut check (`LauncherPanel`'s editing shortcuts, both `handleKeyEquivalent`s) compares it to `.command`, so Caps Lock, keypad Enter and fn never break a shortcut. Use it for new shortcuts too.
+
 ### Shared/HotKeys.swift
 
 Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitoring permissions. Don't switch to `NSEvent` global monitors or CGEventTap. macOS 15+ rejects Option-only hotkeys.
@@ -79,7 +87,7 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Launcher/LauncherController.swift
 
-`LauncherController` (a `FloatingPanelController`) runs the launcher: the input field, the hint line, the suggestion list, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone. When `matchedApp()` finds an app and no suggestion row is chosen, the search icon shows the app's icon, the hint reads `↩ Open <app>  ⌘↩ <fallback title>`, Enter opens the app, and ⌘↩ (`handleKeyEquivalent`) runs the fallback search instead. A command whose URL has the `alfresco` scheme is not opened: it goes to the `internalURLHandler` closure from `AppDelegate`, and a `false` result beeps and keeps the bar open. That's how workflows.json reaches in-app features without a schema change.
+`LauncherController` (a `FloatingPanelController`) runs the launcher: the input field, the hint line, the suggestion list, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone. When an `AppIndex` scan finishes, `appsDidChange` refreshes the list only while the panel is shown, and keeps the highlighted row (`SuggestionListView.select`, matched with `LauncherItem.isSame`) so Enter still does what was shown. When `matchedApp()` finds an app and no suggestion row is chosen, the search icon shows the app's icon, the hint reads `↩ Open <app>  ⌘↩ <fallback title>`, Enter opens the app, and ⌘↩ (`handleKeyEquivalent`) runs the fallback search instead. A command whose URL has the `alfresco` scheme is not opened: it goes to the `internalURLHandler` closure from `AppDelegate`, and a `false` result beeps and keeps the bar open. That's how workflows.json reaches in-app features without a schema change.
 
 ### Launcher/SuggestionListView.swift
 
@@ -101,7 +109,7 @@ The pomodoro timer. No hotkey or panel: it's controlled through `alfresco://pomo
 ### Clipboard/ClipboardHistory.swift
 
 - `ClipContent` is the model and the extension point for new kinds: `.text`, `.image(ClipImage)` and `.files([String])` (absolute paths; references only, the files aren't copied). Its on-disk encoding tags each item with a `"kind"` so older builds skip unknown kinds. `ClipItem` records the source app's name and bundle ID (for its icon).
-- `ClipboardStore` keeps the history newest-first, prunes items older than the retention window on a timer, saves to `~/Library/Application Support/Launcher/clipboard-history.json` with a debounced save, and calls `onChange` so an open panel can refresh. Image data lives outside the JSON as `clipboard-images/<sha256>.png` (`ClipImage.hash` and the pixel size are validated on decode, because the hash becomes a file name and the size gets multiplied). Another running copy of the app shares that folder, so a save deletes only image files this process referenced and stopped using (`knownImageFiles`); at launch, unused files older than the retention window are swept, which is safe because copying or promoting an image refreshes its file's modification date. Load drops image items whose file is missing, and an unreadable history file is set aside with `SetAsideFile.move` (`canSave` off if that fails) rather than overwritten. `add` places items by `copiedAt`, since images arrive late.
+- `ClipboardStore` keeps the history newest-first, prunes items older than the retention window on a timer, saves to `~/Library/Application Support/Launcher/clipboard-history.json` with a debounced save, and calls `onChange` so an open panel can refresh. Image data lives outside the JSON as `clipboard-images/<sha256>.png` (`ClipImage.hash` and the pixel size are validated on decode, because the hash becomes a file name and the size gets multiplied). Another running copy of the app shares that folder, so a save deletes only image files this process referenced and stopped using (`knownImageFiles`); at launch, unused files older than the retention window are swept, which is safe because copying or promoting an image refreshes its file's modification date. Load drops image items whose file is missing, and an unreadable history file is set aside with `SetAsideFile.move` (`canSave` off if that fails) rather than overwritten; the set-aside file's date is refreshed, and `removeStaleSetAsideFiles` (at launch and on each prune tick) deletes `clipboard-history.unreadable*.json` once older than the retention window. `excludeFromBackup` marks the history file (after every atomic save, which drops the flag) and `clipboard-images/` as excluded from backups, so new Time Machine backups don't include the history; earlier backups and snapshots keep what they have. The rest of the support folder (usage, pomodoro) is still backed up. `add` places items by `copiedAt`, since images arrive late.
 - `ClipboardMonitor` polls `NSPasteboard.changeCount` (macOS has no clipboard change notification). One copy is recorded as one kind: file URLs, then text, then any image `NSImage` can read, except that an image wins over file URLs that all point to temp/cache locations and over text that is only an http(s) link. `recordImage` reads the bytes and checks the pixel size from the header on the main thread; `ClipImageFile.save` (PNG conversion, hashing, writing; not main-actor) runs in a detached task. It skips items carrying the nspasteboard.org `Concealed` / `Transient` / `AutoGenerated` markers, oversized or whitespace-only text, oversized images, and whatever was on the clipboard at launch.
 
 ### Clipboard/ClipboardPanel.swift

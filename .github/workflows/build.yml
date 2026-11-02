@@ -23,7 +23,7 @@ jobs:
         run: swiftc --version
 
       - name: Compile
-        run: swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o Launcher
+        run: swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.0" $(find Sources -name '*.swift') -o Launcher
 
       - name: Build .app bundle
         run: ./build.sh

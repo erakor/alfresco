@@ -46,6 +46,11 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `DigitShortcuts.swift`: the `⌘1` to `⌘9` key codes both panels use.
 - `SetAsideFile.swift`: moves an unreadable clipboard history or usage file
   out of the way (`*.unreadable.json`, `-2`, `-3`…) instead of overwriting it.
+- `HTTPSession.swift`: the URL session for weather and preview requests (no
+  cache, no cookies). At launch it also empties the cache earlier builds
+  used, which could hold the WeatherAPI key.
+- `ShortcutModifiers.swift`: `NSEvent.shortcutModifiers`, so ⌘ shortcuts
+  work with Caps Lock on.
 - `HotKeys.swift`: global hotkeys through Carbon `RegisterEventHotKey`, so
   neither hotkey needs the Accessibility or Input Monitoring permission.
 - `FloatingPanel.swift`: the frosted, non-activating panel that both the

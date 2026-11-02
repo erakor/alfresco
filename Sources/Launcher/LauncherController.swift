@@ -46,7 +46,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
         weather.onUpdate = { [weak self] in self?.updateWeather() }
-        apps.onUpdate = { [weak self] in self?.inputDidChange() }
+        apps.onUpdate = { [weak self] in self?.appsDidChange() }
         suggestionList.onPick = { [weak self] in self?.activate($0) }
     }
 
@@ -94,6 +94,20 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateSuggestions()
         updateHint()
         updateWeather()
+    }
+
+    /// A rescan finished. Nothing to refresh while the panel is hidden
+    /// (prepareToShow does it), and refreshing then could start a weather
+    /// request nobody asked for. While shown, the list is rebuilt but keeps
+    /// its highlighted row if that row is still there, so Enter still does
+    /// what the list shows.
+    private func appsDidChange() {
+        guard isShown else { return }
+        let selected = suggestionList.selected
+        updateSuggestions()
+        if let selected { suggestionList.select(selected) }
+        updateHint()
+        updateWeather() // resizes the panel to the new list
     }
 
     /// The installed app the input names, when no workflow keyword claims
@@ -333,10 +347,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// ⌘1 to ⌘9 take the Nth row of the list.
     override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
         let keyCode = Int(event.keyCode)
-        // Only the shortcut modifiers: Caps Lock and keypad Enter's
-        // .numericPad flag must not get in the way.
-        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        guard modifiers == .command else { return false }
+        guard event.shortcutModifiers == .command else { return false }
         if keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter {
             execute(searchOnly: true)
             return true
