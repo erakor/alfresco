@@ -15,7 +15,9 @@ import ImageIO
 /// fires with the picture, or nil when the file can't be decoded. The newest
 /// request goes first, so what is on screen now isn't kept waiting behind
 /// rows scrolled past. A file that can't be decoded is not tried again until
-/// `forgetFailures()` or `removeAll()`.
+/// `forgetFailures()` or `removeAll()`. `keepOnly(_:)` forgets everything
+/// about files that left the history, so a cleared image's picture doesn't
+/// stay in memory.
 @MainActor
 final class ThumbnailLoader {
     /// Called with the file's URL and its picture once decoded (also cached),
@@ -24,6 +26,9 @@ final class ThumbnailLoader {
 
     private let maxPixelSize: Int
     private let cache = NSCache<NSString, NSImage>()
+    /// Paths put in `cache` (NSCache can't list its keys). Some may have been
+    /// evicted since, which only means removeObject finds nothing.
+    private var cachedPaths = Set<String>()
     /// Waiting to be decoded; the last one is decoded next.
     private var pending: [URL] = []
     /// Paths pending or being decoded, so a file is queued once.
@@ -32,6 +37,8 @@ final class ThumbnailLoader {
     private var failed = Set<String>()
     /// The path being decoded, if any.
     private var decoding: String?
+    /// The running decode's result is to be dropped (keepOnly left it out).
+    private var discardsDecoding = false
     /// Bumped by removeAll, so a decode started before it is thrown away.
     private var generation = 0
 
@@ -45,6 +52,8 @@ final class ThumbnailLoader {
     func image(for url: URL) -> NSImage? {
         let path = url.path
         if let image = cache.object(forKey: path as NSString) { return image }
+        // Wanted again (an image copied again) before its dropped decode ended.
+        if path == decoding { discardsDecoding = false }
         if !failed.contains(path), queued.insert(path).inserted {
             pending.append(url)
             decodeNext()
@@ -75,9 +84,24 @@ final class ThumbnailLoader {
     func removeAll() {
         generation += 1
         cache.removeAllObjects()
+        cachedPaths.removeAll()
         pending.removeAll()
         queued.removeAll()
         failed.removeAll()
+    }
+
+    /// Forgets the pictures, failures and waiting requests of every file not
+    /// in `paths` (the files still in the history). A decode already running
+    /// for one of them finishes, but its result is dropped.
+    func keepOnly(_ paths: Set<String>) {
+        for path in cachedPaths.subtracting(paths) {
+            cache.removeObject(forKey: path as NSString)
+        }
+        cachedPaths.formIntersection(paths)
+        failed.formIntersection(paths)
+        pending.removeAll { !paths.contains($0.path) }
+        queued = queued.filter { paths.contains($0) || $0 == decoding }
+        if let decoding, !paths.contains(decoding) { discardsDecoding = true }
     }
 
     private func decodeNext() {
@@ -95,12 +119,17 @@ final class ThumbnailLoader {
 
     private func finish(_ url: URL, _ decoded: CGImage?, generation started: Int) {
         decoding = nil
-        if started == generation {
+        let discarded = discardsDecoding
+        discardsDecoding = false
+        if discarded {
+            queued.remove(url.path)
+        } else if started == generation {
             let path = url.path
             queued.remove(path)
             let image = decoded.map { NSImage(cgImage: $0, size: .zero) }
             if let image, let decoded {
                 cache.setObject(image, forKey: path as NSString, cost: decoded.width * decoded.height * 4)
+                cachedPaths.insert(path)
             } else {
                 failed.insert(path)
             }

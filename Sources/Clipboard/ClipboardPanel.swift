@@ -117,6 +117,12 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         store.onChange = { [weak self] in
             guard let self else { return }
             self.filter.historyDidChange(self.store.items)
+            // Thumbnails of images cleared, deleted or expired go too, so
+            // they don't outlive the history in memory.
+            self.rowThumbnails.keepOnly(Set(self.store.items.compactMap { item -> String? in
+                guard case .image(let image) = item.content else { return nil }
+                return self.store.imageURL(for: image).path
+            }))
             guard self.panel.isVisible else { return }
             self.reload(keepingSelection: true)
         }
