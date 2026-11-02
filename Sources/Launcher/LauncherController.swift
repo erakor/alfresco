@@ -244,7 +244,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         // On failure the text stays, so didHide counts a close with text
         // typed instead of a launch.
         if opened {
-            UsageStats.shared.recordLaunch(command.source, input: textField.stringValue)
+            UsageStats.shared.recordLaunch(
+                command.source, input: textField.stringValue,
+                keywords: Set(store.current.workflows.flatMap(\.keywords))
+            )
             didLaunch = true
             textField.stringValue = ""
         }

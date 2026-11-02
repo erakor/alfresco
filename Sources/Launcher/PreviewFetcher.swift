@@ -76,14 +76,21 @@ private enum PreviewLoader {
     static let maxBytes = 1024
 
     /// The first non-empty line of the response, if the server answered 2xx
-    /// with something that is not HTML.
+    /// with something that is not HTML. Only the first `maxBytes` are read:
+    /// the download stops there, however long the answer is.
     static func load(_ url: URL) async throws -> String {
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
-        let (data, response) = try await HTTPSession.shared.data(for: request)
+        let (bytes, response) = try await HTTPSession.shared.bytes(for: request)
+        defer { bytes.task.cancel() }
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }
-        let text = String(decoding: data.prefix(maxBytes), as: UTF8.self)
+        var data = Data()
+        for try await byte in bytes {
+            data.append(byte)
+            if data.count >= maxBytes { break }
+        }
+        let text = String(decoding: data, as: UTF8.self)
         let line = text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty } ?? ""

@@ -98,12 +98,19 @@ struct Workflow: Decodable, Sendable {
                 debugDescription: "keywords must be single words"
             )
         }
+        guard let scheme = Self.scheme(of: url), Config.workflowURLSchemes.contains(scheme) else {
+            let allowed = Config.workflowURLSchemes.sorted().map { "\($0):" }.joined(separator: ", ")
+            throw DecodingError.dataCorruptedError(
+                forKey: .url, in: container,
+                debugDescription: "url must start with one of \(allowed) (see Config.workflowURLSchemes)"
+            )
+        }
         if let preview {
-            let scheme = URL(string: preview.replacingOccurrences(of: "{query}", with: "x"))?.scheme?.lowercased()
-            if scheme != "https" && scheme != "http" {
+            // https only: what is typed after the keyword goes into it.
+            if Self.scheme(of: preview) != "https" {
                 throw DecodingError.dataCorruptedError(
                     forKey: .preview, in: container,
-                    debugDescription: "preview must be an http(s) URL"
+                    debugDescription: "preview must be an https URL"
                 )
             }
             if preview.contains("{query}") && !takesArgument {
@@ -117,6 +124,18 @@ struct Workflow: Decodable, Sendable {
 
     func prepare(_ argument: String) -> String {
         transforms.reduce(argument) { $1.apply(to: $0) }
+    }
+
+    /// The scheme of a URL template, lowercased: what comes before its first
+    /// ":". nil when there is none, or when `{query}` comes before it, so what
+    /// is typed can never choose the scheme.
+    static func scheme(of template: String) -> String? {
+        guard let colon = template.firstIndex(of: ":") else { return nil }
+        let scheme = template[..<colon]
+        guard let first = scheme.first, first.isASCII, first.isLetter,
+              scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+-.".contains($0)) })
+        else { return nil }
+        return scheme.lowercased()
     }
 }
 

@@ -25,9 +25,11 @@ Recorded:
   you typed after it), which installed apps were opened (by bundle ID), and
   how often the fallback is used. The launcher list uses the app and keyword
   counts to put what you use most first.
-- The first word of multi-word fallback inputs, lowercased, if it looks like a
-  keyword (letters, digits, `-`, `_`, up to 20 characters): `jria abc-42` keeps
-  `jria`, a mistyped `jira`. The rest of the input is never kept.
+- The first word of multi-word fallback inputs, lowercased, only when it is a
+  workflow keyword or a typo away from one (one letter added, missing, changed
+  or swapped; two for keywords of 5 letters or more): `jria abc-42` keeps
+  `jria`, a mistyped `jira`, while `divorce lawyer` keeps nothing. Any other
+  word, and the rest of the input, is never kept.
 - Previews and weather: answers received and failures, by kind of error.
 - Calendar: how often the event list is shown, never what it lists.
 - Clipboard: copies by kind, copies and restores per app (by bundle ID), and
