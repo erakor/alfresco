@@ -23,20 +23,6 @@ enum ClipContent: Equatable, Sendable {
     /// kept: the files themselves are not copied, so a moved or deleted file
     /// can no longer be restored.
     case files([String])
-
-    /// Case-insensitive search used by the history panel's filter field.
-    func matches(_ query: String) -> Bool {
-        switch self {
-        case .text(let text):
-            return text.localizedCaseInsensitiveContains(query)
-        case .image(let image):
-            // Both the displayed "1920 × 1080" and a typed "1920x1080" match.
-            let searchable = "Image: \(image.dimensions) \(image.pixelWidth)x\(image.pixelHeight)"
-            return searchable.localizedCaseInsensitiveContains(query)
-        case .files(let paths):
-            return paths.contains { $0.localizedCaseInsensitiveContains(query) }
-        }
-    }
 }
 
 /// An image clip. Its PNG data is stored as `<sha256>.png` in the store's
@@ -599,12 +585,21 @@ final class ClipboardMonitor: NSObject {
     }
 
     private func readText() -> String? {
-        guard let text = pasteboard.string(forType: .string),
-              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              text.utf8.count <= Config.clipboardMaxTextBytes
-        else { return nil }
+        guard let text = pasteboard.string(forType: .string), Self.isRecordable(text) else { return nil }
         return text
     }
+
+    /// Not too large, and not only whitespace. The size comes first, and the
+    /// whitespace check stops at the first visible character, so no trimmed
+    /// copy of the text is ever made (a huge copy used to be duplicated just
+    /// to be turned down).
+    private static func isRecordable(_ text: String) -> Bool {
+        text.utf8.count <= Config.clipboardMaxTextBytes && text.contains { !$0.isWhitespace }
+    }
+
+    #if SELFTEST
+    static func isRecordableForSelfTest(_ text: String) -> Bool { isRecordable(text) }
+    #endif
 
     /// Reads the image's bytes here (the clipboard is read on the main
     /// thread) and checks its pixel size from the header alone. Decoding,

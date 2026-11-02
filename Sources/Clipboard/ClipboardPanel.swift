@@ -8,7 +8,6 @@
 
 import Carbon.HIToolbox
 import Cocoa
-import ImageIO
 import UniformTypeIdentifiers
 
 @MainActor
@@ -21,6 +20,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         static let listWidth: CGFloat = 380
         /// Longest side of the image shown in the preview, in pixels.
         static let previewPixelSize = 1200
+        /// Longest side of a row's thumbnail, in pixels.
+        static let rowThumbnailPixelSize = 96
     }
 
     private let store: ClipboardStore
@@ -34,14 +35,30 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     private let hintLabel = FloatingPanelController.makeHintLabel()
     private let preview = ClipPreviewView()
 
-    /// Row thumbnails, icons and previews, costed by decoded size so a run of
-    /// large previews can't pile up. Emptied when the panel closes, so edited
-    /// files and uninstalled apps show up fresh next time.
+    /// App and file icons, costed by decoded size. Emptied when the panel
+    /// closes, so edited files and uninstalled apps show up fresh next time.
     private let imageCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.totalCostLimit = 128 * 1024 * 1024
         return cache
     }()
+
+    /// Row thumbnails of image clips, decoded in the background. Kept when
+    /// the panel closes: clipboard-images files are named by the hash of
+    /// their content, so a cached thumbnail can't go out of date, and the
+    /// next opening shows them at once. Under 40 KB each.
+    private let rowThumbnails = ThumbnailLoader(maxPixelSize: Layout.rowThumbnailPixelSize, costLimit: 16 * 1024 * 1024)
+
+    /// The large picture of the selected image clip or copied image file,
+    /// decoded in the background. Emptied when the panel closes (a copied
+    /// file can be edited), so only one opening's previews are held.
+    private let previews = ThumbnailLoader(maxPixelSize: Layout.previewPixelSize, costLimit: 128 * 1024 * 1024)
+
+    /// The preview picture updatePreview is waiting for, if any.
+    private var awaitedPreview: URL?
+
+    /// The search, which reuses work between keystrokes.
+    private var filter = ClipFilter()
 
     /// Whether each copied file still exists, looked up once per panel
     /// opening rather than on every row redraw (a network volume can be
@@ -91,9 +108,13 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         buildContent()
 
         store.onChange = { [weak self] in
-            guard let self, self.panel.isVisible else { return }
+            guard let self else { return }
+            self.filter.historyDidChange()
+            guard self.panel.isVisible else { return }
             self.reload(keepingSelection: true)
         }
+        rowThumbnails.onLoad = { [weak self] in self?.rowThumbnailLoaded($0) }
+        previews.onLoad = { [weak self] in self?.previewLoaded($0) }
     }
 
     override var initialFirstResponder: NSResponder? { searchField }
@@ -110,6 +131,9 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     override func didHide() {
         searchField.stringValue = ""
         imageCache.removeAllObjects()
+        previews.removeAll()
+        awaitedPreview = nil
+        filter.reset()
         fileStates.removeAll()
 
         guard let target = pasteTarget else { return }
@@ -140,9 +164,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         let selectedID = keepingSelection ? selectedItem?.id : nil
 
         let query = searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        visibleItems = query.isEmpty
-            ? store.items
-            : store.items.filter { $0.content.matches(query) }
+        visibleItems = filter.items(matching: query, in: store.items)
         isReloading = true
         tableView.reloadData()
 
@@ -353,7 +375,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
         case .image(let image):
             cell.title.stringValue = "Image: \(image.dimensions)"
-            cell.icon.image = thumbnail(of: store.imageURL(for: image), maxPixelSize: 96)
+            // The symbol until the thumbnail is decoded (rowThumbnailLoaded).
+            cell.icon.image = rowThumbnails.image(for: store.imageURL(for: image))
                 ?? NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
             details.append(Self.byteCount(image.byteCount))
 
@@ -380,6 +403,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     // MARK: Preview
 
     private func updatePreview() {
+        awaitedPreview = nil
         guard let item = selectedItem else {
             preview.clear()
             return
@@ -396,7 +420,11 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             info.append(characters == 1 ? "1 character" : "\(characters) characters")
 
         case .image(let image):
-            preview.showImage(thumbnail(of: store.imageURL(for: image), maxPixelSize: Layout.previewPixelSize), path: nil)
+            // Empty until the picture is decoded (previewLoaded).
+            let url = store.imageURL(for: image)
+            let picture = previews.image(for: url)
+            if picture == nil { awaitedPreview = url }
+            preview.showImage(picture, path: nil)
             info.append(image.dimensions)
             info.append(Self.byteCount(image.byteCount))
 
@@ -414,14 +442,15 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         preview.info.stringValue = info.joined(separator: " · ")
     }
 
-    /// A picture of the file when it is an image, otherwise its icon.
+    /// A picture of the file when it is an image, otherwise its icon (also
+    /// while the picture is being decoded, see previewLoaded).
     private func filePreview(_ paths: [String]) -> NSImage {
         if paths.count == 1 {
             let url = URL(fileURLWithPath: paths[0])
             let type = (try? url.resourceValues(forKeys: [.contentTypeKey]))?.contentType
-            if type?.conforms(to: .image) == true,
-               let image = thumbnail(of: url, maxPixelSize: Layout.previewPixelSize) {
-                return image
+            if type?.conforms(to: .image) == true {
+                if let image = previews.image(for: url) { return image }
+                awaitedPreview = url
             }
         }
         // A copy: the cached icon is also used, at its own size, by the row.
@@ -442,18 +471,22 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
     // MARK: Images
 
-    /// Downsampled with ImageIO, so a large image is never decoded in full.
-    private func thumbnail(of url: URL, maxPixelSize: Int) -> NSImage? {
-        cachedImage(key: "thumb:\(maxPixelSize):\(url.path)") {
-            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-            let options: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
-            ]
-            guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-            return NSImage(cgImage: image, size: .zero)
-        }
+    /// Shows a thumbnail decoded since its rows were drawn.
+    private func rowThumbnailLoaded(_ url: URL) {
+        guard panel.isVisible else { return }
+        let rows = IndexSet(visibleItems.indices.filter { row in
+            guard case .image(let image) = visibleItems[row].content else { return false }
+            return store.imageURL(for: image).path == url.path
+        })
+        guard !rows.isEmpty else { return }
+        tableView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
+    }
+
+    /// Shows the preview picture once decoded, if it is still the one wanted
+    /// (the selection may have moved on meanwhile).
+    private func previewLoaded(_ url: URL) {
+        guard panel.isVisible, awaitedPreview?.path == url.path else { return }
+        updatePreview()
     }
 
     private func fileIcon(_ paths: [String]) -> NSImage {
