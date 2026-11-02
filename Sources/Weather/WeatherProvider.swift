@@ -137,7 +137,12 @@ final class WeatherProvider {
         let age = Date().timeIntervalSince(entry.at)
         switch entry.state {
         case .loading: return false
-        case .loaded: return age < Config.weatherCacheLifetime
+        case .loaded(let forecast):
+            // The hourly row starts at the hour it was fetched in, so a new
+            // hour makes it stale. The 60 s floor stops a refetch loop if
+            // this Mac's clock runs ahead of WeatherAPI's.
+            if let end = forecast.currentHourEnd, Date() >= end, age >= 60 { return false }
+            return age < Config.weatherCacheLifetime
         case .failed: return age < Self.failureLifetime
         }
     }

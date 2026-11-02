@@ -1,8 +1,9 @@
 # alfresco
 
 A small, Spotlight-style URL launcher for macOS. Press a global hotkey,
-type a command, hit Enter, and the URL opens in your default browser. It also
-keeps a 24-hour clipboard history on a second hotkey.
+type a command, hit Enter, and the URL opens in your default browser. Type an
+app's name instead and it opens the app. It also keeps a 24-hour clipboard
+history on a second hotkey.
 
 - Hotkeys via Carbon `RegisterEventHotKey`: **no Accessibility or Screen Recording permission**.
 - Accessory agent: no Dock icon (optional menu bar icon with Open / Clipboard History / Edit Workflows / Quit).
@@ -10,6 +11,7 @@ keeps a 24-hour clipboard history on a second hotkey.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
 - `Esc`, clicking outside, or pressing the hotkey again dismisses it.
 - `⌘X/C/V/A/Z` work in the input even though the app has no menu bar.
+- Keyword suggestions as you type: `p` lists `pr`, `Tab` completes, `↑` `↓` choose.
 
 | Input          | Opens                                                             |
 | -------------- | ----------------------------------------------------------------- |
@@ -18,7 +20,29 @@ keeps a 24-hour clipboard history on a second hotkey.
 | `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
 | `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
 | `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
+| `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | anything else  | `https://www.google.com/search?q=...`                             |
+
+## Apps
+
+When what you type isn't a workflow keyword, the launcher looks for an
+installed app with that name. The hint shows `↩ Open Safari` and the
+magnifying glass turns into the app's icon; Enter opens the app (or brings it
+forward if it's already running). Press `⌘↩` to search for the text instead.
+
+- Matching ignores case and accents, and picks, in order: the exact name, a
+  name starting with what you typed (`saf`), a word of the name (`code`,
+  `studio code` for Visual Studio Code), then the initials (`vsc`). Ties go
+  to the shorter name.
+- Both the name Finder shows and the file name count, so system apps match
+  in English and in your language (`calculator` and `calculatrice`).
+- Workflow keywords always win: `weather` runs the `weather` workflow, not
+  the Weather app. Only the whole keyword counts, so `weath` opens the app.
+- Apps are found in `/Applications`, `/System/Applications`,
+  `/System/Library/CoreServices/Applications` and `~/Applications`, each with
+  one level of subfolders (`Utilities`), plus Finder. The list is refreshed
+  when the launcher opens, at most once a minute, so new apps show up
+  without a restart.
 
 ## Workflows
 
@@ -78,13 +102,25 @@ version and shows the error in the hint area (hover it for the full message).
 The menu bar's **Workflows** submenu lists every workflow with its description;
 picking one opens the launcher with its keyword already typed.
 
+### Suggestions
+
+While you type a single word, a list under the input shows the workflows whose
+keyword starts with it (`p` shows `pr`), with their title and description.
+`Tab` completes the first row, or the one chosen with `↑` `↓`, adding a space
+when the workflow needs an argument so you can keep typing. `Enter` on a chosen
+row completes it and opens it if it needs nothing more; with no row chosen,
+`Enter` runs what is typed, as before (so `p` alone still searches Google).
+Clicking a row completes it. The list goes away once the word is a whole
+keyword or you type a space.
+
 ## Weather
 
 With a [WeatherAPI.com](https://www.weatherapi.com/pricing.aspx) key (the
 free plan is enough, no card needed), typing `weather` or `weather <place>`
 opens a forecast under the input: current conditions (temperature,
-feels-like, humidity, wind, chance of rain this hour) and three days with
-high / low and chance of rain or snow. Enter still opens the `weather`
+feels-like, humidity, wind, chance of rain this hour), the next 12 hours
+(temperature, icon, chance of rain or snow; `Config.weatherHours`), and below
+them a compact line with three days' high / low and chance of rain or snow. Enter still opens the `weather`
 workflow's page.
 
 1. Create a free account at weatherapi.com and copy your API key from the
@@ -129,10 +165,11 @@ Copy and paste with `⌘C` / `⌘V` as usual; the launcher only watches the
 clipboard and records each copy: text, images (screenshots, "Copy Image" in a
 browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the history:
 
-- Type to filter, `↑` / `↓` to choose, `↩` (or double-click) to put the item
-  back on the clipboard. The panel closes; paste it with `⌘V`.
+- Type to filter, `↑` / `↓` to choose, `↩` (or double-click) to paste the
+  item into the app you were using. It is also put back on the clipboard.
 - `⌘1` to `⌘9` do the same for the first nine rows of the (filtered) list,
   without arrowing down. Each of those rows shows its shortcut on the right.
+- `⌘↩` only puts the selected item back on the clipboard, without pasting.
 - `⌘⌫` deletes the selected item. The menu bar icon has **Clear Clipboard History**.
 - Each row shows the app it was copied from and how long ago. Images show a
   thumbnail, files their icon.
@@ -164,6 +201,12 @@ Notes:
 - `⌘⌥C` is global, so while the launcher runs it replaces that shortcut in other
   apps (Finder's "Copy as Pathname", Chrome's and Safari's web inspector).
   Change `Config.clipboardHotKey` if you rely on those.
+- Pasting needs the **Accessibility** permission (System Settings > Privacy &
+  Security > Accessibility), because it types `⌘V` into the other app. The
+  first pick without it shows the system prompt and only copies the item;
+  until you allow it, paste with `⌘V` yourself. `build.sh` signs the app
+  ad hoc, so macOS may forget the permission after a rebuild: remove the
+  launcher from that list and add it again.
 - Newer macOS versions may ask once whether the launcher may read what you copy
   in other apps ("paste from other apps"). Allow it, or the history stays
   empty.
@@ -181,7 +224,8 @@ Recorded:
 - Launcher: how often it opens, how often it closes without opening anything
   (and whether something was typed), Enter on a keyword still missing its
   argument, each workflow run (by its first keyword: `pr` or `pr …`, never what
-  you typed after it), and how often the fallback is used.
+  you typed after it), how many installed apps were opened (not which), and
+  how often the fallback is used.
 - The first word of multi-word fallback inputs, lowercased, if it looks like a
   keyword (letters, digits, `-`, `_`, up to 20 characters): `jria abc-42` keeps
   `jria`, a mistyped `jira`. The rest of the input is never kept.
@@ -202,6 +246,8 @@ Edit the `Config` enum in `Sources/App/Config.swift`, then rebuild:
 - `workflowsSource`: how the workflows file is found (see above).
 - `clipboardHotKey`: the history shortcut, `.commandOptionC` (`⌘⌥C`) by default.
   Define your own `HotKey(keyCode:modifiers:display:)` with any `kVK_` key code.
+- `appSearch`: set to `false` to turn app launching off. `appFolders` lists
+  where apps are looked for, `appRescanInterval` (60 s) how often.
 - `clipboardRetention` (24 h), `clipboardMaxItems` (500),
   `clipboardMaxTextBytes` (256 KB), `clipboardMaxImageBytes` (20 MB),
   `clipboardMaxImagePixels` (40 MP), `clipboardPollInterval` (0.5 s).
@@ -213,7 +259,8 @@ The source lives in `Sources/`, one folder per feature:
 - `App/`: `Launcher.swift` (app delegate, menu bar, entry point) and
   `Config.swift` (settings).
 - `Launcher/`: `Workflows.swift` (workflows.json model, reloading, command
-  parsing) and `LauncherController.swift` (the launcher panel).
+  parsing), `AppIndex.swift` (installed apps and name matching) and
+  `LauncherController.swift` (the launcher panel).
 - `Clipboard/`: `ClipboardHistory.swift` (clipboard model, storage, watcher) and
   `ClipboardPanel.swift` (history panel).
 - `Shared/`: `FloatingPanel.swift` (base class for both panels),

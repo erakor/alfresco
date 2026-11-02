@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-alfresco is a Spotlight-style URL launcher for macOS with a 24-hour clipboard history on a second hotkey. It's a few Swift files under `Sources/` compiled together with `swiftc` (AppKit + Carbon, no Xcode project, no package manager, no dependencies). The keyword → URL mappings live in `workflows.json`, which is data, not code, and is committed to the repo.
+alfresco is a Spotlight-style URL and app launcher for macOS with a 24-hour clipboard history on a second hotkey. It's a few Swift files under `Sources/` compiled together with `swiftc` (AppKit + Carbon, no Xcode project, no package manager, no dependencies). The keyword → URL mappings live in `workflows.json`, which is data, not code, and is committed to the repo.
 
 ## Build & run
 
@@ -29,12 +29,16 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 
 ### App/Config.swift
 
-`Config` enum holds compile-time settings: both hotkeys (`hotKey`, `clipboardHotKey`), `showMenuBarIcon`, the clipboard limits (`clipboardRetention`, `clipboardMaxItems`, `clipboardMaxTextBytes`, `clipboardMaxImageBytes`, `clipboardMaxImagePixels`, `clipboardPollInterval`), the usage stats switches (`usageTracking`, `usageTrackFallbackWords`, `usageRetentionDays`), and `workflowsSource`, which resolves the workflows file in this order: `ALFRESCO_WORKFLOWS` env var → `AlfrescoWorkflowsFile` Info.plist key (written by `build.sh` as the repo's absolute path, so moving the repo requires a rebuild) → `workflows.json` next to the executable → `~/.config/alfresco/workflows.json` (the only location auto-created if missing).
+`Config` enum holds compile-time settings: both hotkeys (`hotKey`, `clipboardHotKey`), `showMenuBarIcon`, app launching (`appSearch`, `appFolders`, `appRescanInterval`), the clipboard limits (`clipboardRetention`, `clipboardMaxItems`, `clipboardMaxTextBytes`, `clipboardMaxImageBytes`, `clipboardMaxImagePixels`, `clipboardPollInterval`), the usage stats switches (`usageTracking`, `usageTrackFallbackWords`, `usageRetentionDays`), and `workflowsSource`, which resolves the workflows file in this order: `ALFRESCO_WORKFLOWS` env var → `AlfrescoWorkflowsFile` Info.plist key (written by `build.sh` as the repo's absolute path, so moving the repo requires a rebuild) → `workflows.json` next to the executable → `~/.config/alfresco/workflows.json` (the only location auto-created if missing).
 
 ### Launcher/Workflows.swift
 
 - **Workflows** — `Workflow` / `WorkflowSet` are `Decodable` models of `workflows.json`; `ArgumentTransform` parses string transforms like `"stripPrefix:#"`. `WorkflowStore` re-reads the file only when its modification date changes (checked each time the launcher opens) and keeps the last good `WorkflowSet` when a reload fails, exposing `loadError` for the UI.
 - **Command parsing** — `CommandParser.parse` splits input into `<keyword> [argument]`. A workflow whose `url` contains `{query}` requires an argument; one without `{query}` matches only the bare keyword. `WorkflowSet.workflow(for:withArgument:)` picks the first workflow of the right form, so one keyword can have both (e.g. `weather` and `weather paris`). Anything else goes to `fallback`. `Command.source` says which (`.workflow(keyword:withArgument:)` with the workflow's first keyword, or `.fallback`), for the usage stats. Arguments are percent-encoded with the RFC 3986 unreserved set. An optional `preview` URL template is expanded the same way into `Command.preview`.
+
+### Launcher/AppIndex.swift
+
+`AppIndex` (main actor) lists the `.app` bundles in `Config.appFolders`, each directly and one folder down, scanned in a detached task at launch and again when the launcher opens if older than `Config.appRescanInterval`. Each `AppEntry` matches on its folded (case/accent-insensitive) Finder display name and file name. `bestMatch` ranks exact name, name prefix, word prefix (several typed words must start consecutive words), then initials; ties go to the shorter name. Apps only take input that would otherwise go to the fallback (`Command.isFallback`), never a workflow keyword.
 
 ### Launcher/PreviewFetcher.swift
 
@@ -44,10 +48,10 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 
 The forecast area under the launcher input, shown while the input is `Config.weatherKeyword` alone or followed by a place, and only when a WeatherAPI.com key is set (`Config.weatherAPIKey()`: `ALFRESCO_WEATHERAPI_KEY`, else `~/.config/alfresco/weatherapi-key`; nil turns the feature off entirely). Enter is unaffected: it still runs the workflow from `workflows.json`.
 
-- `WeatherAPI.swift`: not main-actor. `WeatherLoader.load` makes one `v1/forecast.json` request (`q` is the typed place, `Config.weatherHomePlace`, or `auto:ip` for the bare keyword; `days` is `Config.weatherDays`, at most 3 on the free plan) and builds a `Forecast`. Error bodies' codes map to `WeatherError` (1006 unknown place, 2007 quota, 1002/2006/2008 key), whose `message` is shown in the panel.
+- `WeatherAPI.swift`: not main-actor. `WeatherLoader.load` makes one `v1/forecast.json` request (`q` is the typed place, `Config.weatherHomePlace`, or `auto:ip` for the bare keyword; `days` is `Config.weatherDays`, at most 3 on the free plan) and builds a `Forecast` (current conditions, `hours` from the current hour slot onward across days, and `days`). Error bodies' codes map to `WeatherError` (1006 unknown place, 2007 quota, 1002/2006/2008 key), whose `message` is shown in the panel.
 - `WeatherProvider.swift`: main actor. Turns input into a `WeatherQuery`, debounces typed places (400 ms), runs one load at a time, caches results per query (`Config.weatherCacheLifetime`, failures 30 s), and calls `onUpdate`.
 - `WeatherStripView.swift`: the strip above the input; its content (icon, temperature, description, city, today's high / low) is right-aligned in the panel's top-right corner.
-- `WeatherView.swift`: the `NSView` (loading, error and forecast states; SF Symbols for WeatherAPI condition codes; the "Powered by WeatherAPI.com" link the free plan requires). Labels are French.
+- `WeatherView.swift`: the `NSView` (loading, error and forecast states; the forecast is current conditions, a row of `Config.weatherHours` hourly columns, then a compact one-line-per-day row of `Config.weatherDays` days; SF Symbols for WeatherAPI condition codes; the "Powered by WeatherAPI.com" link the free plan requires). Labels are French.
 
 `LauncherController.updateWeather` shows or hides it and resizes the panel with `FloatingPanelController.setHeight`; while it is shown, the one-line hint `preview` is not fetched. It also lays out `WeatherStripView`, the line above the input that shows `WeatherProvider.homeQuery()` whenever `Config.weatherStrip` is on and a key is set: the input row is positioned by a layout guide (`rowGuide`) whose top moves down by the strip's height. Requests go one at a time, the typed query first, then home.
 
@@ -57,7 +61,7 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Shared/UsageStats.swift
 
-`UsageStats.shared` (main actor) keeps local counters in `~/Library/Application Support/Launcher/usage.json`: daily buckets keyed `yyyy-MM-dd` (local time), each a set of name → count maps (`counts`, `keywords`, `fallbackWords`, `clipboardCopies`, `clipboardRestores`), pruned past `Config.usageRetentionDays`, saved 5 s after a change and on quit, 0600. Simple counters are `UsageCounter` cases (the raw value is the name in the file); weather failures are `weather.failed.<WeatherError.usageName>`. Hooks: `LauncherController` (opened, closed without launching, Enter needing an argument, `recordLaunch` with `Command.source`), `PreviewFetcher` and `WeatherProvider` (loaded / failed, cancellations not counted), `ClipboardStore.add` (copy by kind and bundle ID), `ClipboardMonitor` (skipped: marked, text, image), `ClipboardController.copySelected` (restore per bundle ID, restore failed). The menu bar's "Usage…" shows `summary(days:)` in an alert. Never record content: no arguments, queries, clipboard text or file paths. The one exception is the first word of a multi-word fallback input, only when it looks like a keyword (`fallbackWord(in:)`), behind `Config.usageTrackFallbackWords`. Every record call is a no-op when `Config.usageTracking` is false.
+`UsageStats.shared` (main actor) keeps local counters in `~/Library/Application Support/Launcher/usage.json`: daily buckets keyed `yyyy-MM-dd` (local time), each a set of name → count maps (`counts`, `keywords`, `fallbackWords`, `clipboardCopies`, `clipboardRestores`), pruned past `Config.usageRetentionDays`, saved 5 s after a change and on quit, 0600. Simple counters are `UsageCounter` cases (the raw value is the name in the file); weather failures are `weather.failed.<WeatherError.usageName>`. Hooks: `LauncherController` (opened, closed without launching, Enter needing an argument, app opened, `recordLaunch` with `Command.source`), `PreviewFetcher` and `WeatherProvider` (loaded / failed, cancellations not counted), `ClipboardStore.add` (copy by kind and bundle ID), `ClipboardMonitor` (skipped: marked, text, image), `ClipboardController.pickSelected` (restore per bundle ID, restore failed). The menu bar's "Usage…" shows `summary(days:)` in an alert. Never record content: no arguments, queries, clipboard text or file paths. The one exception is the first word of a multi-word fallback input, only when it looks like a keyword (`fallbackWord(in:)`), behind `Config.usageTrackFallbackWords`. Every record call is a no-op when `Config.usageTracking` is false.
 
 ### Shared/FloatingPanel.swift
 
@@ -65,7 +69,11 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Launcher/LauncherController.swift
 
-`LauncherController` (a `FloatingPanelController`) runs the URL launcher: the input field, the hint line, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone.
+`LauncherController` (a `FloatingPanelController`) runs the launcher: the input field, the hint line, the suggestion list, and Enter handling. Enter does nothing when a keyword that needs an argument is typed alone. When `matchedApp()` finds an app and no suggestion row is chosen, the search icon shows the app's icon, the hint reads `↩ Open <app>  ⌘↩ <fallback title>`, Enter opens the app, and ⌘↩ (`handleKeyEquivalent`) runs the fallback search instead.
+
+### Launcher/SuggestionListView.swift
+
+`SuggestionListView` is the list under the input, filled from `WorkflowSet.suggestions(for:)` (workflows whose keyword starts with a single typed word; empty once the word is every match's whole keyword). The input keeps focus, so `LauncherController` routes Tab (completes `tabTarget`: the row chosen with ↑ ↓, else the first; `Suggestion.completion` adds a space when the workflow takes an argument), ↑ ↓ (only while the list has rows) and Enter (with a chosen row: complete, then run it if it takes no argument; otherwise unchanged). The list sits where the forecast goes and is empty while the forecast is shown; its height is part of `setHeight` in `updateWeather`.
 
 ### App/Launcher.swift
 
@@ -79,7 +87,7 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Clipboard/ClipboardPanel.swift
 
-`ClipboardController` (a `FloatingPanelController`) shows the history: search field + `NSTableView` (left) filtered via `ClipContent.matches`, and `ClipPreviewView` (right) showing the selected item in full. Row icons are the source app's icon (text), an ImageIO-downsampled thumbnail (images) or the Finder icon (files), cached in an `NSCache` that is emptied when the panel hides. Picking an item (↩, double-click, or ⌘1 to ⌘9 for the first nine rows, matched by key code so other keyboard layouts work) writes it back to the clipboard and moves it to the top; it does not paste. Restoring beeps and leaves the clipboard alone if the image file or every referenced file is gone.
+`ClipboardController` (a `FloatingPanelController`) shows the history: search field + `NSTableView` (left) filtered via `ClipContent.matches`, and `ClipPreviewView` (right) showing the selected item in full. Row icons are the source app's icon (text), an ImageIO-downsampled thumbnail (images) or the Finder icon (files), cached in an `NSCache` that is emptied when the panel hides. Picking an item (↩, double-click, or ⌘1 to ⌘9 for the first nine rows, matched by key code so other keyboard layouts work) writes it back to the clipboard, moves it to the top, and pastes it: `didHide` calls `PasteKeystroke.post()` (`PasteKeystroke.swift`), which posts ⌘V with `CGEvent` once the panel is gone, using the key that types "v" in the current layout. That needs the Accessibility permission (the hotkeys still don't); without it the first pick of a launch shows the system prompt and the item is only copied. ⌘↩ copies without pasting. Restoring beeps and leaves the clipboard alone if the image file or every referenced file is gone.
 
 ## Conventions
 

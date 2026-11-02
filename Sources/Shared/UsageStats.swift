@@ -25,6 +25,8 @@ enum UsageCounter: String, Sendable {
     /// Enter on a keyword that needs an argument, typed alone.
     case launcherEnterNeedsArgument = "launcher.enterNeedsArgument"
     case launcherFallback = "launcher.fallback"
+    /// Enter opened an installed app (which one is not kept).
+    case launcherOpenedApp = "launcher.openedApp"
 
     case previewLoaded = "preview.loaded"
     case previewFailed = "preview.failed"
@@ -189,7 +191,7 @@ final class UsageStats: NSObject {
             return lines.isEmpty ? "  (none)" : lines.joined(separator: "\n")
         }
 
-        let launched = total.keywords.values.reduce(0, +) + count(.launcherFallback)
+        let launched = total.keywords.values.reduce(0, +) + count(.launcherFallback) + count(.launcherOpenedApp)
         let closed = count(.launcherClosedEmpty) + count(.launcherClosedTyped)
         let failurePrefix = "weather.failed."
         var weatherFailures: [String: Int] = [:]
@@ -217,6 +219,7 @@ final class UsageStats: NSObject {
             "  Enter on a keyword missing its argument: \(count(.launcherEnterNeedsArgument))",
             "Keywords:",
             top(total.keywords, 10),
+            "Apps opened: \(count(.launcherOpenedApp))",
             "Fallback: \(count(.launcherFallback)), first words:",
             top(total.fallbackWords, 10),
             "Previews: \(count(.previewLoaded)) loaded, \(count(.previewFailed)) failed",

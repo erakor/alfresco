@@ -1,9 +1,9 @@
 // ClipboardPanel.swift
 //
 // The clipboard history panel (Config.clipboardHotKey). Type to filter,
-// ↑/↓ to choose, ↩ (or double-click) to put the item back on the clipboard,
-// then paste with ⌘V as usual. ⌘1 to ⌘9 do the same for the first nine
-// rows. ⌘⌫ deletes the selected item. The selected item is shown in full on
+// ↑/↓ to choose, ↩ (or double-click) to put the item back on the clipboard
+// and paste it into the app that was in front. ⌘1 to ⌘9 do the same for the
+// first nine rows, ⌘↩ only copies. ⌘⌫ deletes the selected item. The selected item is shown in full on
 // the right: text, the image, or the file.
 
 import Carbon.HIToolbox
@@ -59,6 +59,15 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     /// The store's items that match the search field, newest first.
     private var visibleItems: [ClipItem] = []
 
+    /// Set by a pick that should paste: the app that was in front, which
+    /// didHide sends ⌘V to once the panel is gone, and the clipboard's
+    /// change count right after the item was written to it.
+    private var pasteTarget: (app: pid_t, changeCount: Int)?
+
+    /// The ⌘V waiting for keyboard focus to settle; cancelled if a panel
+    /// opens first, so it can't land in a search field.
+    private var pendingPaste: Task<Void, Never>?
+
     private let ageFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
@@ -91,6 +100,9 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
     override func prepareToShow() {
         store.expireOldItems()
+        pasteTarget = nil
+        pendingPaste?.cancel()
+        pendingPaste = nil
         searchField.stringValue = ""
         reload(keepingSelection: false)
     }
@@ -99,6 +111,27 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         searchField.stringValue = ""
         imageCache.removeAllObjects()
         fileStates.removeAll()
+
+        guard let target = pasteTarget else { return }
+        pasteTarget = nil
+        // A moment for the window server to hand keyboard focus back to the
+        // app underneath before the keystroke arrives.
+        pendingPaste = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            } catch {
+                return
+            }
+            // Skip it if the user switched apps meanwhile, or opened either
+            // panel (the launcher's would otherwise receive the ⌘V).
+            let panelOpen = NSApp.windows.contains { $0 is LauncherPanel && $0.isVisible }
+            // Also skip it if something else was copied since the pick, so
+            // only the picked item can be pasted.
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.app,
+                  NSPasteboard.general.changeCount == target.changeCount,
+                  !panelOpen else { return }
+            PasteKeystroke.post()
+        }
     }
 
     // MARK: Data
@@ -153,7 +186,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
         hintLabel.stringValue = visibleItems.isEmpty
             ? "esc to close"
-            : "↩ copy · ⌘1–9 pick · ⌘⌫ delete · esc close"
+            : "↩ paste · ⌘↩ copy · ⌘1–9 pick · ⌘⌫ delete · esc close"
     }
 
     /// Rows reachable with ⌘1 to ⌘9; each shows its shortcut.
@@ -171,9 +204,11 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
     // MARK: Actions
 
-    /// Puts the selected item on the clipboard and closes the panel; the user
-    /// then pastes with ⌘V in the app they were using.
-    private func copySelected() {
+    /// Puts the selected item on the clipboard and closes the panel. With
+    /// `paste`, it is then pasted into the app the user was in; without the
+    /// Accessibility permission that needs, macOS is asked for it once per
+    /// launch and the item is left on the clipboard for ⌘V.
+    private func pickSelected(paste: Bool) {
         guard let item = selectedItem else { return }
         guard write(item.content, to: NSPasteboard.general) else {
             // The image file or every copied file is gone.
@@ -184,6 +219,19 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         UsageStats.shared.recordClipboardRestore(bundleID: item.sourceBundleID)
         monitor.ignoreCurrentContents()
         store.promote(id: item.id)
+        // A later pick during the fade-out decides alone: ⌘↩ right after ↩
+        // must not paste.
+        pasteTarget = nil
+        if paste {
+            let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            if !PasteKeystroke.isAllowed {
+                PasteKeystroke.requestPermission()
+            } else if let front, front != ProcessInfo.processInfo.processIdentifier {
+                // The panel doesn't activate the app, so the one in front is
+                // where the user was working.
+                pasteTarget = (front, NSPasteboard.general.changeCount)
+            }
+        }
         hide()
     }
 
@@ -228,18 +276,24 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         return true
     }
 
-    /// ⌘1 to ⌘9: copy the Nth row of the (filtered) list.
+    /// ⌘1 to ⌘9: paste the Nth row of the (filtered) list. ⌘↩: copy the
+    /// selected row without pasting.
     override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            .subtracting([.numericPad, .function])
-        guard modifiers == .command,
-              let number = Self.digitKeyCodes[Int(event.keyCode)] else { return false }
+            .subtracting([.numericPad, .function, .capsLock])
+        guard modifiers == .command else { return false }
+        let keyCode = Int(event.keyCode)
+        if keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter {
+            pickSelected(paste: false)
+            return true
+        }
+        guard let number = Self.digitKeyCodes[Int(event.keyCode)] else { return false }
         guard number <= visibleItems.count else {
             NSSound.beep()
             return true
         }
         select(row: number - 1)
-        copySelected()
+        pickSelected(paste: true)
         return true
     }
 
@@ -254,7 +308,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     @objc private func rowDoubleClicked() {
         guard tableView.clickedRow >= 0 else { return }
         select(row: tableView.clickedRow)
-        copySelected()
+        pickSelected(paste: true)
     }
 
     // MARK: NSTextFieldDelegate
@@ -271,7 +325,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         case #selector(NSResponder.moveDown(_:)):
             select(row: tableView.selectedRow + 1)
         case #selector(NSResponder.insertNewline(_:)):
-            copySelected()
+            pickSelected(paste: true)
         case #selector(NSResponder.deleteToBeginningOfLine(_:)):  // ⌘⌫
             deleteSelected()
         case #selector(NSResponder.cancelOperation(_:)):

@@ -1,14 +1,15 @@
 // WeatherView.swift
 //
 // The forecast area under the launcher field: current conditions on top,
-// Config.weatherDays days below, plus loading and error states. Labels are in French, to
+// then the next Config.weatherHours hours, then a compact line with
+// Config.weatherDays days, plus loading and error states. Labels are in French, to
 // match Config.weatherLanguage's default.
 
 import Cocoa
 
 final class WeatherView: NSView {
     /// Height the launcher adds below its input row while this is shown.
-    static let height: CGFloat = 190
+    static let height: CGFloat = 214
 
     // Current conditions
     private let icon = NSImageView()
@@ -18,9 +19,14 @@ final class WeatherView: NSView {
     private let detailsLabel = NSTextField(labelWithString: "")
     private let currentRow = NSView()
 
+    // Hours
+    private let hoursStack = NSStackView()
+    private var hourColumns: [HourColumn] = []
+
     // Days
+    private let daysSeparator = NSBox()
     private let daysStack = NSStackView()
-    private var dayColumns: [DayColumn] = []
+    private var dayItems: [DayItem] = []
 
     // Loading and error
     private let spinner = NSProgressIndicator()
@@ -66,6 +72,8 @@ final class WeatherView: NSView {
 
     private func setContentVisible(_ visible: Bool) {
         currentRow.isHidden = !visible
+        hoursStack.isHidden = !visible
+        daysSeparator.isHidden = !visible
         daysStack.isHidden = !visible
         statusStack.isHidden = visible
     }
@@ -87,12 +95,20 @@ final class WeatherView: NSView {
             second.joined(separator: " · "),
         ].joined(separator: "\n")
 
-        for (index, column) in dayColumns.enumerated() {
-            if index < forecast.days.count {
+        for (index, column) in hourColumns.enumerated() {
+            if index < forecast.hours.count {
                 column.isHidden = false
-                column.fill(with: forecast.days[index])
+                column.fill(with: forecast.hours[index])
             } else {
                 column.isHidden = true
+            }
+        }
+        for (index, item) in dayItems.enumerated() {
+            if index < forecast.days.count {
+                item.isHidden = false
+                item.fill(with: forecast.days[index])
+            } else {
+                item.isHidden = true
             }
         }
     }
@@ -183,11 +199,18 @@ final class WeatherView: NSView {
             currentRow.addSubview(view)
         }
 
+        hoursStack.orientation = .horizontal
+        hoursStack.distribution = .fillEqually
+        hoursStack.spacing = 2
+        hourColumns = (0..<Config.weatherHours).map { _ in HourColumn(frame: .zero) }
+        for column in hourColumns { hoursStack.addArrangedSubview(column) }
+
+        daysSeparator.boxType = .separator
         daysStack.orientation = .horizontal
         daysStack.distribution = .fillEqually
-        daysStack.spacing = 8
-        dayColumns = (0..<Config.weatherDays).map { _ in DayColumn(frame: .zero) }
-        for column in dayColumns { daysStack.addArrangedSubview(column) }
+        daysStack.spacing = 12
+        dayItems = (0..<Config.weatherDays).map { _ in DayItem(frame: .zero) }
+        for item in dayItems { daysStack.addArrangedSubview(item) }
 
         spinner.style = .spinning
         spinner.controlSize = .small
@@ -202,7 +225,7 @@ final class WeatherView: NSView {
         statusStack.orientation = .horizontal
         statusStack.spacing = 8
 
-        for view in [separator, currentRow, daysStack, statusStack, attribution] {
+        for view in [separator, currentRow, hoursStack, daysSeparator, daysStack, statusStack, attribution] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
@@ -232,7 +255,15 @@ final class WeatherView: NSView {
             detailsLabel.trailingAnchor.constraint(equalTo: currentRow.trailingAnchor),
             detailsLabel.centerYAnchor.constraint(equalTo: currentRow.centerYAnchor),
 
-            daysStack.topAnchor.constraint(equalTo: currentRow.bottomAnchor, constant: 14),
+            hoursStack.topAnchor.constraint(equalTo: currentRow.bottomAnchor, constant: 14),
+            hoursStack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            hoursStack.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            daysSeparator.topAnchor.constraint(equalTo: hoursStack.bottomAnchor, constant: 10),
+            daysSeparator.leadingAnchor.constraint(equalTo: leadingAnchor),
+            daysSeparator.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            daysStack.topAnchor.constraint(equalTo: daysSeparator.bottomAnchor, constant: 8),
             daysStack.leadingAnchor.constraint(equalTo: leadingAnchor),
             daysStack.trailingAnchor.constraint(equalTo: trailingAnchor),
 
@@ -246,8 +277,48 @@ final class WeatherView: NSView {
     }
 }
 
-/// One day: name, icon, high / low, and the chance of rain when it matters.
-private final class DayColumn: NSStackView {
+/// One hour: time, icon, temperature, and the chance of rain when it matters.
+private final class HourColumn: NSStackView {
+    private let nameLabel = NSTextField(labelWithString: "")
+    private let icon = NSImageView()
+    private let temperatureLabel = NSTextField(labelWithString: "")
+    private let rainLabel = NSTextField(labelWithString: "")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        orientation = .vertical
+        alignment = .centerX
+        spacing = 3
+
+        nameLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        nameLabel.textColor = .secondaryLabelColor
+        temperatureLabel.font = .monospacedDigitSystemFont(ofSize: 14, weight: .regular)
+        rainLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        rainLabel.textColor = .systemBlue
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 22),
+            icon.heightAnchor.constraint(equalToConstant: 22),
+        ])
+        setViews([nameLabel, icon, temperatureLabel, rainLabel], in: .top)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    func fill(with hour: Forecast.Hour) {
+        nameLabel.stringValue = hour.name
+        icon.image = WeatherView.symbol(for: hour.condition, pointSize: 18)
+        temperatureLabel.stringValue = WeatherView.degrees(hour.temperature)
+        // Kept in the layout (blank) so the columns stay aligned.
+        rainLabel.stringValue = hour.rainChance >= 0.2 ? WeatherView.percent(hour.rainChance) : " "
+    }
+}
+
+/// One day on a single line: name, icon, high / low, and the chance of rain
+/// when it matters.
+private final class DayItem: NSStackView {
     private let nameLabel = NSTextField(labelWithString: "")
     private let icon = NSImageView()
     private let rangeLabel = NSTextField(labelWithString: "")
@@ -255,21 +326,21 @@ private final class DayColumn: NSStackView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        orientation = .vertical
-        alignment = .centerX
-        spacing = 4
+        orientation = .horizontal
+        alignment = .centerY
+        spacing = 6
 
-        nameLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        nameLabel.font = .systemFont(ofSize: 11, weight: .medium)
         nameLabel.textColor = .secondaryLabelColor
-        rangeLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        rangeLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         rainLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
         rainLabel.textColor = .systemBlue
         icon.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            icon.widthAnchor.constraint(equalToConstant: 24),
-            icon.heightAnchor.constraint(equalToConstant: 24),
+            icon.widthAnchor.constraint(equalToConstant: 16),
+            icon.heightAnchor.constraint(equalToConstant: 16),
         ])
-        setViews([nameLabel, icon, rangeLabel, rainLabel], in: .top)
+        setViews([nameLabel, icon, rangeLabel, rainLabel], in: .leading)
     }
 
     required init?(coder: NSCoder) {
@@ -278,9 +349,8 @@ private final class DayColumn: NSStackView {
 
     func fill(with day: Forecast.Day) {
         nameLabel.stringValue = day.name
-        icon.image = WeatherView.symbol(for: day.condition, pointSize: 20)
+        icon.image = WeatherView.symbol(for: day.condition, pointSize: 13)
         rangeLabel.stringValue = "\(WeatherView.degrees(day.high)) / \(WeatherView.degrees(day.low))"
-        // Kept in the layout (blank) so the columns stay aligned.
-        rainLabel.stringValue = day.rainChance >= 0.2 ? "💧 \(WeatherView.percent(day.rainChance))" : " "
+        rainLabel.stringValue = day.rainChance >= 0.2 ? "💧 \(WeatherView.percent(day.rainChance))" : ""
     }
 }
