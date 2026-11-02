@@ -61,7 +61,7 @@ finds the use sites.
 ## 5. Verify
 
 ```bash
-swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o "$(mktemp -d)/Launcher"   # must be clean
+swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.0" $(find Sources -name '*.swift') -o "$(mktemp -d)/Launcher"   # must be clean
 .claude/skills/add-workflow/scripts/check.sh workflows.json "<inputs exercising the change>"
 ```
 

@@ -19,6 +19,15 @@ enum LauncherItem {
         case .app(let app): app.name
         }
     }
+
+    /// Whether both rows show the same app (by path) or keyword.
+    func isSame(as other: LauncherItem) -> Bool {
+        switch (self, other) {
+        case (.app(let a), .app(let b)): a.url == b.url
+        case (.workflow(let a), .workflow(let b)): a.keyword == b.keyword && a.completion == b.completion
+        default: false
+        }
+    }
 }
 
 @MainActor
@@ -87,6 +96,14 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
         guard !items.isEmpty else { return }
         let next = (selectedIndex ?? -1) + delta
         selectedIndex = next < 0 ? floorIndex : min(next, items.count - 1)
+        syncSelection()
+    }
+
+    /// Highlights the row showing the same app or keyword as `item`, if the
+    /// list has one; otherwise the highlight is left as it is.
+    func select(_ item: LauncherItem) {
+        guard let index = items.firstIndex(where: { $0.isSame(as: item) }) else { return }
+        selectedIndex = max(index, floorIndex ?? 0)
         syncSelection()
     }
 

@@ -288,6 +288,7 @@ extension LauncherApp {
     static func acquireSingleInstanceLock() -> Bool {
         let directory = ClipboardStore.directory
         try? ClipImageFile.createPrivateDirectory(directory)
+        excludeFromBackup(directory)
         let path = directory.appendingPathComponent("launcher.lock").path
         let descriptor = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
         // If the lock file can't be opened, run anyway rather than not at all.
@@ -295,5 +296,15 @@ extension LauncherApp {
         if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { return true }
         close(descriptor)
         return false
+    }
+
+    /// Keeps the clipboard history (which can hold copied passwords and
+    /// tokens) out of Time Machine, so it really is gone after the retention
+    /// period. Set on the whole folder, so it also covers the images.
+    private static func excludeFromBackup(_ directory: URL) {
+        var url = directory
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? url.setResourceValues(values)
     }
 }

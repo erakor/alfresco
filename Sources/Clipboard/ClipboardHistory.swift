@@ -224,6 +224,7 @@ final class ClipboardStore: NSObject {
         knownImageFiles = usedImageFiles()
         if prune() || lostImages { saveNow() }
         removeStaleImages()
+        removeStaleUnreadableHistory()
 
         // Expire old items even when nothing new is being copied.
         let timer = Timer(timeInterval: 60, target: self, selector: #selector(pruneTick), userInfo: nil, repeats: true)
@@ -390,6 +391,21 @@ final class ClipboardStore: NSObject {
         }
     }
 
+    /// Run at launch: deletes the copy of a history file that could not be
+    /// read (see load) once everything in it is past the retention period.
+    /// It keeps the date of its last save, and every clip in it is older.
+    private func removeStaleUnreadableHistory() {
+        let backup = unreadableFileURL
+        let modified = (try? backup.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        if let modified, modified < Date().addingTimeInterval(-Config.clipboardRetention) {
+            try? FileManager.default.removeItem(at: backup)
+        }
+    }
+
+    private var unreadableFileURL: URL {
+        fileURL.deletingPathExtension().appendingPathExtension("unreadable.json")
+    }
+
     private func usedImageFiles() -> Set<String> {
         var used = Set<String>()
         for item in items {
@@ -406,8 +422,9 @@ final class ClipboardStore: NSObject {
             items = try decoder.decode(StoredHistory.self, from: data).items
         } catch {
             // Set it aside rather than overwrite it with an empty history on
-            // the next save, in case it can be recovered by hand.
-            let backup = fileURL.deletingPathExtension().appendingPathExtension("unreadable.json")
+            // the next save, in case it can be recovered by hand. It is
+            // deleted once past the retention period.
+            let backup = unreadableFileURL
             try? FileManager.default.removeItem(at: backup)
             try? FileManager.default.moveItem(at: fileURL, to: backup)
             NSLog("Launcher: unreadable clipboard history moved to \(backup.path): \(error)")

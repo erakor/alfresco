@@ -38,6 +38,8 @@ In `Sources/App/Config.swift` (rebuild after a change):
 
 - `UsageStats.swift`: the usage counters above.
 - `DigitShortcuts.swift`: the `⌘1` to `⌘9` key codes both panels use.
+- `HTTPSession.swift`: the ephemeral URL session for weather and preview
+  requests (no disk cache, no cookies).
 - `HotKeys.swift`: global hotkeys through Carbon `RegisterEventHotKey`, so
   neither hotkey needs the Accessibility or Input Monitoring permission.
 - `FloatingPanel.swift`: the frosted, non-activating panel that both the

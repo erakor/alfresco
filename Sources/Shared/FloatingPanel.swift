@@ -35,7 +35,8 @@ final class LauncherPanel: NSPanel {
         if onKeyEquivalent?(event) == true {
             return true
         }
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+        // Only the shortcut modifiers: with Caps Lock on, ⌘V must still paste.
+        if event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command,
            let key = event.charactersIgnoringModifiers?.lowercased(),
            let action = Self.editActions[key],
            NSApp.sendAction(action, to: nil, from: self) {

@@ -10,7 +10,9 @@ APP="build/Launcher.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 
-swiftc -O -parse-as-library -swift-version 6 $(find Sources -name '*.swift') -o "$APP/Contents/MacOS/Launcher"
+# The target sets the minimum macOS version; without it swiftc builds for the
+# running one, whatever LSMinimumSystemVersion says.
+swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.0" $(find Sources -name '*.swift') -o "$APP/Contents/MacOS/Launcher"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
