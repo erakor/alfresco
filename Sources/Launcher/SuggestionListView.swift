@@ -20,11 +20,12 @@ enum LauncherItem {
         }
     }
 
-    /// Whether both rows show the same app (by path) or keyword.
+    /// Whether both rows show the same app (by path) or keyword (its
+    /// completion is the keyword, plus a space for the argument form).
     func isSame(as other: LauncherItem) -> Bool {
         switch (self, other) {
         case (.app(let a), .app(let b)): a.url == b.url
-        case (.workflow(let a), .workflow(let b)): a.keyword == b.keyword && a.completion == b.completion
+        case (.workflow(let a), .workflow(let b)): a.completion == b.completion
         default: false
         }
     }
@@ -103,7 +104,7 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
     /// list has one; otherwise the highlight is left as it is.
     func select(_ item: LauncherItem) {
         guard let index = items.firstIndex(where: { $0.isSame(as: item) }) else { return }
-        selectedIndex = max(index, floorIndex ?? 0)
+        selectedIndex = index
         syncSelection()
     }
 

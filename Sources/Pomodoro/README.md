@@ -21,6 +21,11 @@ of 4, 18:42 left") and has Pause / Resume, Skip and Stop.
   `build/Launcher.app`, a macOS notification is shown too. macOS asks once
   for permission the first time you start a session. The plain `./Launcher`
   binary only plays the sound, since notifications need an app bundle.
+- If the Mac sleeps through the end of a session or break, the sound and
+  notification come as soon as it wakes, and a break that follows is timed
+  from then. If it wakes much later (after the break would already have
+  ended, say overnight), there's no alert: a focus session's break waits
+  paused in the menu bar, as after quitting and relaunching.
 - The timer is saved in `~/Library/Application Support/Launcher/pomodoro.json`,
   so quitting or rebuilding mid-session keeps the countdown going. A phase
   that ran out while the app was closed moves on to the next one, paused.

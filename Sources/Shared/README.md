@@ -8,8 +8,14 @@ reports to.
 alfresco counts how it is used, so you can see which keywords earn their
 place and what is missing. Everything stays on your Mac, in
 `~/Library/Application Support/Launcher/usage.json` (readable only by your
-user), one bucket per day, kept for 90 days. The menu bar's **Usage…** shows the
-last 30 days and can reveal the file.
+user), one bucket per calendar day, keeping the last 90 days (today
+included). The menu bar's **Usage…** shows the last 30 days and can reveal the
+file. If it was written by a newer build of alfresco, it is left as it is and
+nothing is saved until the next launch, so that build keeps its counts. If it
+can't be read, it is moved aside as `usage.unreadable.json` (then
+`usage.unreadable-2.json` and so on, never replacing an earlier one, up to 100)
+and counting starts over; with all 100 taken, the file is left alone and
+nothing is saved until the next launch.
 
 Recorded:
 
@@ -32,14 +38,19 @@ In `Sources/App/Config.swift` (rebuild after a change):
 
 - `usageTracking = false` turns it off (and hides **Usage…**).
 - `usageTrackFallbackWords = false` keeps the counts but drops the fallback words.
-- `usageRetentionDays` (90): how long daily buckets are kept.
+- `usageRetentionDays` (90): how many days of buckets are kept, today included.
 
 ## Code
 
 - `UsageStats.swift`: the usage counters above.
 - `DigitShortcuts.swift`: the `⌘1` to `⌘9` key codes both panels use.
-- `HTTPSession.swift`: the ephemeral URL session for weather and preview
-  requests (no disk cache, no cookies).
+- `SetAsideFile.swift`: moves an unreadable clipboard history or usage file
+  out of the way (`*.unreadable.json`, `-2`, `-3`…) instead of overwriting it.
+- `HTTPSession.swift`: the URL session for weather and preview requests (no
+  cache, no cookies). At launch it also empties the cache earlier builds
+  used, which could hold the WeatherAPI key.
+- `ShortcutModifiers.swift`: `NSEvent.shortcutModifiers`, so ⌘ shortcuts
+  work with Caps Lock on.
 - `HotKeys.swift`: global hotkeys through Carbon `RegisterEventHotKey`, so
   neither hotkey needs the Accessibility or Input Monitoring permission.
 - `FloatingPanel.swift`: the frosted, non-activating panel that both the

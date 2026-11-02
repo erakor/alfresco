@@ -204,10 +204,19 @@ final class ClipboardStore: NSObject {
     /// when unused: another running copy of the launcher (say ./Launcher and
     /// build/Launcher.app) shares the folder, and its images aren't ours.
     private var knownImageFiles = Set<String>()
+    /// False when an unreadable history file couldn't be set aside: saving
+    /// would overwrite it, so nothing is saved until the next launch.
+    private var canSave = true
 
     /// ~/Library/Application Support/Launcher. Also holds the lock file that
     /// keeps a second copy of the launcher from running (see LauncherApp).
     static let directory: URL = {
+        #if SELFTEST
+        // The self-test keeps its files out of the real support folder.
+        if let path = ProcessInfo.processInfo.environment["ALFRESCO_SUPPORT_DIR"], !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        #endif
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         return support.appendingPathComponent("Launcher", isDirectory: true)
@@ -224,7 +233,7 @@ final class ClipboardStore: NSObject {
         knownImageFiles = usedImageFiles()
         if prune() || lostImages { saveNow() }
         removeStaleImages()
-        removeStaleUnreadableHistory()
+        removeStaleSetAsideFiles()
 
         // Expire old items even when nothing new is being copied.
         let timer = Timer(timeInterval: 60, target: self, selector: #selector(pruneTick), userInfo: nil, repeats: true)
@@ -321,6 +330,7 @@ final class ClipboardStore: NSObject {
 
     @objc private func pruneTick() {
         expireOldItems()
+        removeStaleSetAsideFiles()
     }
 
     private func didChange() {
@@ -332,6 +342,7 @@ final class ClipboardStore: NSObject {
 
     /// Coalesces bursts of changes into one write.
     private func scheduleSave() {
+        guard canSave else { return }
         saveTimer?.invalidate()
         let timer = Timer(timeInterval: 1, target: self, selector: #selector(saveTimerFired), userInfo: nil, repeats: false)
         RunLoop.main.add(timer, forMode: .common)
@@ -347,6 +358,7 @@ final class ClipboardStore: NSObject {
     func saveNow() {
         saveTimer?.invalidate()
         saveTimer = nil
+        guard canSave else { return }
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -356,6 +368,8 @@ final class ClipboardStore: NSObject {
             let data = try encoder.encode(StoredHistory(items: items))
             try data.write(to: fileURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            // The atomic write replaced the file, and with it the flag.
+            excludeFromBackup(fileURL)
         } catch {
             NSLog("Launcher: could not save clipboard history: \(error)")
             return
@@ -380,30 +394,39 @@ final class ClipboardStore: NSObject {
     private func removeStaleImages() {
         let fileManager = FileManager.default
         guard let names = try? fileManager.contentsOfDirectory(atPath: imagesDirectory.path) else { return }
-        let cutoff = Date().addingTimeInterval(-Config.clipboardRetention - 60 * 60)
         let used = usedImageFiles()
         for name in names where !used.contains(name) {
             let url = imagesDirectory.appendingPathComponent(name)
-            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-            if let modified, modified < cutoff {
+            // An hour of slack for a file another copy is about to touch.
+            if Self.isPastRetention(url, margin: 60 * 60) {
                 try? fileManager.removeItem(at: url)
             }
         }
     }
 
-    /// Run at launch: deletes the copy of a history file that could not be
-    /// read (see load) once everything in it is past the retention period.
-    /// It keeps the date of its last save, and every clip in it is older.
-    private func removeStaleUnreadableHistory() {
-        let backup = unreadableFileURL
-        let modified = (try? backup.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        if let modified, modified < Date().addingTimeInterval(-Config.clipboardRetention) {
-            try? FileManager.default.removeItem(at: backup)
+    /// Run at launch and on each prune: deletes the history files set aside
+    /// by load (clipboard-history.unreadable*.json) once a retention period
+    /// has passed since they were set aside, so they don't keep old clips
+    /// forever.
+    private func removeStaleSetAsideFiles() {
+        let fileManager = FileManager.default
+        let directory = fileURL.deletingLastPathComponent()
+        guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return }
+        let prefix = fileURL.deletingPathExtension().lastPathComponent + ".unreadable"
+        for name in names where name.hasPrefix(prefix) && name.hasSuffix(".json") {
+            let url = directory.appendingPathComponent(name)
+            if Self.isPastRetention(url) {
+                try? fileManager.removeItem(at: url)
+            }
         }
     }
 
-    private var unreadableFileURL: URL {
-        fileURL.deletingPathExtension().appendingPathExtension("unreadable.json")
+    /// Whether the file was last modified more than the retention period
+    /// (plus `margin`) ago.
+    private static func isPastRetention(_ url: URL, margin: TimeInterval = 0) -> Bool {
+        let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        guard let modified else { return false }
+        return modified < Date().addingTimeInterval(-Config.clipboardRetention - margin)
     }
 
     private func usedImageFiles() -> Set<String> {
@@ -415,21 +438,51 @@ final class ClipboardStore: NSObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL) else { return }
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch CocoaError.fileReadNoSuchFile {
+            return  // First launch: no history yet.
+        } catch {
+            setAside(error)
+            return
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
             items = try decoder.decode(StoredHistory.self, from: data).items
         } catch {
-            // Set it aside rather than overwrite it with an empty history on
-            // the next save, in case it can be recovered by hand. It is
-            // deleted once past the retention period.
-            let backup = unreadableFileURL
-            try? FileManager.default.removeItem(at: backup)
-            try? FileManager.default.moveItem(at: fileURL, to: backup)
-            NSLog("Launcher: unreadable clipboard history moved to \(backup.path): \(error)")
+            setAside(error)
         }
     }
+
+    /// Moves an unreadable history file out of the way rather than overwrite
+    /// it with an empty history on the next save, in case it can be recovered
+    /// by hand. If it can't be moved, nothing is saved this run.
+    private func setAside(_ error: Error) {
+        if let backup = SetAsideFile.move(fileURL) {
+            // It keeps the date of its last save, which could be past the
+            // retention period already: give it a full period to be recovered.
+            ClipImageFile.touch(backup)
+            excludeFromBackup(backup)
+            NSLog("Launcher: unreadable clipboard history moved to \(backup.path): \(error)")
+        } else {
+            canSave = false
+            NSLog("Launcher: could not set aside unreadable clipboard history, so it won't be saved this run: \(error)")
+        }
+    }
+}
+
+/// Keeps clipboard contents (which can hold copied passwords and tokens) out
+/// of new Time Machine backups, so they don't outlive the retention period
+/// there. Earlier backups are not changed. Set on the history file after each
+/// save (an atomic write replaces it, and the flag with it) and on the images
+/// folder; the rest of the support folder is still backed up.
+func excludeFromBackup(_ url: URL) {
+    var url = url
+    var values = URLResourceValues()
+    values.isExcludedFromBackup = true
+    try? url.setResourceValues(values)
 }
 
 // MARK: - Monitor
@@ -631,6 +684,7 @@ enum ClipImageFile {
         let fileManager = FileManager.default
         do {
             try createPrivateDirectory(directory)
+            excludeFromBackup(directory)
             if fileManager.fileExists(atPath: url.path) {
                 touch(url)
             } else {

@@ -347,10 +347,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// ⌘1 to ⌘9 take the Nth row of the list.
     override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
         let keyCode = Int(event.keyCode)
-        // Only the shortcut modifiers: Caps Lock and keypad Enter's
-        // .numericPad flag must not get in the way.
-        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        guard modifiers == .command else { return false }
+        guard event.shortcutModifiers == .command else { return false }
         if keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter {
             execute(searchOnly: true)
             return true

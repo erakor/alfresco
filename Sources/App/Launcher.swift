@@ -31,13 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     private var pomodoroStatusItem: PomodoroStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        HTTPSession.removeLegacyCache()
         let pomodoro = PomodoroTimer()
         let pomodoroStatusItem = PomodoroStatusItem(timer: pomodoro)
-        pomodoro.onChange = { [weak pomodoroStatusItem] in pomodoroStatusItem?.update() }
-        pomodoro.onPhaseEnd = { [weak pomodoro] phase in
-            guard let pomodoro else { return }
-            PomodoroAlert.play(ended: phase, next: pomodoro.state)
-        }
+        pomodoro.connect(to: pomodoroStatusItem)
         self.pomodoro = pomodoro
         self.pomodoroStatusItem = pomodoroStatusItem
 
@@ -160,6 +157,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         return true
     }
 
+    #if SELFTEST
+    /// Lets the self-test check validateMenuItem against its own timer,
+    /// without the rest of applicationDidFinishLaunching.
+    func useForSelfTest(pomodoro: PomodoroTimer) { self.pomodoro = pomodoro }
+    static let startPomodoroAction = #selector(startPomodoro)
+    #endif
+
     // MARK: NSMenuDelegate
 
     /// Rebuilds the Workflows submenu each time it opens, so it always
@@ -258,6 +262,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 enum LauncherApp {
     @MainActor
     static func main() {
+        #if SELFTEST
+        // Never returns: runs the suite inside a real NSApplication and exits.
+        if let index = CommandLine.arguments.firstIndex(of: "--self-test") {
+            let rest = CommandLine.arguments.dropFirst(index + 1)
+            SelfTest.main(suite: rest.first ?? "unit")
+        }
+        #endif
+
         // Two copies (say ./Launcher and build/Launcher.app) would fight over
         // the hotkeys and overwrite each other's clipboard history, so a
         // second copy quits. exit(0) also keeps a LaunchAgent's KeepAlive
@@ -288,7 +300,6 @@ extension LauncherApp {
     static func acquireSingleInstanceLock() -> Bool {
         let directory = ClipboardStore.directory
         try? ClipImageFile.createPrivateDirectory(directory)
-        excludeFromBackup(directory)
         let path = directory.appendingPathComponent("launcher.lock").path
         let descriptor = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
         // If the lock file can't be opened, run anyway rather than not at all.
@@ -296,15 +307,5 @@ extension LauncherApp {
         if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { return true }
         close(descriptor)
         return false
-    }
-
-    /// Keeps the clipboard history (which can hold copied passwords and
-    /// tokens) out of Time Machine, so it really is gone after the retention
-    /// period. Set on the whole folder, so it also covers the images.
-    private static func excludeFromBackup(_ directory: URL) {
-        var url = directory
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        try? url.setResourceValues(values)
     }
 }
