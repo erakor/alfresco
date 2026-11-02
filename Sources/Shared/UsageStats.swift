@@ -74,6 +74,21 @@ private struct StoredUsage: Codable {
     static let currentVersion = 1
     var version = Self.currentVersion
     var days: [String: UsageDay] = [:]
+
+    init() {}
+
+    /// Another version (written by a newer build) is refused, so load()
+    /// sets the file aside instead of a later save overwriting it.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(Int.self, forKey: .version)
+        guard version == Self.currentVersion else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .version, in: container,
+                debugDescription: "usage.json version \(version) is not supported (expected \(Self.currentVersion))")
+        }
+        days = try container.decode([String: UsageDay].self, forKey: .days)
+    }
 }
 
 @MainActor
@@ -81,6 +96,9 @@ final class UsageStats: NSObject {
     static let shared = UsageStats()
 
     let fileURL: URL
+    /// The current time and calendar. Only the self-test passes others.
+    private let now: @MainActor () -> Date
+    private let calendar: Calendar
     private var stored = StoredUsage()
     private var saveTimer: Timer?
     /// Key of the newest bucket, so old days are pruned once a day.
@@ -93,8 +111,15 @@ final class UsageStats: NSObject {
     /// Words past this many distinct ones in a day are counted as "(other)".
     private static let maxFallbackWordsPerDay = 50
 
-    private override init() {
-        fileURL = ClipboardStore.directory.appendingPathComponent("usage.json")
+    private override convenience init() {
+        self.init(fileURL: ClipboardStore.directory.appendingPathComponent("usage.json"),
+                  now: { Date() }, calendar: .current)
+    }
+
+    init(fileURL: URL, now: @escaping @MainActor () -> Date, calendar: Calendar) {
+        self.fileURL = fileURL
+        self.now = now
+        self.calendar = calendar
         super.init()
         guard Config.usageTracking else { return }
         load()
@@ -151,7 +176,7 @@ final class UsageStats: NSObject {
 
     private func update(_ change: (inout UsageDay) -> Void) {
         guard Config.usageTracking else { return }
-        let key = Self.dayKey(for: Date())
+        let key = dayKey(for: now())
         if key != lastDayKey { prune() }
         change(&stored.days[key, default: UsageDay()])
         lastDayKey = key
@@ -175,7 +200,7 @@ final class UsageStats: NSObject {
 
     /// A plain-text summary of the last `days` days, for the "Usage…" alert.
     func summary(days: Int = 30) -> String {
-        let cutoff = Self.dayKey(for: Date().addingTimeInterval(-Double(days - 1) * 86_400))
+        let cutoff = firstDayKey(keeping: days)
         var total = UsageDay()
         for (key, day) in stored.days where key >= cutoff {
             total.counts.merge(day.counts, uniquingKeysWith: +)
@@ -247,14 +272,26 @@ final class UsageStats: NSObject {
     // MARK: Storage
 
     /// The local calendar day, e.g. "2026-11-01"; sorts like the dates.
-    private static func dayKey(for date: Date) -> String {
-        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+    private func dayKey(for date: Date) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
-    /// Drops days older than Config.usageRetentionDays.
+    /// The oldest day of the last `days` calendar days, today included. Counted
+    /// in calendar days, not 24 h steps, so a daylight saving change (a 23 or
+    /// 25 hour day) doesn't move it by a day.
+    func firstDayKey(keeping days: Int) -> String {
+        let today = calendar.startOfDay(for: now())
+        let first = calendar.date(byAdding: .day, value: -(max(1, days) - 1), to: today) ?? today
+        return dayKey(for: first)
+    }
+
+    /// The days that have counters, oldest first.
+    var dayKeys: [String] { stored.days.keys.sorted() }
+
+    /// Keeps the last Config.usageRetentionDays days, today included.
     private func prune() {
-        let cutoff = Self.dayKey(for: Date().addingTimeInterval(-Double(Config.usageRetentionDays) * 86_400))
+        let cutoff = firstDayKey(keeping: Config.usageRetentionDays)
         let before = stored.days.count
         stored.days = stored.days.filter { $0.key >= cutoff }
         if stored.days.count != before { scheduleSave() }

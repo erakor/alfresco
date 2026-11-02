@@ -80,6 +80,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
         switch suite {
         case "unit":
             PomodoroTests.run()
+            UsageStatsTests.run()
         case "relaunch-write":
             PomodoroTests.relaunchWrite()
         case "relaunch-read":
