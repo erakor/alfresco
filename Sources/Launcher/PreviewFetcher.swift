@@ -85,11 +85,9 @@ private enum PreviewLoader {
         var bytes = 0
         defer { Signposts.end("preview.load", signpost, outcome, bytes: bytes) }
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
-        let stream: URLSession.AsyncBytes
-        let response: URLResponse
         var data = Data()
         do {
-            (stream, response) = try await HTTPSession.shared.bytes(for: request)
+            let (stream, response) = try await HTTPSession.shared.bytes(for: request)
             defer { stream.task.cancel() }
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 throw URLError(.badServerResponse)

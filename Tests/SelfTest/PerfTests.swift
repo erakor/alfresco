@@ -280,19 +280,28 @@ enum PerfTests {
             var store: ClipboardStore?
             samples.append(clock.measure { store = ClipboardStore() })
             counts.insert(store?.items.count ?? 0)
+            // Its prune timer would keep it (and the whole history) alive.
+            store?.stopTimersForSelfTest()
         }
         report("store load at launch (ClipboardStore.init)", samples, .main)
         check("perf: every load read the whole history", counts == [Config.clipboardMaxItems], "\(counts)")
     }
 
+    /// Each add pushes the oldest item (a text) out; the seeded history is put
+    /// back after each run, so any PERF_RUNS leaves the screenshots in place.
     private static func save(_ seed: Seed) {
+        let seeded = seed.store.items
         var adds: [Duration] = []
         var saves: [Duration] = []
         for run in 0..<runs {
             let content = ClipContent.text("perf add \(run): deploy the project")
             adds.append(clock.measure { seed.store.add(content, source: ClipSource(name: nil, bundleID: nil)) })
             saves.append(clock.measure { seed.store.saveNow() })
+            seed.store.replaceItemsForSelfTest(seeded)
         }
+        seed.store.saveNow()
+        check("perf: the save scenario left every screenshot in place",
+              seed.screenshots.allSatisfy { FileManager.default.fileExists(atPath: seed.store.imageURL(for: $0).path) })
         report("store.add, one text into 500 items", adds, .main)
         report("saveNow after one add", saves, .main)
     }
@@ -427,14 +436,19 @@ enum PerfTests {
         for size in [96, 1200] {
             let loader = ThumbnailLoader(maxPixelSize: size, costLimit: 512 * 1024 * 1024)
             var samples: [Duration] = []
+            var failed = 0
             for run in 0..<runs {
                 if run > 0, run % seed.screenshots.count == 0 { loader.removeAll() }
                 let url = seed.store.imageURL(for: seed.screenshots[run % seed.screenshots.count])
                 let start = clock.now
                 _ = loader.image(for: url)
-                if await wait(until: { loader.isIdleForSelfTest }) { samples.append(clock.now - start) }
+                guard await wait(until: { loader.isIdleForSelfTest }) else { continue }
+                let elapsed = clock.now - start
+                // A file that didn't decode would time a failure, not a decode.
+                if loader.cachedImageForSelfTest(url) != nil { samples.append(elapsed) } else { failed += 1 }
             }
             report("thumbnail decode, 5K PNG to \(size) px", samples, .background)
+            check("perf: every \(size) px decode gave a picture", failed == 0, "\(failed) failed")
         }
     }
 

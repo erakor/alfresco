@@ -97,7 +97,7 @@ copied.
 | Interval | What it covers |
 | --- | --- |
 | `clipboard.store.init`, `clipboard.load` (`.decode`) | Reading the history at launch |
-| `clipboard.save` (`.encode`, `.write`) | Writing the history, 1 s after each copy |
+| `clipboard.save` (`.encode`, `.write`) | Writing the history, 1 s after the last change |
 | `clipboard.poll` | A clipboard change being read (`kind=`) |
 | `clipboard.image.save` | Converting and storing a copied image (background) |
 | `clipboard.open`, `clipboard.reload`, `clipboard.filter` | Opening the history panel and each keystroke in it |

@@ -379,6 +379,21 @@ final class ClipboardStore: NSObject {
         didChange()
     }
 
+    #if SELFTEST
+    /// Puts back a list read from `items` earlier, without saving: the perf
+    /// suite keeps its seeded history whole between runs.
+    func replaceItemsForSelfTest(_ items: [ClipItem]) { self.items = items }
+
+    /// Stops the timers, which hold on to the store, so one made only to be
+    /// measured is freed.
+    func stopTimersForSelfTest() {
+        pruneTimer?.invalidate()
+        pruneTimer = nil
+        saveTimer?.invalidate()
+        saveTimer = nil
+    }
+    #endif
+
     /// Deletes unpinned items past their retention period, from memory and
     /// disk.
     func expireOldItems() {
@@ -710,8 +725,7 @@ final class ClipboardMonitor: NSObject {
         }
 
         if preferImage, let imageType {
-            recorded = .image
-            recordImage(type: imageType, changeCount: changeCount, source: source, copiedAt: copiedAt)
+            recorded = recordImage(type: imageType, changeCount: changeCount, source: source, copiedAt: copiedAt)
         } else if let filePaths {
             recorded = .files
             store.add(.files(filePaths), source: source, copiedAt: copiedAt)
@@ -757,19 +771,20 @@ final class ClipboardMonitor: NSObject {
     /// Reads the image's bytes here (the clipboard is read on the main
     /// thread) and checks its pixel size from the header alone. Decoding,
     /// PNG conversion, hashing and writing happen in the background, so a
-    /// huge image can't freeze the panels.
+    /// huge image can't freeze the panels. Returns `.image` once the save is
+    /// started (it can still fail: see the clipboard.image.save interval).
     private func recordImage(
         type: NSPasteboard.PasteboardType, changeCount: Int, source: ClipSource, copiedAt: Date
-    ) {
+    ) -> Signposts.Kind {
         guard let data = pasteboard.data(forType: type) else {
             UsageStats.shared.record(.clipboardSkippedImage)
-            return
+            return .skipped
         }
         // As in poll: a newer copy's image, read before its markers were checked.
-        guard pasteboard.changeCount == changeCount else { return }
+        guard pasteboard.changeCount == changeCount else { return .none }
         if let size = ClipImageFile.pixelSize(of: data), !ClipImageFile.isAcceptable(size) {
             UsageStats.shared.record(.clipboardSkippedImage)
-            return
+            return .skipped
         }
 
         let store = self.store
@@ -781,6 +796,7 @@ final class ClipboardMonitor: NSObject {
             }
             await store.add(.image(image), source: source, copiedAt: copiedAt)
         }
+        return .image
     }
 
     /// Copies made in an app of Config.clipboardIgnoredApps.
