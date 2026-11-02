@@ -83,6 +83,14 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
             PomodoroTests.run()
             UsageStatsTests.run()
             ClipboardTests.run()
+            ClipboardSpeedTests.run()
+            // These wait for decodes in the background, so the suite
+            // finishes once they are done.
+            Task {
+                await ThumbnailTests.run()
+                SelfTest.finish()
+            }
+            return
         case "relaunch-write":
             PomodoroTests.relaunchWrite()
         case "relaunch-read":
