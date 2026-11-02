@@ -1,6 +1,7 @@
 # Checks that the app still compiles in Swift 6 language mode, that build.sh
-# still produces the .app bundle, and that workflows.json decodes with the
-# app's own decoder. AppKit and Carbon only exist on macOS, hence the runner.
+# still produces the .app bundle, that workflows.json decodes with the
+# app's own decoder, and that the self-test passes when the app runs.
+# AppKit and Carbon only exist on macOS, hence the runner.
 name: Build
 
 on:
@@ -29,3 +30,19 @@ jobs:
 
       - name: Check workflows.json
         run: .claude/skills/add-workflow/scripts/check.sh workflows.json
+
+      # Builds the -D SELFTEST variant and runs the app for real: the pomodoro
+      # menu bar item, alert, restore after relaunch and wake from sleep. See
+      # Tests/run-self-tests.sh. The PASS/FAIL list is in the run's summary.
+      - name: Self-test
+        run: Tests/run-self-tests.sh
+
+      - name: Upload self-test log and screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-test
+          path: |
+            build/self-test/*.log
+            build/self-test/menubar.png
+          if-no-files-found: ignore
