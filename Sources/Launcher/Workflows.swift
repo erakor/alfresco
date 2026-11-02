@@ -287,14 +287,22 @@ final class WorkflowStore {
 
 // MARK: - Command parsing
 
+/// Which part of workflows.json produced a command.
+enum CommandSource: Equatable, Sendable {
+    /// `keyword` is the workflow's first keyword, whichever one was typed.
+    case workflow(keyword: String, withArgument: Bool)
+    case fallback
+}
+
 struct Command {
     let url: URL
     let label: String
+    let source: CommandSource
     /// The workflow's preview URL, filled in with the same argument.
     var preview: URL?
     /// No keyword matched; this is the fallback search. Installed apps whose
     /// name matches the input take precedence over it.
-    var isFallback = false
+    var isFallback: Bool { source == .fallback }
 }
 
 enum CommandParser {
@@ -315,16 +323,21 @@ enum CommandParser {
             if !argument.isEmpty, let url = expand(workflow.url, with: argument) {
                 return Command(
                     url: url, label: "\(workflow.title) \(argument)",
+                    source: .workflow(keyword: workflow.keywords.first ?? keyword.lowercased(), withArgument: true),
                     preview: workflow.preview.flatMap { expand($0, with: argument) }
                 )
             }
         } else if parts.count == 1, let workflow = set.workflow(for: keyword, withArgument: false),
                   let url = URL(string: workflow.url) {
-            return Command(url: url, label: workflow.title, preview: workflow.preview.flatMap { URL(string: $0) })
+            return Command(
+                url: url, label: workflow.title,
+                source: .workflow(keyword: workflow.keywords.first ?? keyword.lowercased(), withArgument: false),
+                preview: workflow.preview.flatMap { URL(string: $0) }
+            )
         }
 
         guard let url = expand(set.fallback.url, with: set.fallback.prepare(input)) else { return nil }
-        return Command(url: url, label: set.fallback.title, isFallback: true)
+        return Command(url: url, label: set.fallback.title, source: .fallback)
     }
 
     private static func expand(_ template: String, with argument: String) -> URL? {

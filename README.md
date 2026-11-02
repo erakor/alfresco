@@ -247,6 +247,31 @@ Notes:
   in other apps ("paste from other apps"). Allow it, or the history stays
   empty.
 
+## Usage stats
+
+The launcher counts how it is used, so you can see which keywords earn their
+place and what is missing. Everything stays on your Mac, in
+`~/Library/Application Support/Launcher/usage.json` (readable only by your
+user), one bucket per day, kept for 90 days. The menu bar's **Usage…** shows the
+last 30 days and can reveal the file.
+
+Recorded:
+
+- Launcher: how often it opens, how often it closes without opening anything
+  (and whether something was typed), Enter on a keyword still missing its
+  argument, each workflow run (by its first keyword: `pr` or `pr …`, never what
+  you typed after it), how many installed apps were opened (not which), and
+  how often the fallback is used.
+- The first word of multi-word fallback inputs, lowercased, if it looks like a
+  keyword (letters, digits, `-`, `_`, up to 20 characters): `jria abc-42` keeps
+  `jria`, a mistyped `jira`. The rest of the input is never kept.
+- Previews and weather: answers received and failures, by kind of error.
+- Clipboard: copies by kind, copies and restores per app (by bundle ID), and
+  skipped copies by reason. Never any content or file path.
+
+`usageTracking = false` in `Config.swift` turns it off (and hides **Usage…**);
+`usageTrackFallbackWords = false` keeps the counts but drops the fallback words.
+
 ## Configure
 
 Edit the `Config` enum in `Sources/App/Config.swift`, then rebuild:
@@ -266,6 +291,8 @@ Edit the `Config` enum in `Sources/App/Config.swift`, then rebuild:
   (15 min), `pomodoroSessionsBeforeLongBreak` (4), `pomodoroAutoStartBreaks`
   (`true`; when `false`, a break waits paused in the menu bar until you resume
   it), `pomodoroSound` (`"Glass"`, any name from `/System/Library/Sounds`).
+- `usageTracking`, `usageTrackFallbackWords`, `usageRetentionDays` (90): see
+  [Usage stats](#usage-stats).
 
 The source lives in `Sources/`, one folder per feature:
 
@@ -279,8 +306,8 @@ The source lives in `Sources/`, one folder per feature:
 - `Pomodoro/`: `PomodoroTimer.swift` (the timer), `PomodoroCommand.swift`
   (`alfresco://pomodoro/...` URLs), `PomodoroStatusItem.swift` (menu bar
   countdown) and `PomodoroAlert.swift` (sound and notification).
-- `Shared/`: `FloatingPanel.swift` (base class for both panels) and
-  `HotKeys.swift` (global hotkeys).
+- `Shared/`: `FloatingPanel.swift` (base class for both panels),
+  `HotKeys.swift` (global hotkeys) and `UsageStats.swift` (usage counters).
 
 ## Build
 

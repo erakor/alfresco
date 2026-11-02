@@ -103,6 +103,19 @@ enum Config {
     /// scan is older than this, so new apps show up without a restart.
     static let appRescanInterval: TimeInterval = 60
 
+    // MARK: Usage stats
+
+    /// Counts how the launcher and the clipboard history are used, in
+    /// ~/Library/Application Support/Launcher/usage.json (see UsageStats).
+    /// Nothing leaves the Mac. false records nothing and hides "Usage…".
+    static let usageTracking = true
+    /// Also keeps the first word of multi-word inputs that went to the
+    /// fallback (e.g. "jria" from "jria abc-42"), to spot missing or mistyped
+    /// keywords. The rest of the input is never kept.
+    static let usageTrackFallbackWords = true
+    /// Days of counters kept.
+    static let usageRetentionDays = 90
+
     // MARK: Weather
 
     /// `weather` or `weather <place>` in the launcher shows the forecast

@@ -33,6 +33,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private static let rowHeight: CGFloat = 60
     /// Text to start with on the next show(prefill:).
     private var pendingPrefill = ""
+    /// Whether Enter opened a URL since the panel was shown (usage stats).
+    private var didLaunch = false
 
     init(store: WorkflowStore, internalURLHandler: @escaping (URL) -> Bool) {
         self.store = store
@@ -54,6 +56,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     override func prepareToShow() {
+        UsageStats.shared.record(.launcherOpened)
+        didLaunch = false
         store.reloadIfNeeded()
         weather.reloadKey()
         apps.refreshIfStale()
@@ -69,6 +73,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     override func didHide() {
+        if !didLaunch {
+            let typed = !textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            UsageStats.shared.record(typed ? .launcherClosedTyped : .launcherClosedEmpty)
+        }
         textField.stringValue = ""
         previews.cancel()
         weather.cancel()
@@ -97,9 +105,15 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// (`searchOnly`) skips the app and runs the fallback search.
     private func execute(searchOnly: Bool = false) {
         // Keyword typed without its argument: keep the bar open and wait.
-        if store.current.workflowAwaitingArgument(textField.stringValue) != nil { return }
+        if store.current.workflowAwaitingArgument(textField.stringValue) != nil {
+            UsageStats.shared.record(.launcherEnterNeedsArgument)
+            return
+        }
         if !searchOnly, let app = matchedApp() {
+            // Counted when asked: opening an app reports failure later.
             AppIndex.open(app)
+            UsageStats.shared.record(.launcherOpenedApp)
+            didLaunch = true
             textField.stringValue = ""
             hide()
             return
@@ -108,16 +122,25 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             hide()
             return
         }
+        let opened: Bool
         if command.url.scheme?.lowercased() == "alfresco" {
             // Handled by the app itself; an unknown one keeps the bar open.
             guard internalURLHandler(command.url) else {
                 NSSound.beep()
                 return
             }
+            opened = true
         } else {
-            NSWorkspace.shared.open(command.url)
+            // false when macOS can't open it.
+            opened = NSWorkspace.shared.open(command.url)
         }
-        textField.stringValue = ""
+        // On failure the text stays, so didHide counts a close with text
+        // typed instead of a launch.
+        if opened {
+            UsageStats.shared.recordLaunch(command.source, input: textField.stringValue)
+            didLaunch = true
+            textField.stringValue = ""
+        }
         hide()
     }
 
