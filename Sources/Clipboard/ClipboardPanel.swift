@@ -190,17 +190,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     }
 
     /// Rows reachable with ⌘1 to ⌘9; each shows its shortcut.
-    private static let numberedRows = 9
-
-    /// Key codes rather than characters, so the shortcuts also work on
-    /// layouts like AZERTY where the top row types symbols without Shift.
-    private static let digitKeyCodes: [Int: Int] = [
-        kVK_ANSI_1: 1, kVK_ANSI_2: 2, kVK_ANSI_3: 3, kVK_ANSI_4: 4, kVK_ANSI_5: 5,
-        kVK_ANSI_6: 6, kVK_ANSI_7: 7, kVK_ANSI_8: 8, kVK_ANSI_9: 9,
-        kVK_ANSI_Keypad1: 1, kVK_ANSI_Keypad2: 2, kVK_ANSI_Keypad3: 3,
-        kVK_ANSI_Keypad4: 4, kVK_ANSI_Keypad5: 5, kVK_ANSI_Keypad6: 6,
-        kVK_ANSI_Keypad7: 7, kVK_ANSI_Keypad8: 8, kVK_ANSI_Keypad9: 9,
-    ]
+    private static let numberedRows = DigitShortcuts.count
 
     // MARK: Actions
 
@@ -287,7 +277,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             pickSelected(paste: false)
             return true
         }
-        guard let number = Self.digitKeyCodes[Int(event.keyCode)] else { return false }
+        guard let number = DigitShortcuts.keyCodes[Int(event.keyCode)] else { return false }
         guard number <= visibleItems.count else {
             NSSound.beep()
             return true

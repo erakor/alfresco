@@ -45,23 +45,29 @@ final class AppIndex {
         }
     }
 
-    /// The app whose name best matches the whole input, or nil. In order:
-    /// the exact name, a name starting with the input, a word of the name
-    /// starting with the input ("code" for "Visual Studio Code"), then the
-    /// initials ("vsc"). Ties go to the shorter name.
-    func bestMatch(for raw: String) -> AppEntry? {
-        guard Config.appSearch else { return nil }
+    /// The apps whose name matches the whole input, best first, at most
+    /// `limit`. In order: the exact name, a name starting with the input, a
+    /// word of the name starting with the input ("code" for "Visual Studio
+    /// Code"), then the initials ("vsc"). Ties go to the shorter name, then
+    /// alphabetical order.
+    func matches(for raw: String, limit: Int) -> [AppEntry] {
+        guard Config.appSearch, limit > 0 else { return [] }
         let input = Self.fold(raw.trimmingCharacters(in: .whitespacesAndNewlines))
-        guard !input.isEmpty else { return nil }
+        guard !input.isEmpty else { return [] }
 
-        var best: (rank: Int, length: Int, app: AppEntry)?
-        for app in apps {
-            guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { continue }
-            let length = app.name.count
-            if let current = best, (current.rank, current.length) <= (rank, length) { continue }
-            best = (rank, length, app)
+        let ranked = apps.compactMap { app -> (rank: Int, length: Int, name: String, app: AppEntry)? in
+            guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
+            return (rank, app.name.count, app.name, app)
         }
-        return best?.app
+        return ranked
+            .sorted { ($0.rank, $0.length, $0.name) < ($1.rank, $1.length, $1.name) }
+            .prefix(limit)
+            .map(\.app)
+    }
+
+    /// The best of `matches(for:limit:)`, or nil.
+    func bestMatch(for raw: String) -> AppEntry? {
+        matches(for: raw, limit: 1).first
     }
 
     private static func rank(_ input: String, in name: String) -> Int? {

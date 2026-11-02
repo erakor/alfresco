@@ -25,7 +25,7 @@ ALFRESCO_WORKFLOWS=/path/to/workflows.json ./Launcher
 
 ## Architecture
 
-Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wiring (`AppDelegate`, `main`, `Config`), `Shared/` holds code used by more than one feature.
+Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wiring (`AppDelegate`, `main`, `Config`), `Shared/` holds code used by more than one feature (e.g. `DigitShortcuts`, the ⌘1 to ⌘9 key codes both panels use).
 
 ### App/Config.swift
 
@@ -38,7 +38,7 @@ Source layout: `Sources/<Feature>/`, one folder per feature. `App/` holds the wi
 
 ### Launcher/AppIndex.swift
 
-`AppIndex` (main actor) lists the `.app` bundles in `Config.appFolders`, each directly and one folder down, scanned in a detached task at launch and again when the launcher opens if older than `Config.appRescanInterval`. Each `AppEntry` matches on its folded (case/accent-insensitive) Finder display name and file name. `bestMatch` ranks exact name, name prefix, word prefix (several typed words must start consecutive words), then initials; ties go to the shorter name. Apps only take input that would otherwise go to the fallback (`Command.isFallback`), never a workflow keyword.
+`AppIndex` (main actor) lists the `.app` bundles in `Config.appFolders`, each directly and one folder down, scanned in a detached task at launch and again when the launcher opens if older than `Config.appRescanInterval`. Each `AppEntry` matches on its folded (case/accent-insensitive) Finder display name and file name. `matches(for:limit:)` (and `bestMatch`, its first) ranks exact name, name prefix, word prefix (several typed words must start consecutive words), then initials; ties go to the shorter name, then alphabetical. Apps only take input that would otherwise go to the fallback (`Command.isFallback`), never a workflow keyword.
 
 ### Launcher/PreviewFetcher.swift
 
@@ -73,7 +73,7 @@ Carbon `RegisterEventHotKey`, deliberately avoiding Accessibility/Input Monitori
 
 ### Launcher/SuggestionListView.swift
 
-`SuggestionListView` is the list under the input, filled from `WorkflowSet.suggestions(for:)` (workflows whose keyword starts with a single typed word; empty once the word is every match's whole keyword). The input keeps focus, so `LauncherController` routes Tab (completes `tabTarget`: the row chosen with ↑ ↓, else the first; `Suggestion.completion` adds a space when the workflow takes an argument), ↑ ↓ (only while the list has rows) and Enter (with a chosen row: complete, then run it if it takes no argument; otherwise unchanged). The list sits where the forecast goes and is empty while the forecast is shown; its height is part of `setHeight` in `updateWeather`.
+`SuggestionListView` is the list under the input, Alfred-style rows (icon, title, subtitle, and `↩` on the highlighted row or `⌘N` on the first nine). Its rows are `LauncherItem`s: `.app(AppEntry)` and `.workflow(Suggestion)`. `LauncherController.updateSuggestions` fills it with the best matching app first (highlighted from the start, since Enter opens it anyway; ↑ stops there), then `WorkflowSet.suggestions(for:)` (workflows whose keyword starts with a single typed word; empty once the word is every match's whole keyword), then the other `AppIndex.matches`, nine rows at most unless there are more keywords. Workflow icons are the icon of the app that opens the URL, cached per scheme until the list empties. The input keeps focus, so `LauncherController` routes Tab (completes `tabTarget`: the highlighted row, else the first; `LauncherItem.completion` is an app's name or `Suggestion.completion`, which adds a space when the workflow takes an argument), ↑ ↓ (only while the list has rows), and Enter, a click or ⌘1 to ⌘9 (`activate`: an app opens; a workflow is completed, then run if it takes no argument). With no row highlighted, Enter is unchanged. The list sits where the forecast goes and is empty while the forecast is shown; its height is part of `setHeight` in `updateWeather`.
 
 ### Pomodoro/
 

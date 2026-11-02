@@ -43,8 +43,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
         weather.onUpdate = { [weak self] in self?.updateWeather() }
-        apps.onUpdate = { [weak self] in self?.updateHint() }
-        suggestionList.onPick = { [weak self] in self?.complete(with: $0) }
+        apps.onUpdate = { [weak self] in self?.inputDidChange() }
+        suggestionList.onPick = { [weak self] in self?.activate($0) }
     }
 
     override var initialFirstResponder: NSResponder? { textField }
@@ -96,9 +96,35 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// the input (it would otherwise go to the fallback search).
     private func matchedApp() -> AppEntry? {
         let input = textField.stringValue
-        guard store.current.workflowAwaitingArgument(input) == nil,
-              CommandParser.parse(input, using: store.current)?.isFallback == true else { return nil }
-        return apps.bestMatch(for: input)
+        return inputCanNameApp(input) ? apps.bestMatch(for: input) : nil
+    }
+
+    /// Whether the input would go to the fallback search, which is the only
+    /// input apps take (never a workflow keyword).
+    private func inputCanNameApp(_ input: String) -> Bool {
+        store.current.workflowAwaitingArgument(input) == nil
+            && CommandParser.parse(input, using: store.current)?.isFallback == true
+    }
+
+    private func open(_ app: AppEntry) {
+        // Counted when asked: opening an app reports failure later.
+        AppIndex.open(app)
+        UsageStats.shared.record(.launcherOpenedApp)
+        didLaunch = true
+        textField.stringValue = ""
+        hide()
+    }
+
+    /// A list row taken with Enter, ⌘1 to ⌘9 or a click: an app opens; a
+    /// workflow is completed, then run if it needs no argument.
+    private func activate(_ item: LauncherItem) {
+        switch item {
+        case .app(let app):
+            open(app)
+        case .workflow(let suggestion):
+            complete(with: suggestion.completion)
+            if !suggestion.workflow.takesArgument { execute() }
+        }
     }
 
     /// Enter: the matching app, else the workflow or fallback URL. ⌘↩
@@ -110,12 +136,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             return
         }
         if !searchOnly, let app = matchedApp() {
-            // Counted when asked: opening an app reports failure later.
-            AppIndex.open(app)
-            UsageStats.shared.record(.launcherOpenedApp)
-            didLaunch = true
-            textField.stringValue = ""
-            hide()
+            open(app)
             return
         }
         guard let command = CommandParser.parse(textField.stringValue, using: store.current) else {
@@ -144,27 +165,43 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         hide()
     }
 
-    /// Puts the suggestion's keyword in the field (plus a space when it
-    /// needs an argument), cursor at the end. Goes through the field editor
-    /// when there is one, so ⌘Z brings back what was typed.
-    private func complete(with suggestion: Suggestion) {
+    /// Puts a row's completion in the field (a workflow's keyword plus a
+    /// space when it needs an argument, or an app's name), cursor at the
+    /// end. Goes through the field editor when there is one, so ⌘Z brings
+    /// back what was typed.
+    private func complete(with completion: String) {
         if let editor = textField.currentEditor() as? NSTextView {
             editor.breakUndoCoalescing()
-            editor.insertText(suggestion.completion, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
+            editor.insertText(completion, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
             editor.breakUndoCoalescing()
         } else {
-            textField.stringValue = suggestion.completion
+            textField.stringValue = completion
         }
         inputDidChange()
     }
 
-    /// Fills the list under the input with the keywords that start with
-    /// what is typed. The forecast takes that space while it is shown.
+    /// Fills the list under the input: the best matching app first (it is
+    /// what Enter opens, so it starts highlighted), then the keywords that
+    /// start with what is typed, then the other matching apps, up to nine
+    /// rows unless there are more keywords. The forecast takes that space
+    /// while it is shown.
     private func updateSuggestions() {
         let input = textField.stringValue
-        let suggestions = weather.query(for: input) == nil ? store.current.suggestions(for: input) : []
-        suggestionList.show(suggestions)
-        suggestionList.isHidden = suggestions.isEmpty
+        var items: [LauncherItem] = []
+        var highlightFirst = false
+        if weather.query(for: input) == nil {
+            let workflows = store.current.suggestions(for: input)
+            let appLimit = max(1, SuggestionListView.maxVisibleRows - workflows.count)
+            let appMatches = inputCanNameApp(input) ? apps.matches(for: input, limit: appLimit) : []
+            if let best = appMatches.first {
+                items.append(.app(best))
+                highlightFirst = true
+            }
+            items += workflows.map(LauncherItem.workflow)
+            items += appMatches.dropFirst().map(LauncherItem.app)
+        }
+        suggestionList.show(items, highlightFirst: highlightFirst)
+        suggestionList.isHidden = items.isEmpty
         suggestionListHeight?.constant = suggestionList.preferredHeight
     }
 
@@ -177,8 +214,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             if let missingPreview { previews.fetch(missingPreview) } else { previews.cancel() }
         }
 
-        // A suggestion row chosen with the arrows takes Enter, not the app.
-        let app = suggestionList.selected == nil ? matchedApp() : nil
+        // A highlighted row takes Enter; without one, the matching app does.
+        let app: AppEntry?
+        switch suggestionList.selected {
+        case .app(let selectedApp)?: app = selectedApp
+        case .workflow?: app = nil
+        case nil: app = matchedApp()
+        }
         if let app {
             let iconImage = NSWorkspace.shared.icon(forFile: app.url.path)
             iconImage.size = NSSize(width: 24, height: 24)
@@ -187,8 +229,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             icon.image = searchIcon
         }
 
-        if let suggestion = suggestionList.selected {
-            // A row chosen with the arrows: Enter takes it.
+        if case .workflow(let suggestion)? = suggestionList.selected {
+            // A highlighted workflow row: Enter takes it.
             let title = suggestion.workflow.title
             hintLabel.stringValue = suggestion.workflow.takesArgument ? "↩ \(title)…" : "↩ \(title)"
             hintLabel.toolTip = nil
@@ -263,14 +305,23 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     /// ⌘↩ ignores a matching app and runs the search (or workflow) instead.
+    /// ⌘1 to ⌘9 take the Nth row of the list.
     override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
         let keyCode = Int(event.keyCode)
         // Only the shortcut modifiers: Caps Lock and keypad Enter's
         // .numericPad flag must not get in the way.
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        guard modifiers == .command,
-              keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter else { return false }
-        execute(searchOnly: true)
+        guard modifiers == .command else { return false }
+        if keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter {
+            execute(searchOnly: true)
+            return true
+        }
+        guard let number = DigitShortcuts.keyCodes[keyCode], !suggestionList.isHidden else { return false }
+        if let item = suggestionList.item(number: number) {
+            activate(item)
+        } else {
+            NSSound.beep()
+        }
         return true
     }
 
@@ -281,11 +332,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        let hasSuggestions = !suggestionList.suggestions.isEmpty
+        let hasSuggestions = !suggestionList.items.isEmpty
         switch commandSelector {
         case #selector(NSResponder.insertTab(_:)):
             // Never moves focus out of the field; completes when it can.
-            if let target = suggestionList.tabTarget { complete(with: target) }
+            if let target = suggestionList.tabTarget { complete(with: target.completion) }
             return true
         case #selector(NSResponder.moveDown(_:)) where hasSuggestions:
             suggestionList.moveSelection(by: 1)
@@ -296,10 +347,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             updateHint()
             return true
         case #selector(NSResponder.insertNewline(_:)):
-            if let suggestion = suggestionList.selected {
-                // A chosen row: complete it, and open it if it needs nothing more.
-                complete(with: suggestion)
-                if !suggestion.workflow.takesArgument { execute() }
+            if let item = suggestionList.selected {
+                activate(item)
             } else {
                 execute()
             }

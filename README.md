@@ -12,7 +12,7 @@ launcher.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
 - `Esc`, clicking outside, or pressing the hotkey again dismisses it.
 - `⌘X/C/V/A/Z` work in the input even though the app has no menu bar.
-- Keyword suggestions as you type: `p` lists `pr`, `Tab` completes, `↑` `↓` choose.
+- Suggestions as you type, with icons: matching apps and keywords (`p` lists `pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
 
 | Input          | Opens                                                             |
 | -------------- | ----------------------------------------------------------------- |
@@ -106,13 +106,23 @@ picking one opens the launcher with its keyword already typed.
 
 ### Suggestions
 
-While you type a single word, a list under the input shows the workflows whose
-keyword starts with it (`p` shows `pr`), with their title and description.
-`Tab` completes the first row, or the one chosen with `↑` `↓`, adding a space
-when the workflow needs an argument so you can keep typing. `Enter` on a chosen
-row completes it and opens it if it needs nothing more; with no row chosen,
-`Enter` runs what is typed, as before (so `p` alone still searches Google).
-Clicking a row completes it. The list goes away once the word is a whole
+A list under the input shows what you could mean, one row each with an icon,
+a title and a subtitle:
+
+- The installed apps whose name matches (with their path), best match first.
+  That first app is highlighted because `Enter` opens it; `⌘↩` searches instead.
+- While you type a single word, the workflows whose keyword starts with it
+  (`p` shows `pr`), with their keyword and description. Their icon is the app
+  that opens the URL (your browser for web links).
+
+Up to nine rows show (more keywords scroll). The highlighted row shows `↩`,
+the others `⌘2` to `⌘9`: that shortcut takes the row directly. `↑` `↓` move
+the highlight. `Tab` completes the highlighted row, else the first, adding a
+space when a workflow needs an argument so you can keep typing. `Enter` (or a
+click, or `⌘N`) on a workflow row completes it and opens it if it needs
+nothing more; on an app row it opens the app. With no row highlighted,
+`Enter` runs what is typed, as before (so `p` alone still searches Google
+when no app matches). The workflow rows go away once the word is a whole
 keyword or you type a space.
 
 ## Weather
