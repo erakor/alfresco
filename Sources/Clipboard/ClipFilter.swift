@@ -7,14 +7,14 @@
 import Foundation
 
 /// Matches items case-, accent- and width-insensitively: the item's texts and
-/// the query are both folded (AppIndex.fold), then searched literally. Each
-/// item's folded texts are made once and kept until `reset()`. Since a
-/// literal match of a query is also a match of any text it contains, a query
-/// that contains the previous one (typing on, at either end) only looks
-/// through the previous query's matches.
+/// the query are both folded (AppIndex.fold), then searched for whole
+/// characters (`contains`). Each item's folded texts are made the first time
+/// it is searched and kept until it leaves the history, since its content
+/// never changes. Since a match of a query is also a match of any text it
+/// contains, a query that contains the previous one (typing on, at either
+/// end) only looks through the previous query's matches.
 struct ClipFilter {
-    /// Folded search texts by item ID. An item's content never changes, so
-    /// these stay valid for as long as the item exists.
+    /// Folded search texts by item ID.
     private var searchTexts: [UUID: [String]] = [:]
     /// The last folded query and what it matched, to narrow from.
     private var last: (query: String, items: [ClipItem])?
@@ -27,13 +27,13 @@ struct ClipFilter {
             return items
         }
         let candidates: [ClipItem]
-        if let last, folded.range(of: last.query, options: .literal) != nil {
+        if let last, Self.contains(folded, last.query) {
             candidates = last.items
         } else {
             candidates = items
         }
         let matching = candidates.filter { item in
-            texts(of: item).contains { $0.range(of: folded, options: .literal) != nil }
+            texts(of: item).contains { Self.contains($0, folded) }
         }
         #if SELFTEST
         lastSearchedCount = candidates.count
@@ -42,15 +42,18 @@ struct ClipFilter {
         return matching
     }
 
-    /// The history changed: the next search looks through all of it again.
-    mutating func historyDidChange() {
+    /// The history is now `items`: the next search looks through all of it
+    /// again, and the folded texts of items no longer in it are dropped.
+    mutating func historyDidChange(_ items: [ClipItem]) {
         last = nil
+        let ids = Set(items.map(\.id))
+        searchTexts = searchTexts.filter { ids.contains($0.key) }
     }
 
-    /// Frees the folded texts (the panel closed).
-    mutating func reset() {
+    /// The panel closed: the next opening starts from an empty field. The
+    /// folded texts stay for the next search.
+    mutating func forgetQuery() {
         last = nil
-        searchTexts.removeAll()
     }
 
     private mutating func texts(of item: ClipItem) -> [String] {
@@ -60,9 +63,27 @@ struct ClipFilter {
         return texts
     }
 
+    /// Whether `text` contains `query` as whole characters: a literal search
+    /// (fast, and makes no copies) whose match must start and end on
+    /// character boundaries, so "👍" doesn't match inside "👍🏽".
+    static func contains(_ text: String, _ query: String) -> Bool {
+        var start = text.startIndex
+        while let found = text.range(of: query, options: .literal, range: start..<text.endIndex) {
+            if found.lowerBound.samePosition(in: text) != nil, found.upperBound.samePosition(in: text) != nil {
+                return true
+            }
+            // A literal match starts on a scalar, so the next one is a
+            // valid place to look again.
+            start = text.unicodeScalars.index(after: found.lowerBound)
+        }
+        return false
+    }
+
     #if SELFTEST
     /// How many items the last search looked through.
     private(set) var lastSearchedCount = 0
+    /// How many items have folded texts kept.
+    var foldedCountForSelfTest: Int { searchTexts.count }
     #endif
 }
 

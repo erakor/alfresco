@@ -4,8 +4,9 @@
 // less: the history panel's search (folded, narrowed from the previous
 // query's matches only when that gives the same result as a full search),
 // the text size and whitespace check on each copy, and the background
-// thumbnail decoder (one decode per file, failures not retried, results of a
-// decode started before removeAll dropped).
+// thumbnail decoder (one decode per file, newest request first, failures
+// reported and not retried until forgotten, waiting requests dropped by
+// cancelPending, results of a decode started before removeAll dropped).
 
 import Cocoa
 import ImageIO
@@ -67,12 +68,30 @@ enum ClipboardSpeedTests {
         // A copy that arrives while a search is shown is found by the next keystroke.
         _ = filter.items(matching: "zz", in: items)
         let added = item(.text("zzz top"))
-        filter.historyDidChange()
+        filter.historyDidChange([added] + items)
         let after = filter.items(matching: "zzz", in: [added] + items)
         check("clipboard search: after the history changes, new items are searched", ids(after) == [added.id])
-        filter.reset()
-        check("clipboard search: reset forgets the last query",
-              ids(filter.items(matching: "lait", in: items)) == [cafe.id] && filter.lastSearchedCount == items.count)
+        filter.forgetQuery()
+        check("clipboard search: forgetQuery forgets the last query",
+              ids(filter.items(matching: "lait", in: [added] + items)) == [cafe.id]
+                  && filter.lastSearchedCount == items.count + 1)
+
+        // Folded texts are made once per item: kept when the panel closes,
+        // dropped with the item.
+        let folded = filter.foldedCountForSelfTest
+        filter.forgetQuery()
+        check("clipboard search: folded texts are kept when the panel closes",
+              folded == items.count + 1 && filter.foldedCountForSelfTest == folded, "\(folded) folded")
+        filter.historyDidChange(items.filter { $0.id != cafe.id })
+        check("clipboard search: folded texts of items gone from the history are dropped",
+              filter.foldedCountForSelfTest == items.count - 1, "\(filter.foldedCountForSelfTest) folded")
+
+        // Matches are whole characters.
+        let thumbs = item(.text("great 👍🏽 work"))
+        check("clipboard search: a match never splits a character",
+              fresh("👍", in: [thumbs]).isEmpty && fresh("👍🏽", in: [thumbs]) == [thumbs.id])
+        check("clipboard search: a flag is not matched across two flags",
+              !ClipFilter.contains("🇫🇷🇺🇸", "🇷🇺") && ClipFilter.contains("🇫🇷🇺🇸", "🇺🇸"))
     }
 
     // MARK: Copied text
@@ -90,6 +109,9 @@ enum ClipboardSpeedTests {
                   && !ClipboardMonitor.isRecordableForSelfTest(String(repeating: "é", count: limit / 2 + 1)))
         check("clipboard text: oversized whitespace is skipped",
               !ClipboardMonitor.isRecordableForSelfTest(String(repeating: " ", count: limit + 1)))
+        check("clipboard text: a combining mark on a space counts as text, as trimming did",
+              ClipboardMonitor.isRecordableForSelfTest(" \u{301}")
+                  && ClipboardMonitor.isRecordableForSelfTest("\u{3000}\u{20DD}"))
     }
 }
 
@@ -116,25 +138,47 @@ enum ThumbnailTests {
 
         let loader = ThumbnailLoader(maxPixelSize: 96, costLimit: 1024 * 1024)
         let log = LoadLog()
-        loader.onLoad = { log.names.append($0.lastPathComponent) }
+        loader.onLoad = { url, image in log.names.append(url.lastPathComponent + (image == nil ? " failed" : "")) }
 
         let first = loader.image(for: wide)
         let again = loader.image(for: wide)
-        _ = loader.image(for: tall)
         check("thumbnails: nothing is decoded on the spot", first == nil && again == nil && !loader.isIdleForSelfTest)
         await waitUntilIdle(loader)
-        check("thumbnails: each file is decoded once, in the order asked", log.names == ["wide.png", "tall.png"],
-              "loaded \(log.names)")
+        check("thumbnails: each file is decoded once", log.names == ["wide.png"], "loaded \(log.names)")
         let size = loader.image(for: wide)?.size
         check("thumbnails: the picture is downsampled to the size asked", size == NSSize(width: 96, height: 48),
               "size \(String(describing: size))")
         check("thumbnails: a cached picture needs no decode", loader.isIdleForSelfTest)
 
+        // While one decodes, the newest request waiting goes next.
+        loader.removeAll()
+        log.names.removeAll()
+        _ = loader.image(for: wide)
+        _ = loader.image(for: tall)
         _ = loader.image(for: broken)
         await waitUntilIdle(loader)
-        check("thumbnails: a file that can't be decoded reports nothing", !log.names.contains("broken.png"))
+        check("thumbnails: the newest request waiting is decoded first",
+              log.names == ["wide.png", "broken.png failed", "tall.png"], "loaded \(log.names)")
+        check("thumbnails: a file that can't be decoded is reported as failed", loader.hasFailed(broken))
         let retry = loader.image(for: broken)
         check("thumbnails: a file that can't be decoded is not tried again", retry == nil && loader.isIdleForSelfTest)
+        loader.forgetFailures()
+        _ = loader.image(for: broken)
+        check("thumbnails: forgetFailures lets it be tried again", !loader.isIdleForSelfTest && !loader.hasFailed(broken))
+        await waitUntilIdle(loader)
+
+        // Requests no longer wanted are dropped; the running decode finishes.
+        loader.removeAll()
+        log.names.removeAll()
+        _ = loader.image(for: wide)
+        _ = loader.image(for: tall)
+        loader.cancelPending()
+        await waitUntilIdle(loader)
+        check("thumbnails: cancelPending drops the waiting requests only",
+              log.names == ["wide.png"] && loader.cachedImageForSelfTest(tall) == nil, "loaded \(log.names)")
+        _ = loader.image(for: tall)
+        check("thumbnails: a dropped request can be made again", !loader.isIdleForSelfTest)
+        await waitUntilIdle(loader)
 
         loader.removeAll()
         log.names.removeAll()
@@ -143,6 +187,9 @@ enum ThumbnailTests {
         await waitUntilIdle(loader)
         check("thumbnails: a decode started before removeAll is dropped",
               log.names.isEmpty && loader.cachedImageForSelfTest(tall) == nil, "loaded \(log.names)")
+        _ = loader.image(for: broken)
+        await waitUntilIdle(loader)
+        loader.removeAll()
         _ = loader.image(for: broken)
         check("thumbnails: removeAll forgets failures", !loader.isIdleForSelfTest)
         await waitUntilIdle(loader)

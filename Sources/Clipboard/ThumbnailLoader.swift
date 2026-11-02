@@ -12,22 +12,26 @@ import ImageIO
 /// screenshots doesn't decode them all at once, each at full size in memory),
 /// and keeps the results in a cache costed by decoded size. `image(for:)`
 /// answers from the cache or queues the file and returns nil; `onLoad` then
-/// fires with its URL once the picture is in the cache. A file that can't be
-/// decoded is not tried again until `removeAll()`.
+/// fires with the picture, or nil when the file can't be decoded. The newest
+/// request goes first, so what is on screen now isn't kept waiting behind
+/// rows scrolled past. A file that can't be decoded is not tried again until
+/// `forgetFailures()` or `removeAll()`.
 @MainActor
 final class ThumbnailLoader {
-    /// Called with the file's URL once its picture is cached.
-    var onLoad: ((URL) -> Void)?
+    /// Called with the file's URL and its picture once decoded (also cached),
+    /// or nil when it can't be decoded.
+    var onLoad: ((URL, NSImage?) -> Void)?
 
     private let maxPixelSize: Int
     private let cache = NSCache<NSString, NSImage>()
-    /// Waiting to be decoded, oldest request first.
+    /// Waiting to be decoded; the last one is decoded next.
     private var pending: [URL] = []
     /// Paths pending or being decoded, so a file is queued once.
     private var queued = Set<String>()
     /// Paths that could not be decoded.
     private var failed = Set<String>()
-    private var isDecoding = false
+    /// The path being decoded, if any.
+    private var decoding: String?
     /// Bumped by removeAll, so a decode started before it is thrown away.
     private var generation = 0
 
@@ -36,7 +40,8 @@ final class ThumbnailLoader {
         cache.totalCostLimit = costLimit
     }
 
-    /// The cached picture of `url`, or nil after queueing it for decoding.
+    /// The cached picture of `url`, or nil after queueing it for decoding
+    /// (unless it failed before).
     func image(for url: URL) -> NSImage? {
         let path = url.path
         if let image = cache.object(forKey: path as NSString) { return image }
@@ -45,6 +50,24 @@ final class ThumbnailLoader {
             decodeNext()
         }
         return nil
+    }
+
+    /// Whether `url` could not be decoded (so `image(for:)` won't try again).
+    func hasFailed(_ url: URL) -> Bool {
+        failed.contains(url.path)
+    }
+
+    /// Drops the requests still waiting (rows no longer on screen); the
+    /// decode already running finishes and is cached.
+    func cancelPending() {
+        for url in pending { queued.remove(url.path) }
+        pending.removeAll()
+    }
+
+    /// Lets the files that failed be tried again, in case the failure was
+    /// passing (a file being rewritten, a volume waking up).
+    func forgetFailures() {
+        failed.removeAll()
     }
 
     /// Forgets every picture, failure and queued file; a decode already
@@ -58,9 +81,8 @@ final class ThumbnailLoader {
     }
 
     private func decodeNext() {
-        guard !isDecoding, !pending.isEmpty else { return }
-        isDecoding = true
-        let url = pending.removeFirst()
+        guard decoding == nil, let url = pending.popLast() else { return }
+        decoding = url.path
         let size = maxPixelSize
         let started = generation
         Task {
@@ -72,17 +94,19 @@ final class ThumbnailLoader {
     }
 
     private func finish(_ url: URL, _ decoded: CGImage?, generation started: Int) {
-        isDecoding = false
+        decoding = nil
         if started == generation {
             let path = url.path
             queued.remove(path)
-            if let decoded {
-                let image = NSImage(cgImage: decoded, size: .zero)
+            let image = decoded.map { NSImage(cgImage: $0, size: .zero) }
+            if let image, let decoded {
                 cache.setObject(image, forKey: path as NSString, cost: decoded.width * decoded.height * 4)
-                onLoad?(url)
             } else {
                 failed.insert(path)
             }
+            // The picture itself, not a cache lookup: the cache may evict it
+            // at any time.
+            onLoad?(url, image)
         }
         decodeNext()
     }
@@ -100,7 +124,7 @@ final class ThumbnailLoader {
 
     #if SELFTEST
     /// Nothing queued or being decoded.
-    var isIdleForSelfTest: Bool { !isDecoding && pending.isEmpty }
+    var isIdleForSelfTest: Bool { decoding == nil && pending.isEmpty }
     /// The cached picture, without queueing anything.
     func cachedImageForSelfTest(_ url: URL) -> NSImage? { cache.object(forKey: url.path as NSString) }
     #endif

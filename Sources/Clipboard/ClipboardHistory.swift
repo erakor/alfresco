@@ -590,11 +590,14 @@ final class ClipboardMonitor: NSObject {
     }
 
     /// Not too large, and not only whitespace. The size comes first, and the
-    /// whitespace check stops at the first visible character, so no trimmed
-    /// copy of the text is ever made (a huge copy used to be duplicated just
-    /// to be turned down).
+    /// whitespace check stops at the first visible scalar, so no trimmed copy
+    /// of the text is ever made (a huge copy used to be duplicated just to be
+    /// turned down). Scalars, not Characters: a space carrying a combining
+    /// mark is one Character that Character.isWhitespace calls blank, but
+    /// trimming whitespace leaves the mark, so it counts as text, as before.
     private static func isRecordable(_ text: String) -> Bool {
-        text.utf8.count <= Config.clipboardMaxTextBytes && text.contains { !$0.isWhitespace }
+        text.utf8.count <= Config.clipboardMaxTextBytes
+            && text.unicodeScalars.contains { !CharacterSet.whitespacesAndNewlines.contains($0) }
     }
 
     #if SELFTEST
