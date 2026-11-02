@@ -91,6 +91,20 @@ enum WeatherError: Error, Sendable {
             return "Réponse WeatherAPI illisible."
         }
     }
+
+    /// The case's name in usage.json ("weather.failed.<name>"), without the
+    /// place or status code.
+    var usageName: String {
+        switch self {
+        case .badKey: return "badKey"
+        case .quotaExceeded: return "quotaExceeded"
+        case .unknownPlace: return "unknownPlace"
+        case .noLocation: return "noLocation"
+        case .offline: return "offline"
+        case .server: return "server"
+        case .badResponse: return "badResponse"
+        }
+    }
 }
 
 enum WeatherLoader {

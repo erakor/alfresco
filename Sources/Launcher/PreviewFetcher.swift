@@ -48,9 +48,12 @@ final class PreviewFetcher {
                 text = try await PreviewLoader.load(url)
             } catch {
                 if let self, self.pendingURL == url { self.pendingURL = nil }
+                // Cancelled means replaced or closed, not failed.
+                if !Task.isCancelled { UsageStats.shared.record(.previewFailed) }
                 return
             }
             guard let self, !Task.isCancelled else { return }
+            UsageStats.shared.record(.previewLoaded)
             self.pendingURL = nil
             if self.cache.count >= Self.maxEntries { self.cache.removeAll() }
             self.cache[url] = (text, Date())
