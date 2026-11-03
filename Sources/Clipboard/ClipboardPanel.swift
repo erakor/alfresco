@@ -198,7 +198,11 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         rowThumbnails.cancelPending()
         tableView.reloadData()
 
-        let row = selectedID.flatMap { id in visibleItems.firstIndex { $0.id == id } } ?? 0
+        // Without a kept selection, the newest copy rather than the first
+        // pinned item, so ↩ right after opening still pastes what was just
+        // copied. Typing a search selects its first match as before.
+        let firstRow = query.isEmpty && store.pinnedCount < visibleItems.count ? store.pinnedCount : 0
+        let row = selectedID.flatMap { id in visibleItems.firstIndex { $0.id == id } } ?? firstRow
         select(row: row)
         isReloading = false
 
@@ -235,8 +239,10 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         var count = query.isEmpty || visibleItems.count == total
             ? "\(total) \(noun)"
             : "\(visibleItems.count) of \(total) \(noun)"
+        // Only for the whole list: next to "3 of 40", the pinned total of all
+        // 40 would read as if it were among the 3.
         let pinned = store.pinnedCount
-        if pinned > 0 { count += ", \(pinned) pinned" }
+        if pinned > 0 && visibleItems.count == total { count += ", \(pinned) pinned" }
         countLabel.stringValue = count
 
         let pin = selectedItem?.pinned == true ? "⌘P unpin" : "⌘P pin"
@@ -331,9 +337,12 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             pickSelected(paste: false)
             return true
         }
-        // By character, not key code, so ⌘P is the key that types "p" in the
-        // current layout (on Dvorak too).
-        if event.charactersIgnoringModifiers?.lowercased() == "p" {
+        // The key that types "p" in a Latin layout (Dvorak too); in one that
+        // types no Latin letter (Russian, Greek, Hebrew...), the P key's
+        // position, as ⌘1 to ⌘9 do.
+        let character = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        let typesLatin = character.unicodeScalars.contains { $0.isASCII }
+        if character == "p" || (!typesLatin && keyCode == kVK_ANSI_P) {
             togglePinSelected()
             return true
         }
@@ -348,7 +357,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     }
 
     /// Pins the selected item or unpins it. Beeps with nothing selected, or
-    /// when Config.clipboardMaxPinnedItems are pinned already. The selection
+    /// when Config.clipboardMaxPinnedItems (or, for an image,
+    /// clipboardMaxPinnedImages) are pinned already. The selection
     /// follows the item to its new place (onChange reloads, keeping it).
     private func togglePinSelected() {
         guard let item = selectedItem else {

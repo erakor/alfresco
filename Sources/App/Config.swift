@@ -49,6 +49,9 @@ enum Config {
     static let clipboardMaxItems = 500
     /// Pinning more than this many items beeps instead.
     static let clipboardMaxPinnedItems = 100
+    /// Of those, at most this many images (up to clipboardMaxImageBytes
+    /// each, kept on disk for as long as they're pinned).
+    static let clipboardMaxPinnedImages = 10
     /// Larger copies are not recorded.
     static let clipboardMaxTextBytes = 256 * 1024
     /// Images larger than this, once encoded as PNG, are not recorded.

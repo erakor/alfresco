@@ -384,6 +384,7 @@ final class UsageStats: NSObject {
         lines += [
             "Clipboard: \(copied) copied",
             "  skipped: \(skipped), restores failed: \(count(.clipboardRestoreFailed))",
+            "  pinned: \(count(.clipboardPinned)), unpinned: \(count(.clipboardUnpinned))",
             apps.isEmpty ? "  (none)" : apps.joined(separator: "\n"),
         ]
         return lines.joined(separator: "\n")

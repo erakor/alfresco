@@ -14,8 +14,15 @@ browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the histor
   never deleted for their age or by the item limit: they're for snippets you
   paste again and again. Picking one doesn't move it, and copying its content
   again doesn't add a second row. Unpinning puts the item at the top of the
-  others with a fresh 24 hours. Up to 100 items can be pinned; past that,
-  `⌘P` beeps.
+  others with a fresh 24 hours. Up to 100 items can be pinned, 10 of them
+  images; past that, `⌘P` beeps.
+- The panel opens on your latest copy, under the pinned items, so `↩` still
+  pastes what you just copied. `⌘1` to `⌘9` count from the top, pinned items
+  included.
+- Pinned items are excluded from Time Machine like the rest of the history
+  (see below), so keep anything you can't lose somewhere else too. Running
+  a build from before pinning deletes pinned items copied more than 24
+  hours ago, for good: that build doesn't know they are pinned.
 - `⌘⌫` deletes the selected item, pinned or not. The menu bar icon has
   **Clear Clipboard History**, which deletes everything except pinned items.
 - Each row shows the app it was copied from and how long ago. Images show a
@@ -73,7 +80,7 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `clipboardHotKey`: the history shortcut, `.commandOptionC` (`⌘⌥C`) by default.
   Define your own `HotKey(keyCode:modifiers:display:)` with any `kVK_` key code.
 - `clipboardRetention` (24 h), `clipboardMaxItems` (500, pinned items not
-  counted), `clipboardMaxPinnedItems` (100),
+  counted), `clipboardMaxPinnedItems` (100), `clipboardMaxPinnedImages` (10),
   `clipboardMaxTextBytes` (256 KB), `clipboardMaxImageBytes` (20 MB),
   `clipboardMaxImagePixels` (40 MP), `clipboardPollInterval` (0.5 s).
 - `clipboardIgnoredApps`: bundle IDs of apps whose copies are not recorded.

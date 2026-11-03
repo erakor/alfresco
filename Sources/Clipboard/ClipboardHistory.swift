@@ -130,8 +130,10 @@ struct ClipItem: Codable, Identifiable, Sendable {
     /// Pinned items stay at the top of the history and never expire: neither
     /// Config.clipboardRetention nor Config.clipboardMaxItems removes them,
     /// and Clear Clipboard History keeps them. Absent (false) in history
-    /// written by older builds; an older build reading a newer file ignores
-    /// it, so a pinned item expires there like any other.
+    /// written by older builds. An older build reading a newer file ignores
+    /// it: a pinned item copied more than a retention period ago is deleted
+    /// there, with its image file, and is gone for good (older builds don't
+    /// check StoredHistory.version, so bumping it wouldn't stop them).
     var pinned = false
 
     private enum CodingKeys: String, CodingKey {
@@ -327,12 +329,22 @@ final class ClipboardStore: NSObject {
     /// Pins an item (it goes to the top) or unpins it (it goes to the top of
     /// the unpinned items with a fresh timestamp, so it gets a full retention
     /// period rather than expiring at once). Returns false, changing nothing,
-    /// when the item is gone or Config.clipboardMaxPinnedItems are pinned.
+    /// when the item is gone, Config.clipboardMaxPinnedItems are pinned, or
+    /// it is an image and Config.clipboardMaxPinnedImages images are.
     @discardableResult
     func setPinned(id: UUID, _ pinned: Bool) -> Bool {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return false }
         guard items[index].pinned != pinned else { return true }
-        if pinned && pinnedCount >= Config.clipboardMaxPinnedItems { return false }
+        if pinned {
+            if pinnedCount >= Config.clipboardMaxPinnedItems { return false }
+            if case .image = items[index].content {
+                let pinnedImages = items.prefix(pinnedCount).filter { item in
+                    if case .image = item.content { return true }
+                    return false
+                }.count
+                if pinnedImages >= Config.clipboardMaxPinnedImages { return false }
+            }
+        }
         var item = items.remove(at: index)
         item.pinned = pinned
         if pinned {
