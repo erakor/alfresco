@@ -43,10 +43,6 @@ enum UnitConverter {
         let value: Double
     }
 
-    /// What separates the amount from the unit to convert to; the last one
-    /// in the input counts, so "in" can also be inches (`= 10 in in cm`).
-    static let separators = [" in ", " to ", " en ", "->", "→"]
-
     /// Every name a unit is known by, lowercased, and the unit.
     private static let units: [String: Unit] = {
         let table: [([String], Unit)] = [
@@ -108,6 +104,12 @@ enum UnitConverter {
             (["mib", "mio"], Unit(symbol: "MiB", quantity: .data, factor: 1_048_576)),
             (["gib", "gio"], Unit(symbol: "GiB", quantity: .data, factor: 1_073_741_824)),
             (["tib", "tio"], Unit(symbol: "TiB", quantity: .data, factor: 1_099_511_627_776)),
+            // Bits, spelled out; "Mb" and the like are in exactUnits.
+            (["bit", "bits"], Unit(symbol: "bit", quantity: .data, factor: 0.125)),
+            (["kbit", "kbits"], Unit(symbol: "kbit", quantity: .data, factor: 125)),
+            (["mbit", "mbits"], Unit(symbol: "Mbit", quantity: .data, factor: 125_000)),
+            (["gbit", "gbits"], Unit(symbol: "Gbit", quantity: .data, factor: 125_000_000)),
+            (["tbit", "tbits"], Unit(symbol: "Tbit", quantity: .data, factor: 125_000_000_000)),
             // Duration (second)
             (["ms"], Unit(symbol: "ms", quantity: .duration, factor: 0.001)),
             (["s", "sec", "secs", "second", "seconds", "seconde", "secondes"], Unit(symbol: "s", quantity: .duration, factor: 1)),
@@ -124,28 +126,44 @@ enum UnitConverter {
         return units
     }()
 
-    /// The unit names, longest first, so "10 cm" is centimetres and not
-    /// "10 c" metres.
-    private static let namesByLength: [String] = units.keys.sorted {
-        $0.count != $1.count ? $0.count > $1.count : $0 < $1
-    }
+    /// Names whose case matters, matched as typed before `units`: a
+    /// lowercase "b" after a capital is a bit, so "Mb" is megabits, while
+    /// "mb" and "MB" are megabytes.
+    private static let exactUnits: [String: Unit] = [
+        "Kb": Unit(symbol: "kbit", quantity: .data, factor: 125),
+        "Mb": Unit(symbol: "Mbit", quantity: .data, factor: 125_000),
+        "Gb": Unit(symbol: "Gbit", quantity: .data, factor: 125_000_000),
+        "Tb": Unit(symbol: "Tbit", quantity: .data, factor: 125_000_000_000),
+    ]
 
+    /// Every unit name, longest first (so "10 cm" is centimetres and not
+    /// "10 c" metres), and of two as long, a case-sensitive one first (so
+    /// "Mb" is tried before "mb").
+    private static let namesByLength: [(name: String, exact: Bool)] = {
+        let names = exactUnits.keys.map { (name: $0, exact: true) } + units.keys.map { (name: $0, exact: false) }
+        return names.sorted { lhs, rhs in
+            if lhs.name.count != rhs.name.count { return lhs.name.count > rhs.name.count }
+            if lhs.exact != rhs.exact { return lhs.exact }
+            return lhs.name < rhs.name
+        }
+    }()
+
+    /// The unit `name` stands for: as typed among the case-sensitive names,
+    /// else in any case.
     static func unit(named name: String) -> Unit? {
-        units[name.lowercased()]
+        exactUnits[name] ?? units[name.lowercased()]
     }
 
     /// `text` (what follows "=") read as `<amount> <unit> in <unit>`. nil
     /// when it isn't shaped like a conversion (no separator, or no unit
     /// before it), so it is a plain calculation instead.
     static func convert(_ text: String) -> Result<Conversion, UnitConversionError>? {
-        let text = text.lowercased()
-        let found = separators.compactMap { text.range(of: $0, options: .backwards) }
-        guard let separator = found.max(by: { $0.lowerBound < $1.lowerBound }) else { return nil }
-        let left = text[..<separator.lowerBound].trimmingCharacters(in: .whitespaces)
-        let right = text[separator.upperBound...].trimmingCharacters(in: .whitespaces)
+        guard let parts = BuiltIns.splitOnLastSeparator(text) else { return nil }
+        let left = parts.left.trimmingCharacters(in: .whitespaces)
+        let right = parts.right.trimmingCharacters(in: .whitespaces)
         guard let split = splitUnit(left) else { return nil }
         let from = split.unit
-        guard let to = units[right] else { return .failure(.unknownUnit(right)) }
+        guard let to = unit(named: right) else { return .failure(.unknownUnit(right)) }
         guard from.quantity == to.quantity else { return .failure(.incompatible(from: from.symbol, to: to.symbol)) }
         let amount: Double
         do {
@@ -161,11 +179,14 @@ enum UnitConverter {
     /// "10 km" or "(2+3)km" as the amount's text and its unit. The unit's
     /// name must not follow a letter, so "2 pim" is not 2π metres.
     private static func splitUnit(_ text: String) -> (amount: String, unit: Unit)? {
-        for name in namesByLength where text.hasSuffix(name) {
-            let amount = text.dropLast(name.count)
+        let lowercased = text.lowercased()
+        for (name, exact) in namesByLength {
+            let source = exact ? text : lowercased
+            guard source.hasSuffix(name) else { continue }
+            let amount = source.dropLast(name.count)
             if let last = amount.last, last.isLetter { continue }
             let trimmed = amount.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty, let unit = units[name] else { continue }
+            guard !trimmed.isEmpty, let unit = exact ? exactUnits[name] : units[name] else { continue }
             return (amount: trimmed, unit: unit)
         }
         return nil

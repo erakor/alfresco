@@ -83,6 +83,18 @@ struct BuiltInContext: Sendable {
 }
 
 enum BuiltIns {
+    /// What separates an amount or a time from the unit or place to convert
+    /// it to, in `= 10 km in mi` and `time 15:00 tokyo in paris`.
+    static let separators = [" in ", " to ", " en ", "->", "→"]
+
+    /// `text` around the last separator in it (matched case-insensitively),
+    /// so "in" can also be inches: `10 in in cm`. nil when it has none.
+    static func splitOnLastSeparator(_ text: String) -> (left: Substring, right: Substring)? {
+        let found = separators.compactMap { text.range(of: $0, options: [.backwards, .caseInsensitive]) }
+        guard let separator = found.max(by: { $0.lowerBound < $1.lowerBound }) else { return nil }
+        return (left: text[..<separator.lowerBound], right: text[separator.upperBound...])
+    }
+
     /// The answer for launcher input, or nil when no built-in takes it.
     /// Input a workflow takes (or a keyword waiting for its argument) is
     /// never a built-in's, so `workflows` always wins.
@@ -124,15 +136,6 @@ enum BuiltIns {
         guard !text.isEmpty else {
             return .incomplete(kind: .calculation, message: "Calculate (\(prefix) 3*14) or convert (\(prefix) 10 km in mi)")
         }
-        // "10 km in", typed so far (the input is trimmed, so " in " has lost
-        // its last space).
-        let lowercased = " " + text.lowercased()
-        if UnitConverter.separators.contains(where: { separator in
-            let typed = separator.hasSuffix(" ") ? String(separator.dropLast()) : separator
-            return lowercased.hasSuffix(typed)
-        }) {
-            return .incomplete(kind: .conversion, message: "Type the unit to convert to")
-        }
         if let conversion = UnitConverter.convert(text) {
             switch conversion {
             case .success(let conversion):
@@ -144,6 +147,16 @@ enum BuiltIns {
             case .failure(let error):
                 return .incomplete(kind: .conversion, message: error.message)
             }
+        }
+        // "10 km in", typed so far: no conversion yet (the input is trimmed,
+        // so " in " has lost its last space). Only checked once the text is
+        // no conversion, so "30 cm in in" converts to inches.
+        let lowercased = " " + text.lowercased()
+        if separators.contains(where: { separator in
+            let typed = separator.hasSuffix(" ") ? String(separator.dropLast()) : separator
+            return lowercased.hasSuffix(typed)
+        }) {
+            return .incomplete(kind: .conversion, message: "Type the unit to convert to")
         }
         do {
             let value = try Calculator.format(Calculator.evaluate(text))

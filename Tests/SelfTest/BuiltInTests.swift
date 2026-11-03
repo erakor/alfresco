@@ -89,9 +89,23 @@ enum BuiltInTests {
         check("built-ins: foo is an unknown name", failure("foo") == .unknownName("foo"))
         check("built-ins: sqrt(-1) has no finite result", failure("sqrt(-1)") == .notFinite)
         check("built-ins: 10^400 has no finite result", failure("10^400") == .notFinite)
+        check("built-ins: 1,000 is ambiguous, not 1", failure("1,000 * 3") == .ambiguousComma("1,000"))
+        check("built-ins: 12,500 is ambiguous", failure("12,500") == .ambiguousComma("12,500"))
+        check("built-ins: 0,125 is a decimal", (try? Calculator.evaluate("0,125 * 8")) == 1)
+        check("built-ins: 1234,567 is a decimal", (try? Calculator.evaluate("1234,567")) == 1234.567)
+        check("built-ins: 1,25 is a decimal", (try? Calculator.evaluate("1,25")) == 1.25)
+        // Thousands of levels would overflow the main thread's stack.
+        check("built-ins: 5000 ( are refused, not a crash",
+              failure(String(repeating: "(", count: 5000) + "1") == .tooDeep)
+        check("built-ins: 5000 - are refused, not a crash",
+              failure(String(repeating: "-", count: 5000) + "1") == .tooDeep)
+        check("built-ins: 5000 sqrt are refused, not a crash",
+              failure(String(repeating: "sqrt ", count: 5000) + "1") == .tooDeep)
+        check("built-ins: 50 nested ( still work",
+              (try? Calculator.evaluate(String(repeating: "(", count: 50) + "1" + String(repeating: ")", count: 50))) == 1)
 
         // Input that is the calculator's but has no answer keeps the bar open.
-        for input in ["=", "= 3*", "= 1/0", "= hello"] {
+        for input in ["=", "= 3*", "= 1/0", "= hello", "= 1,000 * 3"] {
             let answer = ask(input)
             check("built-ins: \(input) is incomplete (Enter beeps)",
                   answer != nil && answer?.value == nil, "got \(String(describing: answer))")
@@ -116,6 +130,17 @@ enum BuiltInTests {
             ("= 1 fl oz in ml", "29.5735295625"),
             ("= 1 ha -> m2", "10000"),
             ("= 3 to in go", "3000"),
+            // A unit named like a separator, as the target.
+            ("= 30 cm in in", "11.811023622"),
+            ("= 30 cm to in", "11.811023622"),
+            ("= 30 cm -> in", "11.811023622"),
+            ("= 3000 go en to", "3"),
+            // "Mb" is megabits; "mb" and "MB" are megabytes.
+            ("= 100 Mb in MB", "12.5"),
+            ("= 1000 Mb in GB", "0.125"),
+            ("= 1 MB in mb", "1"),
+            ("= 8 bits in b", "1"),
+            ("= 1 Gbit in Mb", "1000"),
         ]
         for (input, expected) in cases {
             let answer = ask(input)
@@ -132,6 +157,7 @@ enum BuiltInTests {
             ("= 10 km in kg", "Can't convert km to kg"),
             ("= 10 km in parsecs", "Unknown unit \"parsecs\""),
             ("= 10 km in", "Type the unit to convert to"),
+            ("= 10 in in", "Type the unit to convert to"),
         ]
         for (input, message) in failures {
             let answer = ask(input)
@@ -157,6 +183,14 @@ enum BuiltInTests {
             ("time pékin", "21:05"),
             ("time utc", "13:05"),
             ("time utc+5:30", "18:35"),
+            ("time utc-5", "08:05"),
+            ("time utc-3:30", "09:35"),
+            ("time gmt -5", "08:05"),
+            ("time 15:00 utc-5 in paris", "21:00"),
+            ("time pst", "05:05"),
+            ("time CET", "14:05"),
+            ("time honolulu", "03:05"),
+            ("time reunion", "17:05"),
             ("time 15:00 tokyo", "07:00"),
             ("time 15h tokyo", "07:00"),
             ("time 15:00 in tokyo", "23:00"),
@@ -181,9 +215,26 @@ enum BuiltInTests {
               sameDay?.hint.contains("day)") == false, "got \(String(describing: sameDay))")
 
         // Not a place, or nothing to convert: left to apps and the search.
-        for input in ["time", "time management", "time 15:00", "time 15 tokyo", "time 25:00 tokyo", "time tokyo in nowhere"] {
+        let notTimes = [
+            "time", "time management", "time 15:00", "time 15 tokyo", "time 25:00 tokyo", "time tokyo in nowhere",
+            // Zone cities and abbreviations that are plain words.
+            "time christmas", "time easter", "time wake", "time cat", "time art", "time eat", "time pet", "time wet",
+        ]
+        for input in notTimes {
             check("built-ins: \(input) is not a time", ask(input) == nil, "got \(String(describing: ask(input)))")
         }
+
+        check("built-ins: an island zone works by its identifier", ask("time pacific/easter") != nil)
+
+        // The hint follows the Mac's language; the copy is always HH:mm.
+        var american = context
+        american.locale = Locale(identifier: "en_US")
+        let usTime = BuiltIns.answer(for: "time tokyo", context: american)
+        check("built-ins: a US Mac shows 10:05 PM but copies 22:05",
+              usTime?.value == "22:05" && usTime?.hint.contains("PM") == true, "got \(String(describing: usTime))")
+        let usConversion = BuiltIns.answer(for: "time 9am new york in paris", context: american)
+        check("built-ins: a US Mac copies a converted time as 15:00",
+              usConversion?.value == "15:00", "got \(String(describing: usConversion))")
 
         let clock = WorldClock.parseClock("9:30 pm london")
         check("built-ins: 9:30 pm reads as 21:30", clock.clock?.hour == 21 && clock.clock?.minute == 30 && clock.rest == "london")

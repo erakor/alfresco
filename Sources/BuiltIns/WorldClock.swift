@@ -3,7 +3,7 @@
 // `time tokyo` (the time there now) and `time 15:00 tokyo in paris` (a time
 // somewhere, somewhere else). Places are time zone cities from the system's
 // list (`new york`, `sao paulo`), a few more cities and French names,
-// abbreviations (`pst`, `cet`), `utc+2`, and `here`.
+// common abbreviations (`pst`, `cet`), `utc+2`, and `here`.
 
 import Foundation
 
@@ -13,10 +13,6 @@ enum WorldClock {
         let timeZone: TimeZone
     }
 
-    /// What separates a time and place from the place to show it in, as in
-    /// unit conversions; the last one counts.
-    private static let separators = [" in ", " to ", " en ", "->", "→"]
-
     /// The answer to `time <argument>`, or nil when it names no place, so
     /// the input goes to apps and the fallback search instead (`time
     /// management` is a search, not a time zone).
@@ -25,11 +21,10 @@ enum WorldClock {
         let text = " " + AppIndex.fold(argument.trimmingCharacters(in: .whitespaces))
         var sourceText = text
         var target: Place?
-        let found = separators.compactMap { text.range(of: $0, options: .backwards) }
-        if let separator = found.max(by: { $0.lowerBound < $1.lowerBound }) {
-            guard let named = place(named: String(text[separator.upperBound...]), context: context) else { return nil }
+        if let parts = BuiltIns.splitOnLastSeparator(text) {
+            guard let named = place(named: String(parts.right), context: context) else { return nil }
             target = named
-            sourceText = String(text[..<separator.lowerBound])
+            sourceText = String(parts.left)
         }
         let (clock, rest) = parseClock(sourceText.trimmingCharacters(in: .whitespaces))
         var source: Place?
@@ -64,7 +59,7 @@ enum WorldClock {
         return .result(
             kind: .time,
             hint: "\(place.name) \(time), \(day)  ↩ Copy",
-            value: time,
+            value: copyText(context.now, in: place.timeZone),
             detail: "\(place.name): \(day) \(time) (\(offsetName(place.timeZone, at: context.now)))"
         )
     }
@@ -85,9 +80,20 @@ enum WorldClock {
         return .result(
             kind: .time,
             hint: "\(fromTime) \(from.name) = \(toTime) \(to.name)\(shift)  ↩ Copy",
-            value: toTime,
+            value: copyText(date, in: to.timeZone),
             detail: describe(from, fromTime) + "\n" + describe(to, toTime)
         )
+    }
+
+    /// What Enter copies: always "HH:mm" (22:05), whatever the Mac's
+    /// language, so it pastes cleanly. The hint follows the language (and
+    /// can read "10:05 PM", with a narrow no-break space).
+    private static func copyText(_ date: Date, in zone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = zone
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
     }
 
     private static func format(_ date: Date, template: String, in zone: TimeZone, context: BuiltInContext) -> String {
@@ -179,16 +185,17 @@ enum WorldClock {
 
     // MARK: Places
 
-    /// `name` (folded) as a place: here, UTC or an offset from it, a city
-    /// of ours, a city of the system's time zones, or an abbreviation.
+    /// `name` as a place: here, UTC or an offset from it, a city of ours, a
+    /// city of the system's time zones, or a common abbreviation.
     static func place(named name: String, context: BuiltInContext) -> Place? {
+        // Before normalize, which turns the "-" of "utc-5" into a space.
+        if let offset = offsetPlace(AppIndex.fold(name).trimmingCharacters(in: .whitespaces)) { return offset }
         let name = normalize(name)
         guard !name.isEmpty else { return nil }
         if ["here", "local", "ici"].contains(name) { return local(context) }
         if ["utc", "gmt", "z"].contains(name), let utc = TimeZone(secondsFromGMT: 0) {
             return Place(name: "UTC", timeZone: utc)
         }
-        if let offset = offsetPlace(name) { return offset }
         if let city = cities[name], let zone = TimeZone(identifier: city.identifier) {
             return Place(name: city.name, timeZone: zone)
         }
@@ -196,13 +203,33 @@ enum WorldClock {
             return Place(name: cityName(of: identifier), timeZone: zone)
         }
         let abbreviation = name.uppercased()
-        if abbreviation.count >= 3, abbreviation.allSatisfy({ $0.isASCII && $0.isLetter }),
-           let identifier = TimeZone.abbreviationDictionary[abbreviation],
-           let zone = TimeZone(identifier: identifier) {
+        if let identifier = abbreviations[abbreviation], let zone = TimeZone(identifier: identifier) {
             return Place(name: abbreviation, timeZone: zone)
         }
         return nil
     }
+
+    /// The abbreviations `time` knows, each standing for its region (so
+    /// `pst` follows daylight saving time). A short list rather than
+    /// TimeZone.abbreviationDictionary, whose CAT, ART, EAT or WET would
+    /// turn `time cat` into a clock instead of a search.
+    private static let abbreviations: [String: String] = [
+        "CET": "Europe/Paris", "CEST": "Europe/Paris",
+        "EET": "Europe/Athens", "EEST": "Europe/Athens",
+        "BST": "Europe/London", "MSK": "Europe/Moscow",
+        "EST": "America/New_York", "EDT": "America/New_York",
+        "CST": "America/Chicago", "CDT": "America/Chicago",
+        "MST": "America/Denver", "MDT": "America/Denver",
+        "PST": "America/Los_Angeles", "PDT": "America/Los_Angeles",
+        "AKST": "America/Anchorage", "AKDT": "America/Anchorage",
+        "HST": "Pacific/Honolulu",
+        "BRT": "America/Sao_Paulo",
+        "IST": "Asia/Kolkata", "HKT": "Asia/Hong_Kong", "SGT": "Asia/Singapore",
+        "JST": "Asia/Tokyo", "KST": "Asia/Seoul",
+        "AEST": "Australia/Sydney", "AEDT": "Australia/Sydney",
+        "ACST": "Australia/Adelaide", "AWST": "Australia/Perth",
+        "NZST": "Pacific/Auckland", "NZDT": "Pacific/Auckland",
+    ]
 
     private static func local(_ context: BuiltInContext) -> Place {
         Place(name: cityName(of: context.timeZone.identifier), timeZone: context.timeZone)
@@ -242,15 +269,22 @@ enum WorldClock {
             .replacingOccurrences(of: "_", with: " ")
     }
 
-    /// Each system time zone by its city ("new york", "sao paulo") and its
-    /// whole identifier ("america/new york"). The Etc/ zones are left out:
-    /// their signs are reversed (Etc/GMT+5 is UTC-5); `utc+5` covers them.
+    /// Each system time zone by its whole identifier ("america/new york"),
+    /// and by its city alone ("new york", "sao paulo") outside the island and
+    /// polar regions, whose names are often plain words (Christmas, Easter,
+    /// Wake, Troll): `time christmas` stays a search, and
+    /// `time indian/christmas` or the cities table reaches them. The Etc/
+    /// zones are left out: their signs are reversed (Etc/GMT+5 is UTC-5);
+    /// `utc+5` covers them.
     private static let systemCities: [String: String] = {
+        let wordRegions = ["Antarctica/", "Arctic/", "Atlantic/", "Indian/", "Pacific/"]
+        let wordCities: Set<String> = ["center", "resolute", "cayenne"]
         var index: [String: String] = [:]
         for identifier in TimeZone.knownTimeZoneIdentifiers where !identifier.hasPrefix("Etc/") {
-            for key in [normalize(cityName(of: identifier)), normalize(identifier)] where index[key] == nil {
-                index[key] = identifier
-            }
+            var keys = [normalize(identifier)]
+            let city = normalize(cityName(of: identifier))
+            if !wordRegions.contains(where: { identifier.hasPrefix($0) }), !wordCities.contains(city) { keys.append(city) }
+            for key in keys where index[key] == nil { index[key] = identifier }
         }
         return index
     }()
@@ -285,6 +319,23 @@ enum WorldClock {
             ("Asia/Seoul", "Seoul", ["seoul", "korea", "coree"]),
             ("Asia/Singapore", "Singapore", ["singapour"]),
             ("Australia/Sydney", "Sydney", ["canberra"]),
+            // Island zones, which systemCities only knows by their identifier.
+            ("Pacific/Honolulu", "Honolulu", ["honolulu", "hawaii"]),
+            ("Pacific/Auckland", "Auckland", ["auckland", "wellington", "new zealand", "nouvelle zelande"]),
+            ("Pacific/Tahiti", "Tahiti", ["tahiti", "papeete"]),
+            ("Pacific/Noumea", "Nouméa", ["noumea", "nouvelle caledonie"]),
+            ("Pacific/Fiji", "Fiji", ["fiji", "fidji"]),
+            ("Pacific/Guam", "Guam", ["guam"]),
+            ("Atlantic/Reykjavik", "Reykjavik", ["reykjavik", "iceland", "islande"]),
+            ("Atlantic/Azores", "Azores", ["azores", "acores"]),
+            ("Atlantic/Madeira", "Madeira", ["madeira", "madere"]),
+            ("Atlantic/Canary", "Canary Islands", ["canary", "canaries", "tenerife"]),
+            ("Atlantic/Bermuda", "Bermuda", ["bermuda", "bermudes"]),
+            ("Atlantic/Cape_Verde", "Cape Verde", ["cape verde", "cap vert"]),
+            ("Indian/Reunion", "Réunion", ["reunion", "la reunion"]),
+            ("Indian/Mauritius", "Mauritius", ["mauritius", "maurice"]),
+            ("Indian/Maldives", "Maldives", ["maldives"]),
+            ("Indian/Mayotte", "Mayotte", ["mayotte"]),
         ]
         var cities: [String: (identifier: String, name: String)] = [:]
         for (identifier, name, aliases) in table {

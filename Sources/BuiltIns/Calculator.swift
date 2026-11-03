@@ -15,6 +15,12 @@ enum CalculatorError: Error, Equatable, Sendable {
     case divisionByZero
     /// Infinite or not a number, e.g. sqrt(-1) or 10^400.
     case notFinite
+    /// "1,000": a thousands separator or a decimal comma? Refused rather
+    /// than read as 1.
+    case ambiguousComma(String)
+    /// Nested past Calculator's limit (thousands of "(" or "-"), refused
+    /// before the recursion runs out of stack.
+    case tooDeep
 
     var message: String {
         switch self {
@@ -23,6 +29,11 @@ enum CalculatorError: Error, Equatable, Sendable {
         case .unknownName(let name): return "Unknown \"\(name)\" (try sqrt, ln, log, sin, pi…)"
         case .divisionByZero: return "Division by zero"
         case .notFinite: return "No finite result"
+        case .ambiguousComma(let number):
+            let plain = number.replacingOccurrences(of: ",", with: "")
+            let decimal = number.replacingOccurrences(of: ",", with: ".")
+            return "Ambiguous \"\(number)\": write \(plain), or \(decimal) for a decimal"
+        case .tooDeep: return "Too deeply nested"
         }
     }
 }
@@ -82,8 +93,14 @@ enum Calculator {
     /// postfix    := primary "%"*
     /// primary    := number | "(" expression ")" | constant | function primary
     private struct Parser {
+        /// How many parseUnary and parsePrimary calls may be under way at
+        /// once (each "(" counts two). Keeps a pasted "((((…" from
+        /// overflowing the main thread's stack.
+        static let maxDepth = 200
+
         let characters: [Character]
         var index = 0
+        var depth = 0
 
         init(_ characters: [Character]) {
             self.characters = characters
@@ -136,7 +153,15 @@ enum Calculator {
             return value
         }
 
+        /// Counts one level of recursion until the caller returns.
+        mutating func enter() throws {
+            depth += 1
+            guard depth <= Self.maxDepth else { throw CalculatorError.tooDeep }
+        }
+
         mutating func parseUnary() throws -> Double {
+            defer { depth -= 1 }
+            try enter()
             switch peek() {
             case "-"?, "−"?:
                 index += 1
@@ -172,6 +197,8 @@ enum Calculator {
         }
 
         mutating func parsePrimary() throws -> Double {
+            defer { depth -= 1 }
+            try enter()
             guard let character = peek() else { throw CalculatorError.incomplete }
             if character == "(" {
                 index += 1
@@ -197,23 +224,33 @@ enum Calculator {
 
         /// Digits with at most one "." or "," and an optional exponent
         /// ("1e3", "2.5E-2"). An "e" not followed by digits is left for
-        /// the constant e ("2e" is 2 × e).
+        /// the constant e ("2e" is 2 × e). A comma that could be grouping
+        /// thousands ("1,000", "12,500") is refused: read as a decimal it
+        /// would give a wrong answer with no warning.
         mutating func parseNumber() throws -> Double {
-            var text = ""
-            var hasSeparator = false
+            var integerDigits = ""
+            var fractionDigits = ""
+            var separator: Character?
             while index < characters.count {
                 let character = characters[index]
                 if Self.isDigit(character) {
-                    text.append(character)
-                } else if (character == "." || character == ","), !hasSeparator {
-                    hasSeparator = true
-                    text.append(".")
+                    if separator == nil { integerDigits.append(character) } else { fractionDigits.append(character) }
+                } else if character == "." || character == ",", separator == nil {
+                    separator = character
                 } else {
                     break
                 }
                 index += 1
             }
-            guard text.contains(where: Self.isDigit) else { throw CalculatorError.unexpected(characters[index - 1]) }
+            guard !integerDigits.isEmpty || !fractionDigits.isEmpty else {
+                throw CalculatorError.unexpected(characters[index - 1])
+            }
+            if separator == ",", fractionDigits.count == 3, (1...3).contains(integerDigits.count),
+               integerDigits.first != "0" {
+                throw CalculatorError.ambiguousComma("\(integerDigits),\(fractionDigits)")
+            }
+            var text = (integerDigits.isEmpty ? "0" : integerDigits)
+                + (separator == nil ? "" : "." + (fractionDigits.isEmpty ? "0" : fractionDigits))
             if index < characters.count, characters[index] == "e" || characters[index] == "E" {
                 var lookahead = index + 1
                 var exponent = "e"
@@ -231,8 +268,6 @@ enum Calculator {
                     index = lookahead
                 }
             }
-            if text.hasPrefix(".") { text = "0" + text }
-            if text.hasSuffix(".") { text += "0" }
             guard let value = Double(text) else { throw CalculatorError.unexpected(characters[index - 1]) }
             return value
         }

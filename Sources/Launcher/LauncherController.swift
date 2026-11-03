@@ -80,6 +80,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// How often each app and keyword was used, read when the panel opens,
     /// to rank the list (and so what Enter opens).
     private var usage = UsageTotals()
+    /// What a built-in makes of the input, worked out once per change of it
+    /// (inputDidChange) and read by the list and the hint. Enter works it
+    /// out again, so `now` and `uuid` copy fresh values.
+    private var currentBuiltIn: BuiltInAnswer?
     /// Whether the calendar list was shown since the panel was (usage stats).
     private var didShowCalendar = false
     /// The input that brought up the calendar permission prompt (which
@@ -146,6 +150,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             UsageStats.shared.record(typed ? .launcherClosedTyped : .launcherClosedEmpty)
         }
         textField.stringValue = ""
+        currentBuiltIn = nil
         previews.cancel()
         weather.cancel()
         for area in inputAreas { area.view.isHidden = true }
@@ -156,6 +161,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     private func inputDidChange() {
+        currentBuiltIn = builtInAnswer(for: textField.stringValue)
         updateSuggestions()
         updateHint()
         // Both change what is under the input: resize once, after both.
@@ -188,16 +194,16 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     /// Whether the input would go to the fallback search (or nowhere, when
     /// workflows.json's fallback was refused), which is the only input apps
-    /// take (never a workflow keyword or a built-in's input).
+    /// take (never a workflow keyword or a built-in's input). `input` is the
+    /// field's text, so currentBuiltIn is its built-in answer.
     private func inputCanNameApp(_ input: String) -> Bool {
         store.current.workflowAwaitingArgument(input) == nil
             && CommandParser.isUnmatched(input, using: store.current)
-            && builtInAnswer(for: input) == nil
+            && currentBuiltIn == nil
     }
 
     /// What a built-in (`= 3*14`, `time tokyo`, `uuid`, `now`) makes of the
-    /// input, when no workflow takes it. Worked out again on Enter, so `now`
-    /// and `uuid` copy a fresh value.
+    /// input, when no workflow takes it.
     private func builtInAnswer(for input: String) -> BuiltInAnswer? {
         BuiltIns.answer(for: input, workflows: store.current)
     }
@@ -372,7 +378,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         case .workflow?: app = nil
         case nil: app = matchedApp()
         }
-        let builtIn = suggestionList.selected == nil ? builtInAnswer(for: textField.stringValue) : nil
+        let builtIn = suggestionList.selected == nil ? currentBuiltIn : nil
         if let app {
             let iconImage = NSWorkspace.shared.icon(forFile: app.url.path)
             iconImage.size = NSSize(width: 24, height: 24)
