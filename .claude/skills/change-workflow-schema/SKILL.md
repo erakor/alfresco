@@ -71,8 +71,11 @@ Then, with scratch JSON files in the scratchpad (not the repo's file), run
 - a file using the new field correctly;
 - a file using it wrongly, to read the error message as the user would see it.
 
-`check.sh` compiles the code between `// MARK: - Workflows` and
-`// MARK: - Global hotkeys`. If the change moves decoding code outside that
-range, or makes it depend on something outside it (AppKit, other `Config`
-values), update the script's extraction too. If the change affects the UI, use
+`check.sh` compiles `Sources/Launcher/Workflows.swift` and
+`WorkflowCheck.swift` with a stub `Config` (only `workflowURLSchemes` and
+`defaultWorkflowsJSON`). If the change moves decoding code out of those
+files, or makes it depend on something else (AppKit, other `Config` values),
+update the script too. A new kind of problem the app tolerates but the user
+should hear about belongs in `WorkflowCheck` (`Launcher --check`, run by CI),
+with a check in `Tests/SelfTest/WorkflowCheckTests.swift`. If the change affects the UI, use
 the `run-app` skill for a real check.

@@ -73,10 +73,12 @@ must contain `{query}`.
 ```
 
 The script compiles the real `Workflow`/`WorkflowSet`/`CommandParser` code from
-`Sources/Launcher/Workflows.swift`, so its verdict matches the app's. It prints:
-- `INVALID: …` (exit 1) with the same message the app shows in its hint area;
-- a warning for any keyword used twice in the same form (both with `{query}`
-  or both without);
+`Sources/Launcher/Workflows.swift` and `WorkflowCheck.swift`, so its verdict is
+the one `Launcher --check` prints (which needs a built app). It prints:
+- `workflows.json: error: …` lines and `FAILED` (exit 1), with the same message
+  the app shows in its hint area;
+- `workflows.json: warning: …` for any keyword used twice in the same form
+  (both with `{query}` or both without), still `OK`;
 - for each sample input, the label and final URL, or "Enter does nothing".
 
 Try the realistic inputs (with the `#`, the lowercase key, and so on) and make

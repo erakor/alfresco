@@ -1,6 +1,6 @@
 # Checks that the app still compiles in Swift 6 language mode, that build.sh
-# still produces the .app bundle, that workflows.json decodes with the
-# app's own decoder, and that the self-test passes when the app runs.
+# still produces the .app bundle, that workflows.json passes the app's own
+# check (Launcher --check), and that the self-test passes when the app runs.
 # AppKit and Carbon only exist on macOS, hence the runner.
 name: Build
 
@@ -38,8 +38,15 @@ jobs:
       - name: Build .app bundle
         run: ./build.sh
 
+      # The app's own check (Launcher --check): exits non-zero if the file
+      # doesn't decode or the app would leave part of it out.
       - name: Check workflows.json
-        run: .claude/skills/add-workflow/scripts/check.sh workflows.json
+        run: ./Launcher --check workflows.json
+
+      # The add-workflow skill's script compiles the decoder on its own; this
+      # keeps it from drifting from the source.
+      - name: Check the add-workflow script
+        run: .claude/skills/add-workflow/scripts/check.sh workflows.json "pr #12" "jira"
 
       # Builds the -D SELFTEST variant and runs the app for real: the pomodoro
       # menu bar item, alert, restore after relaunch and wake from sleep. See

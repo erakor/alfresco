@@ -4,8 +4,9 @@
 #
 #   1. the unit suite as a plain binary (no bundle, so no notifications)
 #   2. the unit suite inside an .app bundle
-#   3. a relaunch: one process saves a paused session, a second reads it back
-#   4. a running session held in the menu bar, with a screenshot
+#   3. `Launcher --check` on the repo's workflows.json and on broken files
+#   4. a relaunch: one process saves a paused session, a second reads it back
+#   5. a running session held in the menu bar, with a screenshot
 #
 # Every run uses a fresh scratch folder as ALFRESCO_SUPPORT_DIR, so the real
 # clipboard history and pomodoro state are never touched, and is killed
@@ -64,6 +65,31 @@ set +e
 
 run "unit, plain binary" env ALFRESCO_SUPPORT_DIR="$(scratch)" SELFTEST_EXPECT_BUNDLE=0 "$BIN" --self-test unit
 run "unit, app bundle" env ALFRESCO_SUPPORT_DIR="$(scratch)" SELFTEST_EXPECT_BUNDLE=1 "$APP_BIN" --self-test unit
+
+# --check, as CI and a user run it: the exit status and the output.
+check_case() {
+  local name="$1" expected="$2" pattern="$3"; shift 3
+  say ""
+  say "== $name"
+  local out code
+  out="$(perl -e 'alarm shift; exec @ARGV or die "exec: $!"' 60 "$@" 2>&1)"
+  code=$?
+  echo "$out" | tee -a "$LOG"
+  if [ "$code" -eq "$expected" ] && grep -q -- "$pattern" <<< "$out"; then
+    say "PASS $name"
+  else
+    say "FAIL $name: exit status $code (expected $expected), output should match '$pattern'"
+    status=1
+  fi
+}
+check_case "--check passes the repo's workflows.json" 0 '^workflows.json: OK (' "$BIN" --check workflows.json
+broken="$SCRATCH_ROOT/broken-workflows.json"
+echo '{"workflows": [{"keywords": ["x"], "url": "https://example.com/{query}"}]}' > "$broken"
+check_case "--check fails a broken file" 1 'error: missing "title" at .workflows\[0\]' "$BIN" --check "$broken"
+check_case "--check fails a missing file" 1 'FAILED (1 error)' "$BIN" --check "$SCRATCH_ROOT/no-such-file.json"
+check_case "--check with no file checks the one the app reads" 1 "^$broken: FAILED (1 error)" \
+  env ALFRESCO_WORKFLOWS="$broken" "$BIN" --check
+check_case "--check fails if any file fails" 1 '^workflows.json: OK (' "$BIN" --check workflows.json "$broken"
 
 relaunch="$(scratch)"
 run "relaunch, first process" env ALFRESCO_SUPPORT_DIR="$relaunch" "$APP_BIN" --self-test relaunch-write

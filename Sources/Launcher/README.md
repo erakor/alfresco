@@ -78,6 +78,26 @@ The app looks for the file in this order:
 If the file has a mistake or is missing, the launcher keeps using the last good
 version and shows the error in the hint area (hover it for the full message).
 
+### Checking the file
+
+```bash
+./Launcher --check workflows.json            # or build/Launcher.app/Contents/MacOS/Launcher
+./Launcher --check                           # the file the app reads (the order above)
+```
+
+`--check` decodes each file with the app's own code, prints what is wrong and
+exits without starting the app (it works while the app runs). It exits 1 if a
+file doesn't load, or if the app would leave part of it out (a refused `url`,
+`preview` or `fallback`); a keyword that can never run, because an earlier
+workflow of the same form has it, is a warning and still exits 0:
+
+```
+workflows.json: error: missing "title" at .workflows[3]
+workflows.json: FAILED (1 error)
+```
+
+CI runs it on the repo's `workflows.json`.
+
 The menu bar's **Workflows** submenu lists every workflow with its description;
 picking one opens the launcher with its keyword already typed.
 
@@ -148,6 +168,8 @@ In `Sources/App/Config.swift` (rebuild after a change):
   built-in's answer). The built-ins themselves are in
   [`Sources/BuiltIns`](../BuiltIns/README.md).
 - `Workflows.swift`: the `workflows.json` model, reloading and command parsing.
+- `WorkflowCheck.swift`: `Launcher --check`, which reports what is wrong with a
+  workflows file.
 - `SuggestionListView.swift`: the list under the input (apps and keywords,
   with icons and `⌘1` to `⌘9`).
 - `AppIndex.swift`: installed apps, name matching and ranking by use.

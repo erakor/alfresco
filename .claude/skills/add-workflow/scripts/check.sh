@@ -5,7 +5,8 @@
 #   check.sh [workflows.json] [input ...]
 #   check.sh workflows.json "pr #12" "jira abc-42" "jira" "hello world"
 #
-# It compiles Sources/Launcher/Workflows.swift as is, plus a stub Config that
+# It compiles Sources/Launcher/Workflows.swift and WorkflowCheck.swift as is
+# (the verdict is the one `Launcher --check` prints), plus a stub Config that
 # carries the real Config.defaultWorkflowsJSON, so it tracks the source
 # automatically.
 set -euo pipefail
@@ -18,8 +19,9 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/alfresco-check.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
 workflows="$repo/Sources/Launcher/Workflows.swift"
+workflowCheck="$repo/Sources/Launcher/WorkflowCheck.swift"
 config="$repo/Sources/App/Config.swift"
-for f in "$workflows" "$config"; do
+for f in "$workflows" "$workflowCheck" "$config"; do
   [ -f "$f" ] || { echo "check.sh: $f not found; update this script" >&2; exit 2; }
 done
 grep -q 'static let defaultWorkflowsJSON' "$config" || {
@@ -40,13 +42,10 @@ grep -q '^ *static let workflowURLSchemes: Set<String> = \[.*\]$' "$config" || {
 cat > "$work/main.swift" <<'SWIFT'
 import Foundation
 let args = CommandLine.arguments
-let store = WorkflowStore(fileURL: URL(fileURLWithPath: args[1]), createsMissingFile: false)
-if let error = store.loadError {
-    print("INVALID: \(error)")
-    exit(1)
-}
-let set = store.current
-print("OK: \(set.workflows.count) workflows, fallback \(set.fallback.map { "\"\($0.title)\"" } ?? "none (refused)")")
+// The same check as `Launcher --check`.
+let check = WorkflowCheck(fileURL: URL(fileURLWithPath: args[1]))
+for line in check.report(name: (args[1] as NSString).lastPathComponent) { print(line) }
+guard check.passed, let set = check.set else { exit(1) }
 // Where what is typed goes without a keyword (Enter on anything unmatched)
 // and while typing (previews): worth a look whenever the file changes.
 func host(_ template: String) -> String {
@@ -55,17 +54,6 @@ func host(_ template: String) -> String {
 if let fallback = set.fallback { print("Fallback sends unmatched input to: \(host(fallback.url))") }
 let previewHosts = Set(set.workflows.compactMap { $0.preview.map(host) }).sorted()
 if !previewHosts.isEmpty { print("Previews send typed arguments to: \(previewHosts.joined(separator: ", "))") }
-// A keyword may appear once with {query} and once without; a second use of
-// the same form is unreachable.
-var seen: [String: String] = [:]
-for w in set.workflows {
-    for k in w.keywords {
-        let form = "\(k)|\(w.takesArgument)"
-        let kind = w.takesArgument ? "with an argument" : "alone"
-        if let other = seen[form] { print("WARNING: keyword \"\(k)\" \(kind) is used by \"\(other)\" and \"\(w.title)\"; the first wins") }
-        else { seen[form] = w.title }
-    }
-}
 for input in args.dropFirst(2) {
     if let w = set.workflowAwaitingArgument(input) {
         print("\(input)  ->  (Enter does nothing; hint: \(w.help ?? w.title))")
@@ -78,8 +66,7 @@ for input in args.dropFirst(2) {
 }
 SWIFT
 
-# NSLog output from WorkflowStore goes to stderr and is silenced, so only the
-# report prints.
-swiftc -swift-version 6 "$work/main.swift" "$workflows" "$work/config.swift" -o "$work/check" 2> "$work/build.log" || {
+# Anything on stderr (NSLog) is silenced, so only the report prints.
+swiftc -swift-version 6 "$work/main.swift" "$workflows" "$workflowCheck" "$work/config.swift" -o "$work/check" 2> "$work/build.log" || {
   cat "$work/build.log" >&2; echo "check.sh: harness failed to compile (see above)" >&2; exit 2; }
 "$work/check" "$file" "$@" 2>/dev/null

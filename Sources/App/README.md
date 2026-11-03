@@ -26,6 +26,7 @@ belong to the app itself:
 
 ## Code
 
-- `Launcher.swift`: the entry point (`LauncherApp`, single-instance lock) and
+- `Launcher.swift`: the entry point (`LauncherApp`: `--check`, which checks a
+  workflows file and exits, then the single-instance lock) and
   `AppDelegate` (hotkeys, menu bar, `alfresco://` routing).
 - `Config.swift`: settings, and where the workflows file is found.

@@ -276,6 +276,17 @@ enum LauncherApp {
         // moment where an atomic write's temporary file had the default 0644.
         umask(0o077)
 
+        // `Launcher --check [file ...]` checks workflows files (by default
+        // the one the app would read) and exits. Before the single-instance
+        // lock, so it also works while the app runs, and on CI.
+        if let index = CommandLine.arguments.firstIndex(of: "--check") {
+            let paths = CommandLine.arguments.dropFirst(index + 1)
+            let files = paths.isEmpty
+                ? [(name: Config.workflowsSource.url.path, url: Config.workflowsSource.url)]
+                : paths.map { (name: $0, url: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)) }
+            exit(WorkflowCheck.run(files))
+        }
+
         #if SELFTEST
         // Never returns: runs the suite inside a real NSApplication and exits.
         if let index = CommandLine.arguments.firstIndex(of: "--self-test") {
