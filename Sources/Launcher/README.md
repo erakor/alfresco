@@ -37,7 +37,8 @@ for (or opens an app named like it), `/zz` puts the Mac to sleep.
 - Input starting with `/` is always a command: one no workflow has (`/nope`)
   beeps and the hint says so, rather than searching Google for it. `⌘↩`
   still searches for it as typed (the hint says so), so `/r/swift` or a
-  pasted path can be looked up.
+  pasted path can be looked up. That holds for a known command too: `⌘↩`
+  on `/pr 12` searches for `/pr 12`, Enter opens the PR.
 - The keyword follows the `/` directly: `/ zz` (a stray slash, then a word)
   runs nothing and beeps.
 - Keywords in `workflows.json` are written without the `/` (`"pr"`); a

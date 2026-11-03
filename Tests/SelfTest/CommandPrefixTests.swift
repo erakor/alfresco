@@ -61,6 +61,31 @@ enum CommandPrefixTests {
         check("a keyword written with the prefix in the file is stored without it",
               set.workflow(for: "cal", withArgument: false)?.title == "Calendar" && !set.keywords.contains("/cal"))
 
+        // ⌘↩ (searchOnly) on command input: the fallback search for exactly
+        // what was typed, slash included, even for a known command.
+        let swift = CommandParser.fallbackCommand("/r/swift", using: set)
+        check("⌘↩ on /r/swift searches for it, slash encoded",
+              swift?.isFallback == true && swift?.url.absoluteString == "https://example.com/s?q=%2Fr%2Fswift",
+              swift?.url.absoluteString ?? "nil")
+        let known = CommandParser.fallbackCommand("/pr 12", using: set)
+        check("⌘↩ on a known /pr 12 searches too; Enter runs it",
+              known?.isFallback == true && known?.url.absoluteString == "https://example.com/s?q=%2Fpr%2012",
+              known?.url.absoluteString ?? "nil")
+
+        // Settings that would break other input.
+        if let calculator = Config.calculatorPrefix, !calculator.isEmpty {
+            check("the prefix doesn't overlap the calculator's",
+                  !calculator.hasPrefix("/") && !"/".hasPrefix(calculator), "calculator prefix \(calculator)")
+        }
+        check("/help matches commandListKeyword whatever its case",
+              set.listsAllCommands(CommandInput.typed(Config.commandListKeyword.uppercased())))
+        let slashOnly = WorkflowCheck(data: Data(
+            #"{"workflows": [{"keywords": ["/"], "title": "Nothing", "url": "https://example.com/"}]}"#.utf8
+        ))
+        check("a keyword of just / fails the check, saying why",
+              !slashOnly.passed && slashOnly.problems.first?.message.hasPrefix("keywords can't be empty") == true,
+              "got \(slashOnly.problems)")
+
         // Waiting for an argument.
         check("/pr alone waits for its argument", set.workflowAwaitingArgument("/pr")?.title == "PR")
         check("bare pr doesn't", set.workflowAwaitingArgument("pr") == nil)

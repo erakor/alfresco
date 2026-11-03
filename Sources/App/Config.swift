@@ -111,7 +111,9 @@ enum Config {
     /// by accident, and input starting with it never goes anywhere else
     /// (an unknown command beeps). The prefix alone, or followed by
     /// `commandListKeyword`, lists every command. nil types keywords bare,
-    /// with no list.
+    /// with no list. It must not overlap `calculatorPrefix` (neither may
+    /// start with the other), or the calculator's input would be taken as
+    /// a command; the self-test checks this.
     static let commandPrefix: String? = "/"
     /// `/help` lists every command, like `/` alone, unless a workflow uses
     /// this keyword itself.

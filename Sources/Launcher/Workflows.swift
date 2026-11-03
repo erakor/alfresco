@@ -10,7 +10,10 @@ import Foundation
 
 /// Launcher input read as a command: what follows Config.commandPrefix.
 /// Keywords are stored without the prefix; this is the one place that adds
-/// or removes it.
+/// or removes it. It is used by several features but lives here, not in
+/// Sources/Shared, because .claude/skills/add-workflow/scripts/check.sh
+/// compiles Workflows.swift on its own (with WorkflowCheck.swift and a stub
+/// Config): moving it out would break that script.
 enum CommandInput {
     /// Whether `input` starts with the prefix, so it is a command (known or
     /// not) and never goes to apps, built-ins or the fallback search. Always
@@ -152,7 +155,14 @@ struct Workflow: Decodable, Sendable {
         }
         self.preview = previewRefusal == nil ? preview : nil
 
-        if keywords.contains(where: { $0.isEmpty || $0.contains(where: \.isWhitespace) }) {
+        if keywords.contains(where: \.isEmpty) {
+            // Also "/" alone, which CommandInput.stored empties.
+            throw DecodingError.dataCorruptedError(
+                forKey: .keywords, in: container,
+                debugDescription: "keywords can't be empty (or just \"\(Config.commandPrefix ?? "")\")"
+            )
+        }
+        if keywords.contains(where: { $0.contains(where: \.isWhitespace) }) {
             throw DecodingError.dataCorruptedError(
                 forKey: .keywords, in: container,
                 debugDescription: "keywords must be single words"
@@ -274,7 +284,7 @@ struct WorkflowSet: Decodable, Sendable {
         guard let prefix = Config.commandPrefix, !prefix.isEmpty,
               let body = CommandInput.body(of: input)?.lowercased()
         else { return false }
-        return body.isEmpty || (body == Config.commandListKeyword && !keywords.contains(body))
+        return body.isEmpty || (body == Config.commandListKeyword.lowercased() && !keywords.contains(body))
     }
 
     /// Workflows whose keyword starts with what is typed (after the command

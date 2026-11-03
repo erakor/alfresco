@@ -435,23 +435,30 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
                     missingPreview = preview
                 }
             }
-        } else if let error = store.loadError {
-            hintLabel.stringValue = "⚠ workflows.json: \(error)"
-            hintLabel.toolTip = "\(store.fileURL.path)\n\(error)"
         } else if store.current.listsAllCommands(textField.stringValue) {
+            // Command hints come before a workflows.json error, which then
+            // stays in the tooltip: a refused entry leaves the rest usable.
             hintLabel.stringValue = suggestionList.items.isEmpty ? "No commands in workflows.json" : "↓ to pick a command, ⇥ to complete"
-            hintLabel.toolTip = nil
+            hintLabel.toolTip = loadErrorTooltip()
         } else if CommandInput.isCommand(textField.stringValue) {
             let typed = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             let list = CommandInput.typed(Config.commandListKeyword)
             // ⌘↩ still searches for it (a pasted `/r/swift` or a path).
             let search = store.current.fallback.map { "  ⌘↩ \($0.title)" } ?? ""
             hintLabel.stringValue = (suggestionList.items.isEmpty ? "No command \(typed), \(list) lists them" : "⇥ to complete") + search
-            hintLabel.toolTip = nil
+            hintLabel.toolTip = loadErrorTooltip()
+        } else if let error = store.loadError {
+            hintLabel.stringValue = "⚠ workflows.json: \(error)"
+            hintLabel.toolTip = loadErrorTooltip()
         } else {
             hintLabel.stringValue = "esc to close"
             hintLabel.toolTip = nil
         }
+    }
+
+    /// The workflows.json error with the file's path, or nil when it loaded.
+    private func loadErrorTooltip() -> String? {
+        store.loadError.map { "⚠ \(store.fileURL.path)\n\($0)" }
     }
 
     /// Lays out and fills the weather strip above the input (always, while
