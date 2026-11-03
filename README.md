@@ -74,6 +74,9 @@ swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.
 `-parse-as-library` is required because `Sources/App/Launcher.swift` uses `@main`.
 The build compiles every `.swift` file under `Sources/`.
 
+`./Launcher --check workflows.json` checks a workflows file and exits (see
+[Checking the file](Sources/Launcher/README.md#checking-the-file)).
+
 ## Start automatically at login
 
 **Option A: Login Items (uses the .app)**

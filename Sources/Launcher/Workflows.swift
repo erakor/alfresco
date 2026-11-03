@@ -315,7 +315,9 @@ final class WorkflowStore {
         }
     }
 
-    private static func describe(_ error: Error) -> String {
+    /// A decoding error as the one line shown in the hint area (and printed
+    /// by `Launcher --check`).
+    static func describe(_ error: Error) -> String {
         guard let error = error as? DecodingError else { return error.localizedDescription }
         func location(_ context: DecodingError.Context) -> String {
             let path = context.codingPath.map { key in
