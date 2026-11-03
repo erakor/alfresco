@@ -81,6 +81,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
         case "unit":
             SecurityTests.run()
             PomodoroTests.run()
+            SystemCommandTests.run()
             UsageStatsTests.run()
             BuiltInTests.run()
             ClipboardTests.run()
