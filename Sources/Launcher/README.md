@@ -86,7 +86,9 @@ version and shows the error in the hint area (hover it for the full message).
 ```
 
 `--check` decodes each file with the app's own code, prints what is wrong and
-exits without starting the app (it works while the app runs). It exits 1 if a
+exits without starting the app (it works while the app runs). With no file,
+a `~/.config/alfresco/workflows.json` that doesn't exist yet is OK: the app
+writes the default file there when it starts. It exits 1 if a
 file doesn't load, or if the app would leave part of it out (a refused `url`,
 `preview` or `fallback`); a keyword that can never run, because an earlier
 workflow of the same form has it, is a warning and still exits 0:

@@ -37,7 +37,7 @@ struct WorkflowCheck: Sendable {
             self.init(set: nil, problems: [Problem(severity: .error, message: WorkflowStore.describe(error))])
             return
         }
-        self.init(set: set, problems: set.refused.map { Problem(severity: .error, message: "left out \($0)") }
+        self.init(set: set, problems: set.refused.map { Problem(severity: .error, message: "refused \($0)") }
             + WorkflowCheck.shadowedKeywords(in: set).map { Problem(severity: .warning, message: $0) })
     }
 

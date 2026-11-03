@@ -46,7 +46,8 @@ jobs:
       # The add-workflow skill's script compiles the decoder on its own; this
       # keeps it from drifting from the source.
       - name: Check the add-workflow script
-        run: .claude/skills/add-workflow/scripts/check.sh workflows.json "pr #12" "jira"
+        run: |
+          .claude/skills/add-workflow/scripts/check.sh workflows.json "pr #12" "jira"
 
       # Builds the -D SELFTEST variant and runs the app for real: the pomodoro
       # menu bar item, alert, restore after relaunch and wake from sleep. See

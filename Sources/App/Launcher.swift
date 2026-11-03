@@ -281,8 +281,15 @@ enum LauncherApp {
         // lock, so it also works while the app runs, and on CI.
         if let index = CommandLine.arguments.firstIndex(of: "--check") {
             let paths = CommandLine.arguments.dropFirst(index + 1)
+            let source = Config.workflowsSource
+            if paths.isEmpty, source.isFallback, !FileManager.default.fileExists(atPath: source.url.path) {
+                // Not an error: the app writes Config.defaultWorkflowsJSON
+                // there when it starts (and that is checked by the self-test).
+                print("\(source.url.path): OK (not created yet; the app writes the default file there when it starts)")
+                exit(0)
+            }
             let files = paths.isEmpty
-                ? [(name: Config.workflowsSource.url.path, url: Config.workflowsSource.url)]
+                ? [(name: source.url.path, url: source.url)]
                 : paths.map { (name: $0, url: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)) }
             exit(WorkflowCheck.run(files))
         }

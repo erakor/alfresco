@@ -51,6 +51,9 @@ run() {
 
 # One scratch support folder per run, all removed on exit.
 SCRATCH_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/alfresco-selftest.XXXXXX")"
+# macOS's TMPDIR ends with "/", and the paths the app prints don't have the
+# "//" that leaves, so --check's output is matched against the real path.
+SCRATCH_ROOT="$(cd "$SCRATCH_ROOT" && pwd -P)"
 trap 'rm -rf "$SCRATCH_ROOT"' EXIT
 scratch() { mktemp -d "$SCRATCH_ROOT/run.XXXXXX"; }
 
@@ -66,30 +69,39 @@ set +e
 run "unit, plain binary" env ALFRESCO_SUPPORT_DIR="$(scratch)" SELFTEST_EXPECT_BUNDLE=0 "$BIN" --self-test unit
 run "unit, app bundle" env ALFRESCO_SUPPORT_DIR="$(scratch)" SELFTEST_EXPECT_BUNDLE=1 "$APP_BIN" --self-test unit
 
-# --check, as CI and a user run it: the exit status and the output.
+# --check, as CI and a user run it: the exit status, and output lines that
+# must all appear. Usage: check_case <name> <status> <pattern>... -- <command>
 check_case() {
-  local name="$1" expected="$2" pattern="$3"; shift 3
+  local name="$1" expected="$2"; shift 2
+  local patterns=()
+  while [ "$1" != "--" ]; do patterns+=("$1"); shift; done
+  shift
   say ""
   say "== $name"
-  local out code
+  local out code missing=""
   out="$(perl -e 'alarm shift; exec @ARGV or die "exec: $!"' 60 "$@" 2>&1)"
   code=$?
   echo "$out" | tee -a "$LOG"
-  if [ "$code" -eq "$expected" ] && grep -q -- "$pattern" <<< "$out"; then
+  for pattern in "${patterns[@]}"; do
+    grep -q -- "$pattern" <<< "$out" || missing="$missing '$pattern'"
+  done
+  if [ "$code" -eq "$expected" ] && [ -z "$missing" ]; then
     say "PASS $name"
   else
-    say "FAIL $name: exit status $code (expected $expected), output should match '$pattern'"
+    say "FAIL $name: exit status $code (expected $expected), no line matching$missing"
     status=1
   fi
 }
-check_case "--check passes the repo's workflows.json" 0 '^workflows.json: OK (' "$BIN" --check workflows.json
 broken="$SCRATCH_ROOT/broken-workflows.json"
 echo '{"workflows": [{"keywords": ["x"], "url": "https://example.com/{query}"}]}' > "$broken"
-check_case "--check fails a broken file" 1 'error: missing "title" at .workflows\[0\]' "$BIN" --check "$broken"
-check_case "--check fails a missing file" 1 'FAILED (1 error)' "$BIN" --check "$SCRATCH_ROOT/no-such-file.json"
+check_case "--check passes the repo's workflows.json" 0 '^workflows.json: OK (' -- "$BIN" --check workflows.json
+check_case "--check fails a broken file" 1 'error: missing "title" at .workflows\[0\]' "^$broken: FAILED (1 error)" \
+  -- "$BIN" --check "$broken"
+check_case "--check fails a missing file" 1 'FAILED (1 error)' -- "$BIN" --check "$SCRATCH_ROOT/no-such-file.json"
 check_case "--check with no file checks the one the app reads" 1 "^$broken: FAILED (1 error)" \
-  env ALFRESCO_WORKFLOWS="$broken" "$BIN" --check
-check_case "--check fails if any file fails" 1 '^workflows.json: OK (' "$BIN" --check workflows.json "$broken"
+  -- env ALFRESCO_WORKFLOWS="$broken" "$BIN" --check
+check_case "--check reports every file and fails if any does" 1 '^workflows.json: OK (' "^$broken: FAILED (1 error)" \
+  -- "$BIN" --check workflows.json "$broken"
 
 relaunch="$(scratch)"
 run "relaunch, first process" env ALFRESCO_SUPPORT_DIR="$relaunch" "$APP_BIN" --self-test relaunch-write

@@ -65,8 +65,19 @@ enum WorkflowCheckTests {
         SelfTest.check("workflow check: a workflow the app leaves out is an error",
                        !refused.passed && refused.set?.workflows.count == 1
                            && refused.problems.count == 1
-                           && refused.problems[0].message.hasPrefix(#"left out "Script": url must start with"#),
+                           && refused.problems[0].message.hasPrefix(#"refused "Script": url must start with"#),
                        "got \(refused.problems)")
+
+        let refusedPreview = check(#"""
+        {"workflows": [
+          {"keywords": ["w"], "title": "Weather", "url": "https://example.com/{query}", "preview": "http://example.com/{query}"}
+        ]}
+        """#)
+        SelfTest.check("workflow check: a refused preview is an error that keeps the workflow",
+                       !refusedPreview.passed && refusedPreview.set?.workflows.count == 1
+                           && refusedPreview.problems.first?.message
+                               == #"refused "Weather": preview must be an https URL (its preview is left out)"#,
+                       "got \(refusedPreview.problems)")
 
         let refusedFallback = check(#"""
         {"workflows": [], "fallback": {"title": "Local", "url": "file:///{query}"}}
