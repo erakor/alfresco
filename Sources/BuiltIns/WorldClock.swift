@@ -174,7 +174,7 @@ enum WorldClock {
               index == characters.count || characters[index] == " "
         else { return notAClock }
         let rest = String(characters[index...]).trimmingCharacters(in: .whitespaces)
-        return ((hour, minute), rest)
+        return (clock: (hour: hour, minute: minute), rest: rest)
     }
 
     // MARK: Places
