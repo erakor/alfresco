@@ -272,9 +272,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             ? CommandParser.fallbackCommand(input, using: store.current)
             : CommandParser.parse(input, using: store.current)
         guard let command = parsed else {
-            if CommandInput.isCommand(textField.stringValue) {
+            if CommandInput.isCommand(input) {
                 // `/`, `/help` with no row chosen, or a command no workflow
-                // has: the hint says which. Never searched for.
+                // has: the hint says which. Never searched for, but a
+                // mistyped keyword is counted like a fallback word.
+                if !store.current.listsAllCommands(input), let body = CommandInput.body(of: input) {
+                    UsageStats.shared.recordUnknownCommand(body, keywords: store.current.keywords)
+                }
                 NSSound.beep()
                 return
             }
@@ -440,7 +444,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         } else if CommandInput.isCommand(textField.stringValue) {
             let typed = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             let list = CommandInput.typed(Config.commandListKeyword)
-            hintLabel.stringValue = suggestionList.items.isEmpty ? "No command \(typed), \(list) lists them" : "⇥ to complete"
+            // ⌘↩ still searches for it (a pasted `/r/swift` or a path).
+            let search = store.current.fallback.map { "  ⌘↩ \($0.title)" } ?? ""
+            hintLabel.stringValue = (suggestionList.items.isEmpty ? "No command \(typed), \(list) lists them" : "⇥ to complete") + search
             hintLabel.toolTip = nil
         } else {
             hintLabel.stringValue = "esc to close"
@@ -488,7 +494,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         guard case .workflow(let keyword, let withArgument)? = CommandParser.parse(input, using: store.current)?.source,
               keyword == Config.calendarKeyword
         else { return nil }
-        guard withArgument, let text = KeywordInput(input)?.argument else { return .upcoming }
+        guard withArgument, let text = KeywordInput(command: input)?.argument else { return .upcoming }
         return .search(AppIndex.fold(text))
     }
 

@@ -32,6 +32,9 @@ enum UsageCounter: String, Sendable {
     /// Enter on a keyword that needs an argument, typed alone.
     case launcherEnterNeedsArgument = "launcher.enterNeedsArgument"
     case launcherFallback = "launcher.fallback"
+    /// Enter on `/…` that no workflow takes (Config.commandPrefix). Its
+    /// first word is kept like a fallback word.
+    case launcherUnknownCommand = "launcher.unknownCommand"
     /// An installed app was opened; which one is in UsageDay.appsOpened.
     case launcherOpenedApp = "launcher.openedApp"
 
@@ -192,13 +195,27 @@ final class UsageStats: NSObject {
         case .fallback:
             update { day in
                 day.counts[UsageCounter.launcherFallback.rawValue, default: 0] += 1
-                guard Config.usageTrackFallbackWords,
-                      let word = Self.fallbackWord(in: input, keywords: keywords) else { return }
-                let key = day.fallbackWords[word] != nil || day.fallbackWords.count < Self.maxFallbackWordsPerDay
-                    ? word : "(other)"
-                day.fallbackWords[key, default: 0] += 1
+                Self.addFallbackWord(in: input, keywords: keywords, to: &day)
             }
         }
+    }
+
+    /// Enter on command input no workflow takes, `body` being what follows
+    /// the prefix (`jria abc-42` for `/jria abc-42`): counted, and its first
+    /// word kept under the same rule as a fallback's, so mistyped keywords
+    /// still show up.
+    func recordUnknownCommand(_ body: String, keywords: Set<String>) {
+        update { day in
+            day.counts[UsageCounter.launcherUnknownCommand.rawValue, default: 0] += 1
+            Self.addFallbackWord(in: body, keywords: keywords, to: &day)
+        }
+    }
+
+    private static func addFallbackWord(in input: String, keywords: Set<String>, to day: inout UsageDay) {
+        guard Config.usageTrackFallbackWords, let word = fallbackWord(in: input, keywords: keywords) else { return }
+        let key = day.fallbackWords[word] != nil || day.fallbackWords.count < maxFallbackWordsPerDay
+            ? word : "(other)"
+        day.fallbackWords[key, default: 0] += 1
     }
 
     func recordClipboardCopy(_ content: ClipContent, bundleID: String?) {
@@ -367,6 +384,7 @@ final class UsageStats: NSObject {
             "Launcher: opened \(count(.launcherOpened)), ran \(launched)",
             "  closed without running: \(closed) (\(count(.launcherClosedTyped)) with text typed)",
             "  Enter on a keyword missing its argument: \(count(.launcherEnterNeedsArgument))",
+            "  Enter on an unknown command: \(count(.launcherUnknownCommand))",
             "Keywords:",
             top(total.keywords, 10),
             "Apps opened: \(count(.launcherOpenedApp))",

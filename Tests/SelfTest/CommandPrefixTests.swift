@@ -39,8 +39,12 @@ enum CommandPrefixTests {
               pr?.url.absoluteString == "https://example.com/pr/12"
                   && pr?.source == CommandSource.workflow(keyword: "pr", withArgument: true),
               pr?.url.absoluteString ?? "nil")
-        check("space after the prefix is allowed",
-              CommandParser.parse("/ pr 12", using: set)?.url.absoluteString == "https://example.com/pr/12")
+        // A stray slash before words is not a command, so `/ zz` can't sleep the Mac.
+        for input in ["/ zz", "/  pr 12", "/ help"] {
+            check("\(input) runs nothing and is never searched for",
+                  CommandParser.parse(input, using: set) == nil && !CommandParser.isUnmatched(input, using: set)
+                      && set.workflowAwaitingArgument(input) == nil && !set.listsAllCommands(input))
+        }
         check("a keyword is case-insensitive after the prefix",
               CommandParser.parse("/ZZ", using: set)?.url.absoluteString == "alfresco://system/sleep")
         let bare = CommandParser.parse("pr 12", using: set)
@@ -63,9 +67,20 @@ enum CommandPrefixTests {
         check("/ alone doesn't", set.workflowAwaitingArgument("/") == nil)
 
         // Feature keywords.
-        check("KeywordInput reads after the prefix",
-              KeywordInput("/cal standup")?.keyword == "cal" && KeywordInput("/cal standup")?.argument == "standup")
-        check("KeywordInput ignores bare words", KeywordInput("cal standup") == nil)
+        check("KeywordInput(command:) reads after the prefix",
+              KeywordInput(command: "/cal standup")?.keyword == "cal"
+                  && KeywordInput(command: "/cal standup")?.argument == "standup")
+        check("KeywordInput(command:) ignores bare words and a stray slash",
+              KeywordInput(command: "cal standup") == nil && KeywordInput(command: "/ cal") == nil
+                  && KeywordInput(command: "/") == nil)
+        check("KeywordInput reads bare input, for the built-ins",
+              KeywordInput("time tokyo")?.keyword == "time" && KeywordInput("time tokyo")?.argument == "tokyo")
+
+        // A mistyped command keeps its first word, like a fallback's.
+        check("a mistyped command's first word is kept for the usage stats",
+              CommandInput.body(of: "/jria abc-42").flatMap {
+                  UsageStats.fallbackWordForSelfTest(in: $0, keywords: ["jira"])
+              } == "jria")
 
         // Suggestions and the command list.
         let titles = { (input: String) in set.suggestions(for: input).map(\.workflow.title) }

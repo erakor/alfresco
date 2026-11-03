@@ -20,14 +20,18 @@ enum CommandInput {
         return input.drop(while: \.isWhitespace).hasPrefix(prefix)
     }
 
-    /// `input` trimmed and without the prefix ("/pr 12" is "pr 12"); nil when
-    /// a prefix is set and `input` doesn't start with it, since bare words
-    /// are never commands. With no prefix, `input` trimmed.
+    /// `input` trimmed and without the prefix ("/pr 12" is "pr 12", "/" is
+    /// ""); nil when a prefix is set and `input` doesn't start with it, since
+    /// bare words are never commands, or when a space follows the prefix:
+    /// `/ zz` is a stray slash, not `/zz`, so it runs nothing (isCommand
+    /// still holds, so Enter beeps). With no prefix, `input` trimmed.
     static func body(of input: String) -> String? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let prefix = Config.commandPrefix, !prefix.isEmpty else { return trimmed }
         guard trimmed.hasPrefix(prefix) else { return nil }
-        return String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        let body = trimmed.dropFirst(prefix.count)
+        if body.first?.isWhitespace == true { return nil }
+        return String(body)
     }
 
     /// A keyword as it is typed: "/pr".
@@ -267,7 +271,9 @@ struct WorkflowSet: Decodable, Sendable {
     /// Whether `input` asks for the list of every command: the prefix alone,
     /// or `/help` while no workflow uses that keyword. Never with no prefix.
     func listsAllCommands(_ input: String) -> Bool {
-        guard Config.commandPrefix != nil, let body = CommandInput.body(of: input)?.lowercased() else { return false }
+        guard let prefix = Config.commandPrefix, !prefix.isEmpty,
+              let body = CommandInput.body(of: input)?.lowercased()
+        else { return false }
         return body.isEmpty || (body == Config.commandListKeyword && !keywords.contains(body))
     }
 
