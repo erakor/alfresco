@@ -8,7 +8,7 @@ history on a second hotkey, runs a pomodoro timer you start from the
 launcher, and can sleep or lock the Mac.
 
 - Hotkeys via Carbon `RegisterEventHotKey`: **no Accessibility or Screen Recording permission**.
-- Accessory agent: no Dock icon (optional menu bar icon with Open / Clipboard History / Edit Workflows / Quit).
+- Accessory agent: no Dock icon (optional menu bar icon with Open / Clipboard History / Edit Workflows / Launch at Login / Quit).
 - Workflows live in a JSON file and reload automatically: no rebuild to add one.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
 - Suggestions as you type, with icons: matching apps and keywords (`p` lists `pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
@@ -67,8 +67,8 @@ Needs the Xcode 16+ Command Line Tools (`xcode-select --install`), which include
 swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.0" $(find Sources -name '*.swift') -o Launcher
 ./Launcher
 
-# Or an .app bundle (recommended for Login Items)
-./build.sh            # -> build/Launcher.app
+# Or an .app bundle
+./build.sh            # -> build/Launcher.app (./install.sh to install it, below)
 ```
 
 `-parse-as-library` is required because `Sources/App/Launcher.swift` uses `@main`.
@@ -77,23 +77,71 @@ The build compiles every `.swift` file under `Sources/`.
 `./Launcher --check workflows.json` checks a workflows file and exits (see
 [Checking the file](Sources/Launcher/README.md#checking-the-file)).
 
-## Start automatically at login
-
-**Option A: Login Items (uses the .app)**
+## Install
 
 ```bash
-./build.sh
-cp -R build/Launcher.app ~/Applications/
-open ~/Applications/Launcher.app
+./install.sh   # builds, replaces ~/Applications/Launcher.app and starts it
 ```
 
-Then System Settings > General > Login Items > **Open at Login** > `+` and pick
-`~/Applications/Launcher.app`.
+Run it again after pulling or changing the code; it quits the running copy
+first (the clipboard history is saved). The installed app keeps reading this
+repo's `workflows.json`, so editing or pulling that file needs no reinstall,
+but moving the repo does.
 
-**Option B: LaunchAgent (works with the plain binary or the .app)**
+### Signing
+
+macOS remembers privacy permissions (Accessibility, used by the clipboard
+history to paste, and Calendar) per code signature. `build.sh` signs ad-hoc
+unless it finds a certificate, and an ad-hoc signature changes with every
+build, so each rebuild loses those permissions; Accessibility still looks on in
+System Settings, but pasting stops working. A certificate of your own, made
+once, keeps the signature the same across builds:
+
+1. Keychain Access > Keychain Access menu > Certificate Assistant > **Create a
+   Certificate…**
+2. Name: `alfresco Local Signing`, Identity Type: Self Signed Root,
+   Certificate Type: **Code Signing**. Create.
+3. In the login keychain, double-click the new certificate > Trust > Code
+   Signing: **Always Trust**.
+4. `./install.sh`. The first build asks to let `codesign` use the key: choose
+   **Always Allow**.
+
+`build.sh` then says `signed with "alfresco Local Signing"` and picks it up by
+itself from then on (`SIGN_IDENTITY` picks another certificate, `-` forces
+ad-hoc). Grant the permissions one last time, since the earlier ones belong to
+the ad-hoc signature: clear them with
+
+```bash
+tccutil reset Accessibility local.launcher
+```
+
+```bash
+tccutil reset Calendar local.launcher
+```
+
+then pick an item in the clipboard history and type `cal` to get both prompts
+again. The certificate only works on this Mac; it is not for
+sharing the app with others, which needs a paid Developer ID and notarization.
+
+## Start automatically at login
+
+Install the app (above), then choose **Launch at Login** in its menu bar menu
+(macOS 13+). It is offered only for the copy in `/Applications` or
+`~/Applications`, since a login item pointing at `build/` would break on the
+next build. If you added the app to System Settings > General > Login Items by
+hand before, remove that entry so it isn't started twice (the second copy would
+quit at once anyway).
+
+Without the menu bar icon (`Config.showMenuBarIcon = false`), add
+`~/Applications/Launcher.app` in System Settings > General > Login Items >
+**Open at Login** > `+` instead.
+
+<details>
+<summary>Alternative: a LaunchAgent (works with the plain binary)</summary>
 
 Run this from the repo folder: `$PWD` in the plist points the agent at this
-repo's `workflows.json`.
+repo's `workflows.json`. Don't combine it with Launch at Login or
+`install.sh`, which refuses to run while the agent is loaded.
 
 ```bash
 mkdir -p ~/Applications ~/Library/LaunchAgents
@@ -139,6 +187,6 @@ launchctl bootout gui/$(id -u)/local.launcher
 rm ~/Library/LaunchAgents/local.launcher.plist
 ```
 
-macOS 13+ shows a one-time "Background Items Added" notification for either
-option. If your MDM blocks user LaunchAgents or unsigned binaries (e.g. Santa),
-Option A or an allowlist request is the way forward.
+</details>
+
+macOS 13+ shows a one-time "Background Items Added" notification either way.

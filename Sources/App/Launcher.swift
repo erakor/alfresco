@@ -5,7 +5,8 @@
 // the features live in the other folders under Sources/.
 //
 // - Runs as an accessory agent (no Dock icon). A small menu bar icon offers
-//   "Open", "Clipboard History", "Edit Workflows…" and "Quit"; turn it off
+//   "Open", "Clipboard History", "Edit Workflows…", "Launch at Login" and
+//   "Quit"; turn it off
 //   with Config.showMenuBarIcon.
 // - Workflows (keyword -> URL) live in workflows.json and are reloaded
 //   automatically, so adding one needs no rebuild.
@@ -97,6 +98,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             menu.addItem(menuItem("Usage…", #selector(showUsage)))
         }
         menu.addItem(.separator())
+        if LoginItem.isSupported {
+            let loginItem = menuItem("Launch at Login", #selector(toggleLaunchAtLogin))
+            if !LoginItem.isInstalled {
+                loginItem.toolTip = "Install the app first: run ./install.sh in the repo."
+            }
+            menu.addItem(loginItem)
+        }
         menu.addItem(NSMenuItem(title: "Quit Launcher", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
 
@@ -119,6 +127,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     @objc private func clearClipboardHistory() {
         clipboardStore?.clear()
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        LoginItem.toggle()
     }
 
     @objc private func startPomodoro() {
@@ -158,10 +170,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     // MARK: NSMenuItemValidation
 
     /// "Start Pomodoro" is only offered while no session is under way; the
-    /// pomodoro's own menu bar item handles a running one.
+    /// pomodoro's own menu bar item handles a running one. "Launch at Login"
+    /// shows its current state, and is only enabled in an installed copy.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(startPomodoro) {
             return pomodoro?.state == .idle
+        }
+        if menuItem.action == #selector(toggleLaunchAtLogin) {
+            menuItem.state = LoginItem.isEnabled ? .on : .off
+            return LoginItem.isInstalled || LoginItem.isEnabled
         }
         return true
     }

@@ -14,8 +14,12 @@ Needs the Xcode 16+ Command Line Tools only (Swift 6 compiler, for `-swift-versi
 # Plain binary (finds workflows.json next to itself)
 swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.0" $(find Sources -name '*.swift') -o Launcher && ./Launcher
 
-# .app bundle -> build/Launcher.app (ad-hoc signed, LSUIElement)
+# .app bundle -> build/Launcher.app (LSUIElement; signed with the "alfresco Local Signing"
+# certificate when the keychain has it, else ad-hoc; SIGN_IDENTITY overrides)
 ./build.sh
+
+# Build, quit the running copy, replace ~/Applications/Launcher.app and start it
+./install.sh
 
 # Point a running binary at a specific workflows file
 ALFRESCO_WORKFLOWS=/path/to/workflows.json ./Launcher
@@ -24,7 +28,7 @@ ALFRESCO_WORKFLOWS=/path/to/workflows.json ./Launcher
 ./Launcher --check workflows.json
 ```
 
-`-parse-as-library` is required because `Sources/App/Launcher.swift` uses `@main`. `-swift-version 6` turns on Swift 6 language mode, so data-race safety violations are compile errors rather than warnings; keep it on every build command. `-target …-apple-macos12.0` sets the minimum macOS version to match `LSMinimumSystemVersion` in `build.sh`; without it the binary only runs on the macOS it was built on or newer, and `#available` fallbacks never run. Keep it on every build command too, including `Tests/run-self-tests.sh`. Every `.swift` file under `Sources/` (any depth) is compiled in as one module, so new source files are picked up automatically and folders have no effect on visibility. There is no linter or formatter. The checks are "compiles with `swiftc`", `./Launcher --check workflows.json` and the runtime self-test (below), all run by CI (`.github/workflows/build.yml`, on a macOS runner). `build/` is gitignored, but a plain `Launcher` binary built in the repo root is not, so don't commit it.
+`-parse-as-library` is required because `Sources/App/Launcher.swift` uses `@main`. `-swift-version 6` turns on Swift 6 language mode, so data-race safety violations are compile errors rather than warnings; keep it on every build command. `-target …-apple-macos12.0` sets the minimum macOS version to match `LSMinimumSystemVersion` in `build.sh`; without it the binary only runs on the macOS it was built on or newer, and `#available` fallbacks never run. Keep it on every build command too, including `Tests/run-self-tests.sh`. Every `.swift` file under `Sources/` (any depth) is compiled in as one module, so new source files are picked up automatically and folders have no effect on visibility. There is no linter or formatter. The checks are "compiles with `swiftc`", `./Launcher --check workflows.json` and the runtime self-test (below), all run by CI (`.github/workflows/build.yml`, on a macOS runner). `build/` is gitignored, but a plain `Launcher` binary built in the repo root is not, so don't commit it. Signing matters: TCC keeps the Accessibility and Calendar permissions per signature, and an ad-hoc one changes every build, so `build.sh` uses a local self-signed certificate when there is one (README.md, "Signing"); CI has none and signs ad-hoc.
 
 ## Self-test
 
@@ -130,7 +134,7 @@ The pomodoro timer. No hotkey or panel: it's controlled through `alfresco://pomo
 
 ### App/Launcher.swift
 
-`AppDelegate` runs as an accessory app, registers both hotkeys, owns the clipboard store/monitor and the pomodoro timer, routes `alfresco://` URLs (`handleInternalURL`, a switch on the host), and builds the optional status-bar menu (its "Start Pomodoro" item is disabled through `validateMenuItem` while a session runs). The Workflows submenu is rebuilt in `menuNeedsUpdate`. `LauncherApp.main` first sets `umask(0o077)`, so everything the app writes is owner-only from creation (an atomic write's temporary file included), then takes an exclusive `flock` on `~/Library/Application Support/Launcher/launcher.lock`; a second copy (plain binary, `build/`, or the installed app) exits with status 0 instead of fighting over the hotkeys and clipboard history.
+`AppDelegate` runs as an accessory app, registers both hotkeys, owns the clipboard store/monitor and the pomodoro timer, routes `alfresco://` URLs (`handleInternalURL`, a switch on the host), and builds the optional status-bar menu (its "Start Pomodoro" item is disabled through `validateMenuItem` while a session runs; "Launch at Login", `LoginItem.swift`, is `SMAppService.mainApp` on macOS 13+, and `validateMenuItem` sets its checkmark and enables it only for a bundle directly in `/Applications` or `~/Applications`). The Workflows submenu is rebuilt in `menuNeedsUpdate`. `LauncherApp.main` first sets `umask(0o077)`, so everything the app writes is owner-only from creation (an atomic write's temporary file included), then takes an exclusive `flock` on `~/Library/Application Support/Launcher/launcher.lock`; a second copy (plain binary, `build/`, or the installed app) exits with status 0 instead of fighting over the hotkeys and clipboard history.
 
 ### Clipboard/ClipboardHistory.swift
 

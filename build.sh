@@ -9,6 +9,9 @@
 #   BUNDLE_ID     CFBundleIdentifier (default: local.launcher). Give a test
 #                 bundle its own, so LaunchServices and notification
 #                 permission never mistake it for the real app.
+#   SIGN_IDENTITY the code signing identity (default: "alfresco Local Signing"
+#                 when that certificate is in the keychain, else ad-hoc). "-"
+#                 forces ad-hoc.
 set -euo pipefail
 
 # Relative paths are the caller's, so they are made absolute before the cd.
@@ -69,5 +72,22 @@ PLIST
 # rebuilding. Rebuild if you move the repo.
 /usr/libexec/PlistBuddy -c "Add :AlfrescoWorkflowsFile string $PWD/workflows.json" "$APP/Contents/Info.plist"
 
-codesign --force --sign - "$APP"
-echo "Built $APP"
+# Signing. macOS keeps privacy permissions (Accessibility for the clipboard
+# history's paste, Calendar) per signature. An ad-hoc signature changes with
+# every build, so each rebuild silently loses them. A certificate of your own
+# keeps the same signature across builds (README.md, "Signing").
+DEFAULT_IDENTITY="alfresco Local Signing"
+if [ -z "${SIGN_IDENTITY:-}" ]; then
+    if security find-identity -p codesigning 2>/dev/null | grep -qF "\"$DEFAULT_IDENTITY\""; then
+        SIGN_IDENTITY="$DEFAULT_IDENTITY"
+    else
+        SIGN_IDENTITY="-"
+        [ -z "${CI:-}" ] && echo "build.sh: no \"$DEFAULT_IDENTITY\" certificate, signing ad-hoc (permissions reset on each build; see README.md, Signing)" >&2
+    fi
+fi
+codesign --force --sign "$SIGN_IDENTITY" "$APP"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    echo "Built $APP (ad-hoc signed)"
+else
+    echo "Built $APP (signed with \"$SIGN_IDENTITY\")"
+fi

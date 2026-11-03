@@ -4,8 +4,13 @@ The wiring that ties the features together.
 
 - Runs as an accessory app: no Dock icon, and an optional menu bar icon with
   Open Launcher, Clipboard History, Clear Clipboard History, Start Pomodoro,
-  the Workflows submenu, Edit Workflows, Show Workflows in Finder, Usage and
-  Quit.
+  the Workflows submenu, Edit Workflows, Show Workflows in Finder, Usage,
+  Launch at Login and Quit.
+- Launch at Login (macOS 13+, `LoginItem.swift`) registers the running app
+  with `SMAppService`. It is enabled only for a copy installed directly in
+  `/Applications` or `~/Applications` (by `install.sh`, see the
+  [root README](../../README.md#install)), since a login item pointing at
+  `build/` breaks on the next build.
 - Registers both hotkeys: the [launcher](../Launcher/README.md) and the
   [clipboard history](../Clipboard/README.md).
 - Runs the `alfresco://` URLs that workflows point at (today
@@ -30,3 +35,4 @@ belong to the app itself:
   workflows file and exits, then the single-instance lock) and
   `AppDelegate` (hotkeys, menu bar, `alfresco://` routing).
 - `Config.swift`: settings, and where the workflows file is found.
+- `LoginItem.swift`: the Launch at Login menu item.

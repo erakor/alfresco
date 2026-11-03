@@ -40,8 +40,8 @@ copy before launching the new build, or its hotkeys will silently do nothing.
    behavior that changed.
 
 6. **Afterwards.** The installed `~/Applications/Launcher.app` is still the old
-   version and isn't running. Offer to update it
-   (`rm -rf ~/Applications/Launcher.app && cp -R build/Launcher.app ~/Applications/ && open ~/Applications/Launcher.app`)
+   version and isn't running. Offer to update it with `./install.sh` (builds,
+   quits the running copy, replaces `~/Applications/Launcher.app`, starts it)
    or to reopen it unchanged. Don't overwrite it without asking.
 
 To test against a scratch workflows file without touching the repo's, launch the
