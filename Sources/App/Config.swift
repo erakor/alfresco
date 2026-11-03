@@ -122,6 +122,21 @@ enum Config {
     /// scan is older than this, so new apps show up without a restart.
     static let appRescanInterval: TimeInterval = 60
 
+    // MARK: Built-ins
+
+    /// Answers the launcher works out itself, shown in the hint and copied
+    /// with Enter (see Sources/BuiltIns). A workflow keyword always wins over
+    /// them. nil turns one off.
+    /// `= 3*14`, `= 2^10`, `= 10 km in mi`: a calculation or unit conversion.
+    static let calculatorPrefix: String? = "="
+    /// `time tokyo`, `time 15:00 in tokyo`, `time 9am new york in paris`.
+    /// `time` alone is left to apps (Time Machine) and the search.
+    static let timeKeyword: String? = "time"
+    /// `uuid`: a new random UUID, lowercase.
+    static let uuidKeyword: String? = "uuid"
+    /// `now`, `now utc`, `now unix`, `now ms`, `now date`: the current time.
+    static let timestampKeyword: String? = "now"
+
     // MARK: Usage stats
 
     /// Counts how the launcher and the clipboard history are used, in

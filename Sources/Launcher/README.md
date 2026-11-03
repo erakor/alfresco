@@ -20,6 +20,7 @@ app.
 | `cal standup`  | Google Calendar's search for `standup`; the launcher lists the matching events |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | `pomo`         | Starts a 25 min [pomodoro](../Pomodoro/README.md), or pauses / resumes it (nothing opens) |
+| `= 3*14`, `= 10 km in mi`, `time tokyo`, `uuid`, `now` | Nothing: a [built-in](../BuiltIns/README.md) shows the answer in the hint and Enter copies it |
 | anything else  | `https://www.google.com/search?q=...`                             |
 
 ## Workflows
@@ -122,6 +123,8 @@ forward if it's already running). Press `⌘↩` to search for the text instead.
   in English and in your language (`calculator` and `calculatrice`).
 - Workflow keywords always win: `weather` runs the `weather` workflow, not
   the Weather app. Only the whole keyword counts, so `weath` opens the app.
+- [Built-ins](../BuiltIns/README.md) come before apps too: `time tokyo` shows
+  the time in Tokyo. `time` alone, or `time ma`, still finds Time Machine.
 - Apps are found in `/Applications`, `/System/Applications`,
   `/System/Library/CoreServices/Applications` and `~/Applications`, each with
   one level of subfolders (`Utilities`), plus Finder. The list is refreshed
@@ -141,7 +144,9 @@ In `Sources/App/Config.swift` (rebuild after a change):
 ## Code
 
 - `LauncherController.swift`: the launcher panel (input, hint line, Enter and
-  `⌘↩` handling, routing of `alfresco://` URLs to the app).
+  `⌘↩` handling, routing of `alfresco://` URLs to the app, copying a
+  built-in's answer). The built-ins themselves are in
+  [`Sources/BuiltIns`](../BuiltIns/README.md).
 - `Workflows.swift`: the `workflows.json` model, reloading and command parsing.
 - `SuggestionListView.swift`: the list under the input (apps and keywords,
   with icons and `⌘1` to `⌘9`).
