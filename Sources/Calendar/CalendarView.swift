@@ -1,9 +1,9 @@
 // CalendarView.swift
 //
-// The calendar area under the launcher field. `cal` shows "next up first":
+// The calendar area under the launcher field. `/cal` shows "next up first":
 // a line for the event under way, a card for the next one with a countdown,
 // then two columns with the rest of today and the next day that has events.
-// `cal <text>` lists the matches under day headers, each row with its
+// `/cal <text>` lists the matches under day headers, each row with its
 // calendar's color, its time, its title, and "en cours" / "dans 12 min" or
 // its place. The height follows the content (preferredHeight). Labels are in
 // French, like the weather.
@@ -16,7 +16,7 @@ final class CalendarView: NSView {
     private static let moreHeight: CGFloat = 22
     private static let statusHeight: CGFloat = 52
     private static let padding: CGFloat = 8
-    // "Next up first" (`cal`)
+    // "Next up first" (`/cal`)
     private static let ongoingHeight: CGFloat = 18
     private static let cardHeight: CGFloat = 72
     private static let columnHeaderHeight: CGFloat = 22
@@ -62,7 +62,7 @@ final class CalendarView: NSView {
         fatalError("init(coder:) is not used")
     }
 
-    /// What is on screen, so an unchanged redraw (a keystroke in `cal st…`,
+    /// What is on screen, so an unchanged redraw (a keystroke in `/cal st…`,
     /// the launcher's 30 s tick, a fetch with the same events) is skipped.
     private var shownKey: String?
 
@@ -202,7 +202,7 @@ final class CalendarView: NSView {
 
     // MARK: Next up first
 
-    /// The `cal` layout, as stacked sections with their heights: the events
+    /// The `/cal` layout, as stacked sections with their heights: the events
     /// under way, the next timed event's card, two columns (the rest of
     /// today, and the next day with events), and how many are left out.
     private static func nextUpSections(_ events: [CalendarEvent], now: Date) -> [(NSView, CGFloat)] {

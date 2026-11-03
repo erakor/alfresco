@@ -3,7 +3,7 @@
 # inputs through CommandParser, without building or launching the app.
 #
 #   check.sh [workflows.json] [input ...]
-#   check.sh workflows.json "pr #12" "jira abc-42" "jira" "hello world"
+#   check.sh workflows.json "/pr #12" "/jira abc-42" "/jira" "hello world"
 #
 # It compiles Sources/Launcher/Workflows.swift and WorkflowCheck.swift as is
 # (the verdict is the one `Launcher --check` prints), plus a stub Config that
@@ -28,14 +28,21 @@ grep -q 'static let defaultWorkflowsJSON' "$config" || {
   echo "check.sh: Config.defaultWorkflowsJSON changed; update this script" >&2; exit 2; }
 grep -q '^ *static let workflowURLSchemes: Set<String> = \[.*\]$' "$config" || {
   echo "check.sh: Config.workflowURLSchemes changed; update this script" >&2; exit 2; }
+grep -q '^ *static let commandPrefix: String? = ' "$config" || {
+  echo "check.sh: Config.commandPrefix changed; update this script" >&2; exit 2; }
+grep -q '^ *static let commandListKeyword = ' "$config" || {
+  echo "check.sh: Config.commandListKeyword changed; update this script" >&2; exit 2; }
 
 # The real Config.swift needs Carbon and the app bundle, so only the default
-# workflows JSON and the allowed URL schemes are taken from it.
+# workflows JSON, the allowed URL schemes and the command prefix are taken
+# from it.
 {
   echo 'import Foundation'
   echo 'enum Config {'
   echo '    static let workflowsSource: (url: URL, isFallback: Bool) = (URL(fileURLWithPath: "/dev/null"), false)'
   grep '^ *static let workflowURLSchemes: Set<String> = ' "$config"
+  grep '^ *static let commandPrefix: String? = ' "$config"
+  grep '^ *static let commandListKeyword = ' "$config"
   awk '/static let defaultWorkflowsJSON/{on=1} on{print} on && /"""#/{exit}' "$config"
   echo '}'
 } > "$work/config.swift"

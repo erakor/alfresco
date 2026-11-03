@@ -1,27 +1,51 @@
 # Launcher
 
-The Spotlight-style bar on `⌘⇧Space`. Type a command, hit Enter, and the URL
-opens in your default browser. Type an app's name instead and it opens the
-app.
+The Spotlight-style bar on `⌘⇧Space`. Type a command (`/pr 12`), hit Enter,
+and the URL opens in your default browser. Type an app's name instead and it
+opens the app; anything else is searched for. Type `/` (or `/help`) to list
+every command.
 
 - Frosted panel, auto-focused input, fade/slide animation.
 - `Esc`, clicking outside, or pressing the hotkey again dismisses it.
 - `⌘X/C/V/A/Z` work in the input even though the app has no menu bar.
-- Suggestions as you type, with icons: matching apps and keywords (`p` lists `pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
+- Suggestions as you type, with icons: matching apps, and commands once you type `/` (`/p` lists `/pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
 
 | Input          | Opens                                                             |
 | -------------- | ----------------------------------------------------------------- |
-| `pr 123`       | `https://github.com/<owner>/<repo>/pull/123` (`pr #123` works too) |
-| `jira abc-42`  | `https://understood.atlassian.net/browse/ABC-42`                  |
-| `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
-| `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
-| `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
-| `cal`          | `https://calendar.google.com/calendar/r`; the launcher lists your next [events](../Calendar/README.md) |
-| `cal standup`  | Google Calendar's search for `standup`; the launcher lists the matching events |
+| `/` or `/help` | Nothing: lists every command                                      |
+| `/pr 123`      | `https://github.com/<owner>/<repo>/pull/123` (`/pr #123` works too) |
+| `/jira abc-42` | `https://understood.atlassian.net/browse/ABC-42`                  |
+| `/cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
+| `/weather`     | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
+| `/weather paris` | `https://wttr.in/paris?lang=fr&m`                               |
+| `/cal`         | `https://calendar.google.com/calendar/r`; the launcher lists your next [events](../Calendar/README.md) |
+| `/cal standup` | Google Calendar's search for `standup`; the launcher lists the matching events |
+| `/pomo`        | Starts a 25 min [pomodoro](../Pomodoro/README.md), or pauses / resumes it (nothing opens) |
+| `/zz`, `/lockscreen`, `/displaysleep` | Sleep, lock the screen, display off ([System](../System/README.md)) |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
-| `pomo`         | Starts a 25 min [pomodoro](../Pomodoro/README.md), or pauses / resumes it (nothing opens) |
 | `= 3*14`, `= 10 km in mi`, `time tokyo`, `uuid`, `now` | Nothing: a [built-in](../BuiltIns/README.md) shows the answer in the hint and Enter copies it |
 | anything else  | `https://www.google.com/search?q=...`                             |
+
+## Commands
+
+Every workflow keyword is typed after `/` (`Config.commandPrefix`), so a word
+you type on its own never runs a command by accident: `zz` alone is searched
+for (or opens an app named like it), `/zz` puts the Mac to sleep.
+
+- `/` alone, or `/help`, lists every command with its description. `↓` picks
+  one, `Tab` completes it.
+- Input starting with `/` is always a command: one no workflow has (`/nope`)
+  beeps and the hint says so, rather than searching Google for it. `⌘↩`
+  still searches for it as typed (the hint says so), so `/r/swift` or a
+  pasted path can be looked up. That holds for a known command too: `⌘↩`
+  on `/pr 12` searches for `/pr 12`, Enter opens the PR.
+- The keyword follows the `/` directly: `/ zz` (a stray slash, then a word)
+  runs nothing and beeps.
+- Keywords in `workflows.json` are written without the `/` (`"pr"`); a
+  keyword written with it (`"/pr"`) means the same.
+- Set `Config.commandPrefix` to `nil` to type keywords bare again, as before
+  (no `/` list then).
+
 
 ## Workflows
 
@@ -48,7 +72,7 @@ The app looks for the file in this order:
     {
       "keywords": ["pr"],
       "title": "GitHub PR",
-      "description": "PR by number, e.g. pr 12",
+      "description": "PR by number, e.g. /pr 12",
       "url": "https://github.com/your-org/your-repo/pull/{query}",
       "transforms": ["stripPrefix:#"]
     },
@@ -67,7 +91,7 @@ The app looks for the file in this order:
 
 | Field        | Meaning                                                                    |
 | ------------ | -------------------------------------------------------------------------- |
-| `keywords`   | One or more single words, matched case-insensitively. First match wins. A keyword can be used by two workflows, one with `{query}` and one without: the keyword alone opens the second, the keyword plus an argument the first. |
+| `keywords`   | One or more single words, matched case-insensitively and typed after `/` ([Commands](#commands)). First match wins. A keyword can be used by two workflows, one with `{query}` and one without: the keyword alone opens the second, the keyword plus an argument the first. |
 | `title`      | Shown in the hint as you type.                                              |
 | `description` | Optional help text. Shown in the hint when you type the keyword without its argument (Enter does nothing until you add one), and under the workflow in the menu bar's **Workflows** submenu. |
 | `url`        | `{query}` is replaced with the percent-encoded argument. Without `{query}`, typing the keyword alone opens the URL. It must start with `https:`, `http:`, `mailto:` or `alfresco:` (`Config.workflowURLSchemes`; add an app's own scheme there and rebuild to use it), and `{query}` can't be part of the scheme, so it can never open a local file or app. A workflow that breaks this rule is left out and named in the hint when the input is empty; the rest of the file still works. A refused `fallback` is not replaced: input no keyword takes then goes nowhere (Enter beeps, apps still open) until it is fixed, rather than to a search you didn't choose. An `alfresco://` URL is run by the launcher itself instead of being opened (see [Pomodoro](../Pomodoro/README.md) and [System](../System/README.md)); one it doesn't know beeps. |
@@ -101,7 +125,7 @@ workflows.json: FAILED (1 error)
 CI runs it on the repo's `workflows.json`.
 
 The menu bar's **Workflows** submenu lists every workflow with its description;
-picking one opens the launcher with its keyword already typed.
+picking one opens the launcher with its command already typed (`/pr `).
 
 ### Suggestions
 
@@ -111,9 +135,10 @@ a title and a subtitle:
 - The installed apps whose name matches (with their path), best match first
   (see [Apps](#apps)). That first app is highlighted because `Enter` opens it;
   `⌘↩` searches instead.
-- While you type a single word, the workflows whose keyword starts with it
-  (`p` shows `pr`), with their keyword and description, the ones you run most
-  first. Their icon is the app that opens the URL (your browser for web links).
+- While you type `/` and a single word, the workflows whose keyword starts
+  with it (`/p` shows `/pr`), with their command and description, the ones
+  you run most first; `/` or `/help` shows them all, in file order. Their
+  icon is the app that opens the URL (your browser for web links).
 
 Up to nine rows show (more keywords scroll). The highlighted row shows `↩`,
 the others `⌘2` to `⌘9`: that shortcut takes the row directly. `↑` `↓` move
@@ -121,13 +146,13 @@ the highlight. `Tab` completes the highlighted row, else the first, adding a
 space when a workflow needs an argument so you can keep typing. `Enter` (or a
 click, or `⌘N`) on a workflow row completes it and opens it if it needs
 nothing more; on an app row it opens the app. With no row highlighted,
-`Enter` runs what is typed, as before (so `p` alone still searches Google
-when no app matches). The workflow rows go away once the word is a whole
-keyword or you type a space.
+`Enter` runs what is typed, as before (so `/p` alone beeps: no command is
+`p`). The workflow rows go away once the word is a whole keyword or you type
+a space.
 
 ## Apps
 
-When what you type isn't a workflow keyword, the launcher looks for an
+When what you type doesn't start with `/`, the launcher looks for an
 installed app with that name. The hint shows `↩ Open Safari` and the
 magnifying glass turns into the app's icon; Enter opens the app (or brings it
 forward if it's already running). Press `⌘↩` to search for the text instead.
@@ -143,8 +168,8 @@ forward if it's already running). Press `⌘↩` to search for the text instead.
   stops (and matching goes back to names only) if you turn those off.
 - Both the name Finder shows and the file name count, so system apps match
   in English and in your language (`calculator` and `calculatrice`).
-- Workflow keywords always win: `weather` runs the `weather` workflow, not
-  the Weather app. Only the whole keyword counts, so `weath` opens the app.
+- Commands never take an app's place: `weather` opens the Weather app,
+  `/weather` runs the `weather` workflow.
 - [Built-ins](../BuiltIns/README.md) come before apps too: `time tokyo` shows
   the time in Tokyo. `time` alone, or `time ma`, still finds Time Machine.
 - Apps are found in `/Applications`, `/System/Applications`,
@@ -160,6 +185,9 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `hotKey`: `.commandShiftSpace` (default) or `.optionSpace`. macOS 15+ rejects
   Option-only hotkeys, so `.optionSpace` only works on macOS 14 and earlier.
 - `workflowsSource`: how the workflows file is found (see above).
+- `commandPrefix` (`"/"`): typed before every keyword; `nil` types them bare.
+  `commandListKeyword` (`"help"`): `/help` lists the commands, unless a
+  workflow uses that keyword.
 - `appSearch`: set to `false` to turn app launching off. `appFolders` lists
   where apps are looked for, `appRescanInterval` (60 s) how often.
 
