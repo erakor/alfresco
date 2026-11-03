@@ -24,6 +24,12 @@ enum SystemCommandTests {
         }
         SelfTest.check("system: pomodoro URLs are not system commands",
                        URL(string: "alfresco://pomodoro/toggle").flatMap(SystemCommand.init(url:)) == nil)
+        SelfTest.check("internal URL: feature is the lowercased host",
+                       URL(string: "Alfresco://System/sleep").flatMap(InternalURL.feature(of:)) == "system")
+        SelfTest.check("internal URL: other schemes have no feature",
+                       URL(string: "https://system/sleep").flatMap(InternalURL.feature(of:)) == nil)
+        SelfTest.check("internal URL: action is trimmed and lowercased",
+                       URL(string: "alfresco://pomodoro/%20Pause/").flatMap { InternalURL.action(of: $0, feature: "pomodoro") } == "pause")
         SelfTest.check("system: SACLockScreenImmediate resolves", SystemCommand.lockAvailableForSelfTest)
         SelfTest.check("system: pmset is executable", FileManager.default.isExecutableFile(atPath: "/usr/bin/pmset"))
     }

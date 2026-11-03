@@ -15,6 +15,9 @@ enum PomodoroCommand: Equatable, Sendable {
     case skip
     case stop
 
+    /// The host of its alfresco:// URLs.
+    static let feature = "pomodoro"
+
     /// Longest focus session `pomo <minutes>` accepts.
     static let maxMinutes = 180
 
@@ -22,10 +25,7 @@ enum PomodoroCommand: Equatable, Sendable {
     /// resume, skip, stop, or a number of minutes (1 to maxMinutes). nil for
     /// anything else, so the launcher can beep.
     init?(url: URL) {
-        guard url.scheme?.lowercased() == "alfresco", url.host?.lowercased() == "pomodoro" else { return nil }
-        let action = url.path
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/").union(.whitespaces))
-            .lowercased()
+        guard let action = InternalURL.action(of: url, feature: Self.feature) else { return nil }
         switch action {
         case "toggle", "": self = .toggle
         case "start": self = .start(minutes: nil)

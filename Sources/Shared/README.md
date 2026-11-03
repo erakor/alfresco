@@ -47,6 +47,8 @@ In `Sources/App/Config.swift` (rebuild after a change):
 ## Code
 
 - `UsageStats.swift`: the usage counters above.
+- `InternalURL.swift`: reads the feature (host) and action (path) of the
+  `alfresco://` URLs workflows point at, for the pomodoro and system commands.
 - `DigitShortcuts.swift`: the `⌘1` to `⌘9` key codes both panels use.
 - `SetAsideFile.swift`: moves an unreadable clipboard history or usage file
   out of the way (`*.unreadable.json`, `-2`, `-3`…) instead of overwriting it.
