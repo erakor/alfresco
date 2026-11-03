@@ -290,12 +290,19 @@ enum BuiltInTests {
             check("built-ins: precedence test workflows decode", false)
             return
         }
-        check("built-ins: a uuid workflow wins over the built-in",
-              BuiltIns.answer(for: "uuid", workflows: set, context: context) == nil)
-        check("built-ins: a time workflow with an argument wins",
-              BuiltIns.answer(for: "time tokyo", workflows: set, context: context) == nil)
-        check("built-ins: a keyword waiting for its argument wins",
-              BuiltIns.answer(for: "now", workflows: set, context: context) == nil)
+        // Workflow keywords are typed after Config.commandPrefix, so the
+        // built-ins keep their bare words even when a keyword is the same.
+        check("built-ins: a uuid workflow doesn't take bare uuid",
+              BuiltIns.answer(for: "uuid", workflows: set, context: context)?.kind == .uuid)
+        check("built-ins: /uuid runs the workflow, not the built-in",
+              BuiltIns.answer(for: "/uuid", workflows: set, context: context) == nil)
+        check("built-ins: a time workflow with an argument wins after the prefix",
+              BuiltIns.answer(for: "/time tokyo", workflows: set, context: context) == nil
+                  && BuiltIns.answer(for: "time tokyo", workflows: set, context: context)?.kind == .time)
+        check("built-ins: a keyword waiting for its argument wins after the prefix",
+              BuiltIns.answer(for: "/now", workflows: set, context: context) == nil)
+        check("built-ins: an unknown command is no built-in's",
+              BuiltIns.answer(for: "/= 1+1", workflows: set, context: context) == nil)
         check("built-ins: input no workflow takes still gets an answer",
               BuiltIns.answer(for: "= 1+1", workflows: set, context: context)?.value == "2")
         check("built-ins: the built-in workflows leave = 1+1 to the calculator",

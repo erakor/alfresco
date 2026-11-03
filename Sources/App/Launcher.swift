@@ -189,14 +189,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         }
         for workflow in workflows {
             let item = NSMenuItem(
-                title: "\(workflow.keywords.joined(separator: ", "))  \(workflow.title)",
+                title: "\(workflow.keywords.map(CommandInput.typed).joined(separator: ", "))  \(workflow.title)",
                 action: #selector(startWorkflow(_:)),
                 keyEquivalent: ""
             )
             item.target = self
-            // What to type: "pr " for a workflow that needs an argument,
-            // the bare keyword otherwise.
-            item.representedObject = workflow.keywords.first.map { workflow.takesArgument ? $0 + " " : $0 }
+            // What to type: "/pr " for a workflow that needs an argument,
+            // the keyword alone otherwise.
+            item.representedObject = workflow.keywords.first
+                .map { Suggestion(keyword: $0, workflow: workflow).completion }
             if let help = workflow.help {
                 if #available(macOS 14.4, *) {
                     item.subtitle = help

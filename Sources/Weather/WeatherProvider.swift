@@ -44,7 +44,7 @@ final class WeatherProvider {
         }
     }
 
-    /// `weather` → `.here` (or the home place), `weather <place>` → `.place`.
+    /// `/weather` → `.here` (or the home place), `/weather <place>` → `.place`.
     /// nil for anything else, and always nil without an API key, so the
     /// launcher then behaves as if this feature did not exist.
     func query(for input: String) -> WeatherQuery? {

@@ -249,8 +249,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     /// Enter: a built-in's answer, else the matching app, else the workflow
-    /// or fallback URL. ⌘↩ (`searchOnly`) skips built-ins and the app and
-    /// runs the fallback search.
+    /// (`/pr 12`) or fallback URL. ⌘↩ (`searchOnly`) skips built-ins and the
+    /// app and runs the fallback search; for command input it searches for
+    /// what is typed, `/` included.
     private func execute(searchOnly: Bool = false) {
         // Keyword typed without its argument: keep the bar open and wait.
         if store.current.workflowAwaitingArgument(textField.stringValue) != nil {
@@ -265,7 +266,18 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             open(app)
             return
         }
-        guard let command = CommandParser.parse(textField.stringValue, using: store.current) else {
+        let input = textField.stringValue
+        // ⌘↩ on `/r/swift`: searched for as typed, which Enter never does.
+        let parsed = searchOnly && CommandInput.isCommand(input)
+            ? CommandParser.fallbackCommand(input, using: store.current)
+            : CommandParser.parse(input, using: store.current)
+        guard let command = parsed else {
+            if CommandInput.isCommand(textField.stringValue) {
+                // `/`, `/help` with no row chosen, or a command no workflow
+                // has: the hint says which. Never searched for.
+                NSSound.beep()
+                return
+            }
             if store.current.fallback == nil, CommandParser.isUnmatched(textField.stringValue, using: store.current) {
                 // workflows.json's fallback was refused: nowhere to send this,
                 // and the hint says why. Never another search instead.
@@ -317,9 +329,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     /// Fills the list under the input: the best matching app first (it is
     /// what Enter opens, so it starts highlighted), then the keywords that
-    /// start with what is typed, then the other matching apps, up to nine
-    /// rows unless there are more keywords. Empty while an InputArea claims
-    /// the input (it takes that space).
+    /// start with what is typed after the command prefix (every one for `/`
+    /// or `/help`), then the other matching apps, up to nine rows unless
+    /// there are more keywords. Empty while an InputArea claims the input
+    /// (it takes that space).
     private func updateSuggestions() {
         let input = textField.stringValue
         var items: [LauncherItem] = []
@@ -344,7 +357,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// Keyword suggestions with the one typed in full first (as before),
     /// then the most run ones; file order breaks ties.
     private func sortedByUse(_ suggestions: [Suggestion], input: String) -> [Suggestion] {
-        let typed = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let typed = CommandInput.body(of: input)?.lowercased()
         func runs(_ suggestion: Suggestion) -> Int {
             // Counted under the workflow's first keyword (Command.source).
             guard let keyword = suggestion.workflow.keywords.first else { return 0 }
@@ -421,6 +434,14 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         } else if let error = store.loadError {
             hintLabel.stringValue = "⚠ workflows.json: \(error)"
             hintLabel.toolTip = "\(store.fileURL.path)\n\(error)"
+        } else if store.current.listsAllCommands(textField.stringValue) {
+            hintLabel.stringValue = suggestionList.items.isEmpty ? "No commands in workflows.json" : "↓ to pick a command, ⇥ to complete"
+            hintLabel.toolTip = nil
+        } else if CommandInput.isCommand(textField.stringValue) {
+            let typed = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let list = CommandInput.typed(Config.commandListKeyword)
+            hintLabel.stringValue = suggestionList.items.isEmpty ? "No command \(typed), \(list) lists them" : "⇥ to complete"
+            hintLabel.toolTip = nil
         } else {
             hintLabel.stringValue = "esc to close"
             hintLabel.toolTip = nil
@@ -429,7 +450,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     /// Lays out and fills the weather strip above the input (always, while
     /// Config.weatherStrip is on and a WeatherAPI key is set) and the
-    /// forecast below it (while the input reads `weather [place]`), resizes
+    /// forecast below it (while the input reads `/weather [place]`), resizes
     /// the panel to fit (the suggestion list included), and asks for
     /// whatever is missing.
     private func updateWeather(resize: Bool = true) {
@@ -462,7 +483,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// The calendar query for `input`: only while it runs a workflow whose
     /// first keyword is Config.calendarKeyword (the `cal` workflows in
     /// workflows.json), so Enter does what the list is about. Without one,
-    /// `cal` stays a fallback and can open an app.
+    /// `/cal` is an unknown command and beeps.
     private func calendarQuery(for input: String) -> CalendarQuery? {
         guard case .workflow(let keyword, let withArgument)? = CommandParser.parse(input, using: store.current)?.source,
               keyword == Config.calendarKeyword
@@ -471,7 +492,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         return .search(AppIndex.fold(text))
     }
 
-    /// Fills the event list under the input while it reads `cal [text]`,
+    /// Fills the event list under the input while it reads `/cal [text]`,
     /// then resizes the panel unless the caller does (`resize: false`).
     private func updateCalendar(resize: Bool = true) {
         let input = textField.stringValue
@@ -494,7 +515,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     /// Clicking the permission prompt closes the launcher. If access was
     /// granted and the launcher hasn't been opened since, open it again on
-    /// what was typed; otherwise just redraw (the next `cal` shows the
+    /// what was typed; otherwise just redraw (the next `/cal` shows the
     /// refusal).
     private func calendarAccessAnswered(granted: Bool) {
         let input = accessPromptInput
@@ -544,13 +565,18 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     private func placeholder() -> String {
         let set = store.current
-        let keywords = set.workflows.compactMap(\.keywords.first).prefix(4)
+        if let prefix = Config.commandPrefix, !set.workflows.isEmpty {
+            let commands = "\(prefix) for commands"
+            return set.fallback.map { "\($0.title), or \(commands)" } ?? "Type \(commands)"
+        }
+        let keywords = set.workflows.compactMap(\.keywords.first).prefix(4).map(CommandInput.typed)
         let list = keywords.joined(separator: ", ")
         guard let search = set.fallback?.title else { return keywords.isEmpty ? "" : "Type \(list)…" }
         return keywords.isEmpty ? search : "\(search), or type \(list)…"
     }
 
-    /// ⌘↩ ignores a matching app and runs the search (or workflow) instead.
+    /// ⌘↩ ignores a matching app and runs the search instead (for `/…`
+    /// input too, so `/r/swift` can still be searched for).
     /// ⌘1 to ⌘9 take the Nth row of the list.
     override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
         let keyCode = Int(event.keyCode)

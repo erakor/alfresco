@@ -18,7 +18,7 @@ enum PomodoroCommand: Equatable, Sendable {
     /// The host of its alfresco:// URLs.
     static let feature = "pomodoro"
 
-    /// Longest focus session `pomo <minutes>` accepts.
+    /// Longest focus session `/pomo <minutes>` accepts.
     static let maxMinutes = 180
 
     /// alfresco://pomodoro/<action>, where <action> is toggle, start, pause,

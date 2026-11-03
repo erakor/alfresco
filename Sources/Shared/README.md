@@ -28,8 +28,8 @@ Recorded:
 - The first word of multi-word fallback inputs, lowercased, only when it is a
   workflow keyword or a typo away from one (one letter added, missing, changed
   or swapped for a keyword of 4 letters, two for 5 letters or more; keywords
-  of 1 to 3 letters must match exactly): `jria abc-42` keeps `jria`, a
-  mistyped `jira`, while `divorce lawyer` or `pa taxes` keep nothing. Any
+  of 1 to 3 letters must match exactly): `jira abc-42` (typed without the
+  `/`) keeps `jira`, `jria abc-42` keeps `jria`, a mistyped `jira`, while `divorce lawyer` or `pa taxes` keep nothing. Any
   other word, and the rest of the input, is never kept.
 - Previews and weather: answers received and failures, by kind of error.
 - Calendar: how often the event list is shown, never what it lists.
@@ -68,5 +68,5 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `StatusRow.swift`: the loading / error line (spinner or icon, then text)
   that the [weather](../Weather/README.md) and
   [calendar](../Calendar/README.md) areas show under the input.
-- `KeywordInput.swift`: reads input as `<keyword> [argument]`, for the
+- `KeywordInput.swift`: reads input as `/<keyword> [argument]`, for the
   features that own a keyword.

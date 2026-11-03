@@ -1,7 +1,7 @@
 # Weather
 
 With a [WeatherAPI.com](https://www.weatherapi.com/pricing.aspx) key (the
-free plan is enough, no card needed), typing `weather` or `weather <place>` in
+free plan is enough, no card needed), typing `/weather` or `/weather <place>` in
 the [launcher](../Launcher/README.md) opens a forecast under the input: current
 conditions (temperature, feels-like, humidity, wind, chance of rain this hour),
 the next 12 hours (temperature, icon, chance of rain or snow;
@@ -37,14 +37,14 @@ the hint.
 
 With a key, the launcher's top-right corner, above the input, always shows
 the current weather where you are (e.g. "☀️ 14°  Ciel dégagé · Paris
-↑ 16°  ↓ 8°"; hover it for the full place). It shares the 10-minute cache with `weather`,
+↑ 16°  ↓ 8°"; hover it for the full place). It shares the 10-minute cache with `/weather`,
 so opening the launcher often costs at most one request every 10 minutes.
 Turn it off with `Config.weatherStrip = false`.
 
-- `weather paris`, `weather lyon`, `weather 75011`, `weather cdg`: WeatherAPI
+- `/weather paris`, `/weather lyon`, `/weather 75011`, `/weather cdg`: WeatherAPI
   accepts city names, postal codes, airport codes and `lat,lon`. The place is
   looked up after you pause typing.
-- `weather` alone is located from your public IP address (`auto:ip`), shown as
+- `/weather` alone is located from your public IP address (`auto:ip`), shown as
   "position approximative" since it can be off by a city. Set
   `Config.weatherHomePlace` (e.g. `"Paris, France"`) and rebuild to use a
   fixed place instead.
@@ -61,11 +61,11 @@ Turn it off with `Config.weatherStrip = false`.
 
 In `Sources/App/Config.swift` (rebuild after a change):
 
-- `weatherKeyword` (`"weather"`): the keyword that shows the forecast.
+- `weatherKeyword` (`"weather"`, typed `/weather`): the keyword that shows the forecast.
 - `weatherLanguage` (`"fr"`): language of the condition text and day names.
 - `weatherStrip` (`true`): the current weather above the input.
 - `weatherDays` (3, the free plan's maximum) and `weatherHours` (12).
-- `weatherHomePlace` (`nil`, located by IP): the place for `weather` alone.
+- `weatherHomePlace` (`nil`, located by IP): the place for `/weather` alone.
 - `weatherCacheLifetime` (10 min).
 
 ## Code

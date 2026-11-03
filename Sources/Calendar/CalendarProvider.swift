@@ -1,7 +1,7 @@
 // CalendarProvider.swift
 //
 // Main-actor side of the calendar area: answers a CalendarQuery (the
-// launcher builds it from the `cal` workflow's input) with the events macOS
+// launcher builds it from the `/cal` workflow's input) with the events macOS
 // Calendar knows about (Google accounts added in System Settings > Internet
 // Accounts included), read through EventKit off the main thread. Needs the
 // Calendars permission, so it only works in build/Launcher.app, whose
@@ -33,7 +33,7 @@ struct CalendarEvent: Sendable {
     let calendarColor: CalendarColor?
     let calendarName: String
     let location: String?
-    /// Folded title and location, matched by `cal <text>`.
+    /// Folded title and location, matched by `/cal <text>`.
     let searchText: String
 
     var color: NSColor {
@@ -43,9 +43,9 @@ struct CalendarEvent: Sendable {
 }
 
 enum CalendarQuery: Equatable {
-    /// `cal`: what is left of today and the next days (Config.calendarDays).
+    /// `/cal`: what is left of today and the next days (Config.calendarDays).
     case upcoming
-    /// `cal <text>`: upcoming events whose title or location contains the
+    /// `/cal <text>`: upcoming events whose title or location contains the
     /// folded text, over Config.calendarSearchDays.
     case search(String)
 }
@@ -126,7 +126,7 @@ final class CalendarProvider {
     var isAwaitingAccess: Bool { isRequestingAccess }
 
     /// Days of events a query needs: `.search` also covers `.upcoming`, so
-    /// going back to `cal` after a search reuses the events.
+    /// going back to `/cal` after a search reuses the events.
     private static func days(for query: CalendarQuery) -> Int {
         switch query {
         case .upcoming: return Config.calendarDays

@@ -1,10 +1,47 @@
 // Workflows.swift
 //
 // The workflows.json model (Workflow, WorkflowSet, ArgumentTransform), the
-// WorkflowStore that reloads it, and CommandParser, which turns launcher
-// input into a URL.
+// WorkflowStore that reloads it, CommandInput, which reads the command
+// prefix (`/pr 12`), and CommandParser, which turns launcher input into a URL.
 
 import Foundation
+
+// MARK: - Command prefix
+
+/// Launcher input read as a command: what follows Config.commandPrefix.
+/// Keywords are stored without the prefix; this is the one place that adds
+/// or removes it.
+enum CommandInput {
+    /// Whether `input` starts with the prefix, so it is a command (known or
+    /// not) and never goes to apps, built-ins or the fallback search. Always
+    /// false with no prefix.
+    static func isCommand(_ input: String) -> Bool {
+        guard let prefix = Config.commandPrefix, !prefix.isEmpty else { return false }
+        return input.drop(while: \.isWhitespace).hasPrefix(prefix)
+    }
+
+    /// `input` trimmed and without the prefix ("/pr 12" is "pr 12"); nil when
+    /// a prefix is set and `input` doesn't start with it, since bare words
+    /// are never commands. With no prefix, `input` trimmed.
+    static func body(of input: String) -> String? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let prefix = Config.commandPrefix, !prefix.isEmpty else { return trimmed }
+        guard trimmed.hasPrefix(prefix) else { return nil }
+        return String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// A keyword as it is typed: "/pr".
+    static func typed(_ keyword: String) -> String {
+        (Config.commandPrefix ?? "") + keyword
+    }
+
+    /// `keyword` from workflows.json without a leading prefix, so a file
+    /// that writes "/pr" still means `/pr`, not `//pr`.
+    static func stored(_ keyword: String) -> String {
+        guard let prefix = Config.commandPrefix, !prefix.isEmpty, keyword.hasPrefix(prefix) else { return keyword }
+        return String(keyword.dropFirst(prefix.count))
+    }
+}
 
 // MARK: - Workflows
 
@@ -91,7 +128,7 @@ struct Workflow: Decodable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         keywords = try container.decodeIfPresent([String].self, forKey: .keywords)?
-            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? []
+            .map { CommandInput.stored($0.trimmingCharacters(in: .whitespaces).lowercased()) } ?? []
         title = try container.decode(String.self, forKey: .title)
         url = try container.decode(String.self, forKey: .url)
         help = try container.decodeIfPresent(String.self, forKey: .help)
@@ -218,25 +255,37 @@ struct WorkflowSet: Decodable, Sendable {
     }
 
     /// The workflow whose keyword is the whole input, when it still needs an
-    /// argument (e.g. just "pr") and no workflow takes that keyword alone.
+    /// argument (e.g. just "/pr") and no workflow takes that keyword alone.
     /// Enter does nothing then, and the hint shows the workflow's help instead.
     func workflowAwaitingArgument(_ input: String) -> Workflow? {
-        let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard workflow(for: input, withArgument: false) == nil else { return nil }
+        guard let input = CommandInput.body(of: input), !input.isEmpty,
+              workflow(for: input, withArgument: false) == nil
+        else { return nil }
         return workflow(for: input, withArgument: true)
     }
 
-    /// Workflows whose keyword starts with what is typed, for the list under
-    /// the launcher input. Only while a single word is typed, and not when it
-    /// already is every match's whole keyword (nothing left to complete).
-    /// Exact matches come first, then file order. One row per workflow, with
-    /// its first matching keyword, so "weather" and "weather paris" are two.
-    /// A keyword is only offered for the workflow it would actually run: an
-    /// earlier workflow of the same form with that keyword shadows it. Among
-    /// a workflow's aliases, one equal to the typed word wins.
+    /// Whether `input` asks for the list of every command: the prefix alone,
+    /// or `/help` while no workflow uses that keyword. Never with no prefix.
+    func listsAllCommands(_ input: String) -> Bool {
+        guard Config.commandPrefix != nil, let body = CommandInput.body(of: input)?.lowercased() else { return false }
+        return body.isEmpty || (body == Config.commandListKeyword && !keywords.contains(body))
+    }
+
+    /// Workflows whose keyword starts with what is typed (after the command
+    /// prefix), for the list under the launcher input. Only while a single
+    /// word is typed, and not when it already is every match's whole keyword
+    /// (nothing left to complete). Exact matches come first, then file
+    /// order. One row per workflow, with its first matching keyword, so
+    /// "weather" and "weather paris" are two. A keyword is only offered for
+    /// the workflow it would actually run: an earlier workflow of the same
+    /// form with that keyword shadows it. Among a workflow's aliases, one
+    /// equal to the typed word wins. `listsAllCommands` input gets every
+    /// workflow that has a usable keyword.
     func suggestions(for input: String) -> [Suggestion] {
-        let prefix = String(input.drop(while: \.isWhitespace)).lowercased()
-        guard !prefix.isEmpty, !prefix.contains(where: \.isWhitespace) else { return [] }
+        let listsAll = listsAllCommands(input)
+        guard let body = CommandInput.body(of: input) else { return [] }
+        let prefix = listsAll ? "" : body.lowercased()
+        guard listsAll || !prefix.isEmpty, !prefix.contains(where: \.isWhitespace) else { return [] }
         let matches = workflows.indices.compactMap { index -> Suggestion? in
             let workflow = workflows[index]
             let usable = workflow.keywords.filter { keyword in
@@ -247,6 +296,7 @@ struct WorkflowSet: Decodable, Sendable {
             let keyword = usable.contains(prefix) ? prefix : usable.first
             return keyword.map { Suggestion(keyword: $0, workflow: workflow) }
         }
+        if listsAll { return matches }
         let exact = matches.filter { $0.keyword == prefix }
         guard exact.count < matches.count else { return [] }
         return exact + matches.filter { $0.keyword != prefix }
@@ -255,12 +305,16 @@ struct WorkflowSet: Decodable, Sendable {
 
 /// A row in the launcher's suggestion list.
 struct Suggestion: Sendable {
+    /// As stored, without the command prefix.
     let keyword: String
     let workflow: Workflow
 
-    /// What Tab puts in the field: the keyword, plus a space when the
-    /// workflow needs an argument, so typing can go straight on.
-    var completion: String { workflow.takesArgument ? keyword + " " : keyword }
+    /// What Tab puts in the field: the keyword with its prefix, plus a space
+    /// when the workflow needs an argument, so typing can go straight on.
+    var completion: String {
+        let typed = CommandInput.typed(keyword)
+        return workflow.takesArgument ? typed + " " : typed
+    }
 }
 
 /// Owns workflows.json: finds it, reloads it when its modification date
@@ -368,28 +422,42 @@ enum CommandParser {
         charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
     )
 
-    /// Parses `<keyword> [argument]`, falling back to the fallback workflow.
-    /// nil for empty input, or input no workflow takes when there is no
+    /// Parses `/<keyword> [argument]`, falling back to the fallback workflow
+    /// for input without the command prefix. nil for empty input, for
+    /// command input no workflow takes (`/`, `/help`, `/nope`: never
+    /// searched for), or for other input no workflow takes when there is no
     /// fallback (WorkflowSet.fallback).
     static func parse(_ raw: String, using set: WorkflowSet) -> Command? {
         let input = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return nil }
         if let command = workflowCommand(input, using: set) { return command }
-        guard let fallback = set.fallback,
+        guard !CommandInput.isCommand(input) else { return nil }
+        return fallbackCommand(input, using: set)
+    }
+
+    /// The fallback search for the whole input, prefix included, whatever
+    /// workflow would take it: what ⌘↩ runs for command input (`/r/swift`).
+    /// nil for empty input or when there is no fallback.
+    static func fallbackCommand(_ raw: String, using set: WorkflowSet) -> Command? {
+        let input = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty, let fallback = set.fallback,
               let url = expand(fallback.url, with: fallback.prepare(input))
         else { return nil }
         return Command(url: url, label: fallback.title, source: .fallback)
     }
 
     /// Whether the input is something no workflow takes, so it goes to the
-    /// fallback search, if there is one. Installed apps only take such input.
+    /// fallback search, if there is one. Installed apps and built-ins only
+    /// take such input. Command input (`/…`) never is, known or not.
     static func isUnmatched(_ raw: String, using set: WorkflowSet) -> Bool {
         let input = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !input.isEmpty && workflowCommand(input, using: set) == nil
+        return !input.isEmpty && !CommandInput.isCommand(input) && workflowCommand(input, using: set) == nil
     }
 
-    /// The workflow command for trimmed, non-empty input, if a workflow takes it.
-    private static func workflowCommand(_ input: String, using set: WorkflowSet) -> Command? {
+    /// The workflow command for trimmed, non-empty input, if a workflow
+    /// takes it: only input starting with the command prefix, when there is one.
+    private static func workflowCommand(_ raw: String, using set: WorkflowSet) -> Command? {
+        guard let input = CommandInput.body(of: raw), !input.isEmpty else { return nil }
         let parts = input.split(maxSplits: 1, whereSeparator: \.isWhitespace)
         let keyword = String(parts[0])
         if parts.count == 2, let workflow = set.workflow(for: keyword, withArgument: true) {

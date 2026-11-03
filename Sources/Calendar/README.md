@@ -1,6 +1,6 @@
 # Calendar
 
-Type `cal` in the [launcher](../Launcher/README.md) and it shows what's next
+Type `/cal` in the [launcher](../Launcher/README.md) and it shows what's next
 over today and the next two days, from every calendar the macOS Calendar app
 knows: your Google calendars once the account is added, plus iCloud, Exchange
 and the rest. Enter still runs the `cal` workflows in `workflows.json`: Google
@@ -8,10 +8,8 @@ Calendar, or its search for the text.
 
 The list shows only while what you typed runs a workflow whose first keyword
 is `cal` (`Config.calendarKeyword`), so Enter always opens what the list is
-about. Since
-`cal` is a workflow keyword, it no longer opens the Calendar or Calculator app
-([workflow keywords win](../Launcher/README.md#apps)): type `calen` or `calc`
-for those. Remove the two `cal` workflows to get `cal` back for apps; the list
+about. Without the `/`, `cal` is an ordinary word again: it opens the Calendar
+or Calculator app. Remove the two `cal` workflows and `/cal` beeps; the list
 then stays hidden.
 
 ## Set up
@@ -20,14 +18,14 @@ then stays hidden.
    turn on Calendars. Check that your events show up in the Calendar app.
 2. Run `build/Launcher.app` (`./build.sh`). The plain `./Launcher` binary
    can't get the permission, since it has no Info.plist to explain why it
-   asks, so `cal` there only says so.
-3. Type `cal`. macOS asks once whether the launcher may access your
+   asks, so `/cal` there only says so.
+3. Type `/cal`. macOS asks once whether the launcher may access your
    calendars. Clicking the prompt closes the launcher; it opens again on
-   `cal` once you have answered.
+   `/cal` once you have answered.
 
 ## Use
 
-- `cal` puts the next event first:
+- `/cal` puts the next event first:
   - a line for the event under way ("En cours : Standup, se termine dans
     10 min");
   - a card for the next one with a countdown ("10 min", or its time and day
@@ -35,7 +33,7 @@ then stays hidden.
   - two columns: "Plus tard aujourd'hui" and the next day that has events
     (Demain, or the date), up to 4 events each, all-day events as "Journée";
   - a last line counting what didn't fit.
-- `cal <text>` lists up to 8 events of the next 30 days whose title or place
+- `/cal <text>` lists up to 8 events of the next 30 days whose title or place
   contains the text, ignoring case and accents, under day headers. Each row
   shows its calendar's color, its time, and on the right "en cours", "dans
   12 min" (within the hour) or its place.
@@ -57,23 +55,23 @@ then stays hidden.
 
 In `Sources/App/Config.swift` (rebuild after a change):
 
-- `calendarKeyword` (`"cal"`): the keyword that shows the list, while a
+- `calendarKeyword` (`"cal"`, typed `/cal`): the keyword that shows the list, while a
   workflow in `workflows.json` takes it; those workflows decide what Enter
   opens.
 - `calendarDays` (3, today included) and `calendarSearchDays` (30).
-- `calendarMaxEvents` (8): results listed by `cal <text>`.
+- `calendarMaxEvents` (8): results listed by `/cal <text>`.
 - `calendarAccounts` (empty, every account): only these accounts, by the name
   shown in Internet Accounts (usually the address). If the filters leave no
-  calendar, `cal` says so and lists the account names it found.
+  calendar, `/cal` says so and lists the account names it found.
 - `calendarExcluded` (empty): calendars left out by name, e.g. holidays.
 - `calendarHidesBirthdays`, `calendarHidesDeclined` (both `true`).
 - `calendarCacheLifetime` (5 min): how long events are reused; a change in a
-  calendar refreshes them at once anyway. `cal` reads `calendarDays` of
-  events, `cal <text>` the wider `calendarSearchDays`.
+  calendar refreshes them at once anyway. `/cal` reads `calendarDays` of
+  events, `/cal <text>` the wider `calendarSearchDays`.
 
 ## Code
 
 - `CalendarProvider.swift`: turns launcher input into a query, asks for
   access, reads and caches the events through EventKit.
-- `CalendarView.swift`: the "next up" layout for `cal` and the result list
-  for `cal <text>`, under the input.
+- `CalendarView.swift`: the "next up" layout for `/cal` and the result list
+  for `/cal <text>`, under the input.

@@ -3,21 +3,21 @@
     {
       "keywords": ["pr"],
       "title": "GitHub PR",
-      "description": "erakor/alfresco PR by number, e.g. pr 12",
+      "description": "erakor/alfresco PR by number, e.g. /pr 12",
       "url": "https://github.com/erakor/alfresco/pull/{query}",
       "transforms": ["stripPrefix:#"]
     },
     {
       "keywords": ["jira"],
       "title": "Jira",
-      "description": "Jira issue by key, e.g. jira abc-42",
+      "description": "Jira issue by key, e.g. /jira abc-42",
       "url": "https://understood.atlassian.net/browse/{query}",
       "transforms": ["uppercase"]
     },
     {
       "keywords": ["cf"],
       "title": "Contentful entry",
-      "description": "Contentful entry by ID, e.g. cf 5KsDBWseXY",
+      "description": "Contentful entry by ID, e.g. /cf 5KsDBWseXY",
       "url": "https://app.contentful.com/spaces/p0qf7j048i0q/entries/{query}"
     },
     {
@@ -30,7 +30,7 @@
     {
       "keywords": ["weather"],
       "title": "Weather in",
-      "description": "Forecast for a place: city, airport code or postal code, e.g. weather paris",
+      "description": "Forecast for a place: city, airport code or postal code, e.g. /weather paris",
       "url": "https://wttr.in/{query}?lang=fr&m",
       "preview": "https://wttr.in/{query}?format=%25l:+%25c+%25t+%25w&lang=fr&m"
     },
@@ -43,7 +43,7 @@
     {
       "keywords": ["cal"],
       "title": "Search Google Calendar",
-      "description": "Find events, e.g. cal standup",
+      "description": "Find events, e.g. /cal standup",
       "url": "https://calendar.google.com/calendar/r/search?q={query}"
     },
     {
@@ -55,7 +55,7 @@
     {
       "keywords": ["pomo"],
       "title": "Pomodoro",
-      "description": "pomo 50 (focus for 50 min), pomo pause, resume, skip or stop",
+      "description": "/pomo 50 (focus for 50 min), /pomo pause, resume, skip or stop",
       "url": "alfresco://pomodoro/{query}"
     },
     {

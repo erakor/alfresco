@@ -6,7 +6,7 @@
 
 import Foundation
 
-/// What the launcher input asks for: `weather` alone or `weather <place>`.
+/// What the launcher input asks for: `/weather` alone or `/weather <place>`.
 enum WeatherQuery: Hashable, Sendable {
     /// Located from the public IP address (WeatherAPI's `auto:ip`).
     case here

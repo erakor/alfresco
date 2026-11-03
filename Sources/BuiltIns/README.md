@@ -18,8 +18,10 @@ the hint for details.
 | `uuid` | `↩ Copy a new UUID` | a new random UUID, lowercase |
 | `now` | `2026-11-03T14:05:09+01:00` | the time when you press `Enter` |
 
-A [workflow](../Launcher/README.md#workflows) keyword always wins: with a
-`time` workflow in `workflows.json`, `time tokyo` runs it instead. Built-ins
+Built-ins use bare words, and [workflow](../Launcher/README.md#workflows)
+keywords are typed after `/`, so they don't collide: with a `time` workflow in
+`workflows.json`, `/time tokyo` runs it and `time tokyo` still shows the time.
+(With `Config.commandPrefix` set to `nil`, the workflow wins.) Built-ins
 come before apps and the fallback search, and `⌘↩` skips them and searches
 for what you typed.
 
