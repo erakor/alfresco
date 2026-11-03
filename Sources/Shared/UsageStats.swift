@@ -11,6 +11,8 @@
 //   bundle ID);
 // - previews and weather: requests answered and failures, by error;
 // - calendar: how often the event list is shown (never what it lists);
+// - built-ins: how often each one's answer is copied (never the input or
+//   the answer);
 // - clipboard: copies and restores per source app (bundle ID), copies by
 //   kind, skipped copies by reason. Never any content or file path.
 // Turn it off with Config.usageTracking; the menu bar's "Usage…" shows a
@@ -40,6 +42,14 @@ enum UsageCounter: String, Sendable {
 
     /// The event list was shown (once per launcher opening).
     case calendarShown = "calendar.shown"
+
+    /// Enter copied a built-in's answer (Sources/BuiltIns), by built-in;
+    /// never the input or the answer.
+    case builtInCalculation = "builtin.calculation"
+    case builtInConversion = "builtin.conversion"
+    case builtInTime = "builtin.time"
+    case builtInUUID = "builtin.uuid"
+    case builtInTimestamp = "builtin.timestamp"
 
     case clipboardCopiedText = "clipboard.copied.text"
     case clipboardCopiedImage = "clipboard.copied.image"
@@ -315,7 +325,10 @@ final class UsageStats: NSObject {
             return lines.isEmpty ? "  (none)" : lines.joined(separator: "\n")
         }
 
-        let launched = total.keywords.values.reduce(0, +) + count(.launcherFallback) + count(.launcherOpenedApp)
+        let builtIns: Int = count(.builtInCalculation) + count(.builtInConversion) + count(.builtInTime)
+            + count(.builtInUUID) + count(.builtInTimestamp)
+        let launched: Int = total.keywords.values.reduce(0, +) + count(.launcherFallback) + count(.launcherOpenedApp)
+            + builtIns
         let closed = count(.launcherClosedEmpty) + count(.launcherClosedTyped)
         let failurePrefix = "weather.failed."
         var weatherFailures: [String: Int] = [:]
@@ -342,6 +355,11 @@ final class UsageStats: NSObject {
             apps.append("  \(Self.appName(for: id)): \(copies) copied, \(restores) restored")
         }
 
+        let builtInKinds: String = "\(count(.builtInCalculation)) calculations, "
+            + "\(count(.builtInConversion)) conversions, \(count(.builtInTime)) times, "
+            + "\(count(.builtInUUID)) UUIDs, \(count(.builtInTimestamp)) timestamps"
+        let builtInLine = "Built-ins copied: \(builtIns) (\(builtInKinds))"
+
         var lines: [String] = [
             "Launcher: opened \(count(.launcherOpened)), ran \(launched)",
             "  closed without running: \(closed) (\(count(.launcherClosedTyped)) with text typed)",
@@ -352,6 +370,7 @@ final class UsageStats: NSObject {
             top(appsOpened, 10),
             "Fallback: \(count(.launcherFallback)), first words:",
             top(total.fallbackWords, 10),
+            builtInLine,
             "Previews: \(count(.previewLoaded)) loaded, \(count(.previewFailed)) failed",
             "Weather: \(count(.weatherLoaded)) loaded, \(weatherFailures.values.reduce(0, +)) failed",
         ]

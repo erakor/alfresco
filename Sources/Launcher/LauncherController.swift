@@ -2,7 +2,7 @@
 //
 // The launcher panel: input field, hint line, keyword suggestions, the
 // weather and calendar areas, and Enter handling, which opens a workflow's
-// URL or an installed app.
+// URL or an installed app, or copies a built-in's answer.
 
 import Carbon.HIToolbox
 import Cocoa
@@ -80,6 +80,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// How often each app and keyword was used, read when the panel opens,
     /// to rank the list (and so what Enter opens).
     private var usage = UsageTotals()
+    /// What a built-in makes of the input, worked out once per change of it
+    /// (inputDidChange) and read by the list and the hint. Enter works it
+    /// out again, so `now` and `uuid` copy fresh values.
+    private var currentBuiltIn: BuiltInAnswer?
     /// Whether the calendar list was shown since the panel was (usage stats).
     private var didShowCalendar = false
     /// The input that brought up the calendar permission prompt (which
@@ -146,6 +150,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             UsageStats.shared.record(typed ? .launcherClosedTyped : .launcherClosedEmpty)
         }
         textField.stringValue = ""
+        currentBuiltIn = nil
         previews.cancel()
         weather.cancel()
         for area in inputAreas { area.view.isHidden = true }
@@ -156,6 +161,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     private func inputDidChange() {
+        currentBuiltIn = builtInAnswer(for: textField.stringValue)
         updateSuggestions()
         updateHint()
         // Both change what is under the input: resize once, after both.
@@ -178,8 +184,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateWeather() // resizes the panel to the new list
     }
 
-    /// The installed app the input names, when no workflow keyword claims
-    /// the input (it would otherwise go to the fallback search).
+    /// The installed app the input names, when no workflow keyword or
+    /// built-in claims the input (it would otherwise go to the fallback
+    /// search).
     private func matchedApp() -> AppEntry? {
         let input = textField.stringValue
         return inputCanNameApp(input) ? apps.bestMatch(for: input, openCounts: usage.apps) : nil
@@ -187,10 +194,37 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     /// Whether the input would go to the fallback search (or nowhere, when
     /// workflows.json's fallback was refused), which is the only input apps
-    /// take (never a workflow keyword).
+    /// take (never a workflow keyword or a built-in's input). `input` is the
+    /// field's text, so currentBuiltIn is its built-in answer.
     private func inputCanNameApp(_ input: String) -> Bool {
         store.current.workflowAwaitingArgument(input) == nil
             && CommandParser.isUnmatched(input, using: store.current)
+            && currentBuiltIn == nil
+    }
+
+    /// What a built-in (`= 3*14`, `time tokyo`, `uuid`, `now`) makes of the
+    /// input, when no workflow takes it.
+    private func builtInAnswer(for input: String) -> BuiltInAnswer? {
+        BuiltIns.answer(for: input, workflows: store.current)
+    }
+
+    /// Enter on a built-in's input: copies the answer and closes, or beeps
+    /// and stays open while there is none (`= 3*`).
+    private func copyAnswer(_ answer: BuiltInAnswer) {
+        guard let value = answer.value else {
+            NSSound.beep()
+            return
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard pasteboard.setString(value, forType: .string) else {
+            NSSound.beep()
+            return
+        }
+        UsageStats.shared.record(answer.kind.usageCounter)
+        didLaunch = true
+        textField.stringValue = ""
+        hide()
     }
 
     private func open(_ app: AppEntry) {
@@ -214,12 +248,17 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         }
     }
 
-    /// Enter: the matching app, else the workflow or fallback URL. ⌘↩
-    /// (`searchOnly`) skips the app and runs the fallback search.
+    /// Enter: a built-in's answer, else the matching app, else the workflow
+    /// or fallback URL. ⌘↩ (`searchOnly`) skips built-ins and the app and
+    /// runs the fallback search.
     private func execute(searchOnly: Bool = false) {
         // Keyword typed without its argument: keep the bar open and wait.
         if store.current.workflowAwaitingArgument(textField.stringValue) != nil {
             UsageStats.shared.record(.launcherEnterNeedsArgument)
+            return
+        }
+        if !searchOnly, let answer = builtInAnswer(for: textField.stringValue) {
+            copyAnswer(answer)
             return
         }
         if !searchOnly, let app = matchedApp() {
@@ -331,17 +370,21 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             if let missingPreview { previews.fetch(missingPreview) } else { previews.cancel() }
         }
 
-        // A highlighted row takes Enter; without one, the matching app does.
+        // A highlighted row takes Enter; without one, a built-in or the
+        // matching app does (never both: apps don't take a built-in's input).
         let app: AppEntry?
         switch suggestionList.selected {
         case .app(let selectedApp)?: app = selectedApp
         case .workflow?: app = nil
         case nil: app = matchedApp()
         }
+        let builtIn = suggestionList.selected == nil ? currentBuiltIn : nil
         if let app {
             let iconImage = NSWorkspace.shared.icon(forFile: app.url.path)
             iconImage.size = NSSize(width: 24, height: 24)
             icon.image = iconImage
+        } else if let builtIn {
+            icon.image = NSImage(systemSymbolName: builtIn.kind.symbolName, accessibilityDescription: nil) ?? searchIcon
         } else {
             icon.image = searchIcon
         }
@@ -351,6 +394,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             let title = suggestion.workflow.title
             hintLabel.stringValue = suggestion.workflow.takesArgument ? "↩ \(title)…" : "↩ \(title)"
             hintLabel.toolTip = nil
+        } else if let builtIn {
+            hintLabel.stringValue = builtIn.hint
+            hintLabel.toolTip = builtIn.detail
         } else if let app {
             hintLabel.stringValue = "↩ Open \(app.name)" + (store.current.fallback.map { "  ⌘↩ \($0.title)" } ?? "")
             hintLabel.toolTip = app.url.path

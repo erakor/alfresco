@@ -33,6 +33,8 @@ Recorded:
   other word, and the rest of the input, is never kept.
 - Previews and weather: answers received and failures, by kind of error.
 - Calendar: how often the event list is shown, never what it lists.
+- Built-ins: how often each one's answer is copied (calculations,
+  conversions, times, UUIDs, timestamps), never what was typed or copied.
 - Clipboard: copies by kind, copies and restores per app (by bundle ID), and
   skipped copies by reason. Never any content or file path.
 
