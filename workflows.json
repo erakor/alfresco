@@ -59,13 +59,13 @@
       "url": "alfresco://pomodoro/{query}"
     },
     {
-      "keywords": ["sleep"],
+      "keywords": ["zz"],
       "title": "Sleep",
       "description": "Put the Mac to sleep",
       "url": "alfresco://system/sleep"
     },
     {
-      "keywords": ["lock"],
+      "keywords": ["lockscreen"],
       "title": "Lock Screen",
       "description": "Lock the screen",
       "url": "alfresco://system/lock"
