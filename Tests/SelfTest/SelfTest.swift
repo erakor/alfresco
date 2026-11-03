@@ -83,6 +83,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
             PomodoroTests.run()
             SystemCommandTests.run()
             UsageStatsTests.run()
+            BuiltInTests.run()
             ClipboardTests.run()
             ClipboardSpeedTests.run()
             // These wait for decodes in the background, so the suite
