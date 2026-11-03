@@ -14,7 +14,8 @@
 // - built-ins: how often each one's answer is copied (never the input or
 //   the answer);
 // - clipboard: copies and restores per source app (bundle ID), copies by
-//   kind, skipped copies by reason. Never any content or file path.
+//   kind, skipped copies by reason, pins and unpins. Never any content or
+//   file path.
 // Turn it off with Config.usageTracking; the menu bar's "Usage…" shows a
 // summary. The launcher also ranks its list with the totals (`totals()`):
 // apps you open more often, and keywords you run more often, come first.
@@ -63,6 +64,8 @@ enum UsageCounter: String, Sendable {
     /// Image too large, or unreadable.
     case clipboardSkippedImage = "clipboard.skipped.image"
     case clipboardRestoreFailed = "clipboard.restoreFailed"
+    case clipboardPinned = "clipboard.pinned"
+    case clipboardUnpinned = "clipboard.unpinned"
 }
 
 /// One day of counters. Every field is a plain name → count map, so a field

@@ -127,9 +127,32 @@ struct ClipItem: Codable, Identifiable, Sendable {
     /// history written by older builds.
     let sourceBundleID: String?
     let content: ClipContent
+    /// Pinned items stay at the top of the history and never expire: neither
+    /// Config.clipboardRetention nor Config.clipboardMaxItems removes them,
+    /// and Clear Clipboard History keeps them. Absent (false) in history
+    /// written by older builds; an older build reading a newer file ignores
+    /// it, so a pinned item expires there like any other.
+    var pinned = false
+
+    private enum CodingKeys: String, CodingKey {
+        case id, copiedAt, sourceApp, sourceBundleID, content, pinned
+    }
 }
 
-/// File format: { "version": 1, "items": [...] }, newest item first.
+extension ClipItem {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        copiedAt = try container.decode(Date.self, forKey: .copiedAt)
+        sourceApp = try container.decodeIfPresent(String.self, forKey: .sourceApp)
+        sourceBundleID = try container.decodeIfPresent(String.self, forKey: .sourceBundleID)
+        content = try container.decode(ClipContent.self, forKey: .content)
+        pinned = try container.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+    }
+}
+
+/// File format: { "version": 1, "items": [...] }, pinned items first, then
+/// newest first.
 private struct StoredHistory: Codable {
     static let currentVersion = 1
 
@@ -171,7 +194,8 @@ struct ClipSource: Sendable {
 
 // MARK: - Store
 
-/// The history, newest first, persisted to
+/// The history, pinned items first (most recently pinned on top), then the
+/// rest newest first, persisted to
 /// ~/Library/Application Support/Launcher/clipboard-history.json, with image
 /// data in the clipboard-images folder next to it.
 @MainActor
@@ -219,6 +243,11 @@ final class ClipboardStore: NSObject {
         load()
         let lostImages = dropItemsWithMissingImages()
         knownImageFiles = usedImageFiles()
+        // A pinned image can be far older than the retention period: a fresh
+        // date keeps removeStaleImages (in this or another copy) off its file.
+        for item in items where item.pinned {
+            if case .image(let image) = item.content { ClipImageFile.touch(imageURL(for: image)) }
+        }
         if prune() || lostImages { saveNow() }
         removeStaleImages()
         removeStaleSetAsideFiles()
@@ -230,17 +259,30 @@ final class ClipboardStore: NSObject {
         pruneTimer = timer
     }
 
+    /// The number of pinned items, which come first in `items`.
+    var pinnedCount: Int {
+        items.prefix(while: \.pinned).count
+    }
+
     /// Records a copy made at `copiedAt`. Copying something already in the
-    /// history moves it up instead of adding a duplicate.
+    /// history moves it up instead of adding a duplicate; copying a pinned
+    /// item's content again leaves the pinned item where it is.
     ///
     /// Images arrive late (they're converted in the background), so an item
-    /// is placed by its time rather than always at the top.
+    /// is placed by its time rather than always at the top of the unpinned
+    /// ones.
     func add(_ content: ClipContent, source: ClipSource, copiedAt: Date = Date()) {
         if case .image(let image) = content {
             // Written by ClipImageFile.save before this call. If it's gone
             // already, there's nothing to show or restore.
             guard FileManager.default.fileExists(atPath: imageURL(for: image).path) else { return }
             knownImageFiles.insert(image.fileName)
+        }
+        if let index = items.firstIndex(where: { $0.pinned && $0.content == content }) {
+            items[index].copiedAt = max(items[index].copiedAt, copiedAt)
+            UsageStats.shared.recordClipboardCopy(content, bundleID: source.bundleID)
+            didChange()
+            return
         }
         items.removeAll { $0.content == content }
         let item = ClipItem(
@@ -250,11 +292,13 @@ final class ClipboardStore: NSObject {
             sourceBundleID: source.bundleID,
             content: content
         )
-        let index = items.firstIndex { $0.copiedAt <= copiedAt } ?? items.count
+        let index = items.firstIndex { !$0.pinned && $0.copiedAt <= copiedAt } ?? items.count
         items.insert(item, at: index)
         UsageStats.shared.recordClipboardCopy(content, bundleID: source.bundleID)
-        if items.count > Config.clipboardMaxItems {
-            items.removeLast(items.count - Config.clipboardMaxItems)
+        // Only unpinned items count, and they are the last ones.
+        let unpinned = items.count - pinnedCount
+        if unpinned > Config.clipboardMaxItems {
+            items.removeLast(unpinned - Config.clipboardMaxItems)
         }
         didChange()
     }
@@ -268,17 +312,46 @@ final class ClipboardStore: NSObject {
     }
 
     /// Moves an item back to the top with a fresh timestamp (used when it is
-    /// picked from the history panel), restarting its retention period.
+    /// picked from the history panel), restarting its retention period. A
+    /// pinned item keeps its place among the pinned ones, so they stay in
+    /// the order they were pinned.
     func promote(id: UUID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         var item = items.remove(at: index)
         item.copiedAt = Date()
-        items.insert(item, at: 0)
+        items.insert(item, at: item.pinned ? index : pinnedCount)
+        touchImage(of: item)
+        didChange()
+    }
+
+    /// Pins an item (it goes to the top) or unpins it (it goes to the top of
+    /// the unpinned items with a fresh timestamp, so it gets a full retention
+    /// period rather than expiring at once). Returns false, changing nothing,
+    /// when the item is gone or Config.clipboardMaxPinnedItems are pinned.
+    @discardableResult
+    func setPinned(id: UUID, _ pinned: Bool) -> Bool {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return false }
+        guard items[index].pinned != pinned else { return true }
+        if pinned && pinnedCount >= Config.clipboardMaxPinnedItems { return false }
+        var item = items.remove(at: index)
+        item.pinned = pinned
+        if pinned {
+            items.insert(item, at: 0)
+        } else {
+            item.copiedAt = Date()
+            items.insert(item, at: pinnedCount)
+        }
+        touchImage(of: item)
+        didChange()
+        return true
+    }
+
+    /// Keeps removeStaleImages (in this or another running copy) off an
+    /// image item's file.
+    private func touchImage(of item: ClipItem) {
         if case .image(let image) = item.content {
-            // Keeps removeStaleImages (in this or another running copy) off it.
             ClipImageFile.touch(imageURL(for: image))
         }
-        didChange()
     }
 
     func remove(id: UUID) {
@@ -286,12 +359,14 @@ final class ClipboardStore: NSObject {
         didChange()
     }
 
+    /// Deletes every item except the pinned ones.
     func clear() {
-        items.removeAll()
+        items.removeAll { !$0.pinned }
         didChange()
     }
 
-    /// Deletes items past their retention period, from memory and disk.
+    /// Deletes unpinned items past their retention period, from memory and
+    /// disk.
     func expireOldItems() {
         if prune() { didChange() }
     }
@@ -300,7 +375,7 @@ final class ClipboardStore: NSObject {
     private func prune() -> Bool {
         let cutoff = Date().addingTimeInterval(-Config.clipboardRetention)
         let before = items.count
-        items.removeAll { $0.copiedAt < cutoff }
+        items.removeAll { !$0.pinned && $0.copiedAt < cutoff }
         return items.count != before
     }
 
@@ -378,7 +453,8 @@ final class ClipboardStore: NSObject {
     /// Run at launch: deletes image files nobody can be using any more, left
     /// behind by a crash or by a history file that could not be read. A file
     /// still in some history is younger than the retention period, because
-    /// copying an image again or picking it from the panel refreshes its date.
+    /// copying an image again, picking or pinning it, and (for a pinned one)
+    /// each launch refresh its date.
     private func removeStaleImages() {
         let fileManager = FileManager.default
         guard let names = try? fileManager.contentsOfDirectory(atPath: imagesDirectory.path) else { return }
@@ -438,7 +514,9 @@ final class ClipboardStore: NSObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
-            items = try decoder.decode(StoredHistory.self, from: data).items
+            let loaded = try decoder.decode(StoredHistory.self, from: data).items
+            // Pinned first, whatever the file says, so pinnedCount holds.
+            items = loaded.filter(\.pinned) + loaded.filter { !$0.pinned }
         } catch {
             setAside(error)
         }

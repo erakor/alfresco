@@ -9,7 +9,15 @@ browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the histor
 - `⌘1` to `⌘9` do the same for the first nine rows of the (filtered) list,
   without arrowing down. Each of those rows shows its shortcut on the right.
 - `⌘↩` only puts the selected item back on the clipboard, without pasting.
-- `⌘⌫` deletes the selected item. The menu bar icon has **Clear Clipboard History**.
+- `⌘P` pins the selected item, or unpins a pinned one. Pinned items stay at
+  the top of the list (the latest pin first) with a pin on their row, and are
+  never deleted for their age or by the item limit: they're for snippets you
+  paste again and again. Picking one doesn't move it, and copying its content
+  again doesn't add a second row. Unpinning puts the item at the top of the
+  others with a fresh 24 hours. Up to 100 items can be pinned; past that,
+  `⌘P` beeps.
+- `⌘⌫` deletes the selected item, pinned or not. The menu bar icon has
+  **Clear Clipboard History**, which deletes everything except pinned items.
 - Each row shows the app it was copied from and how long ago. Images show a
   thumbnail, files their icon.
 - The right side previews the selected item: the full text, the image, or the
@@ -17,8 +25,8 @@ browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the histor
 - Files are kept as references, not copies: picking a file puts it back on the
   clipboard so `⌘V` in Finder copies it again, but a file that has since been
   moved or deleted can't be restored.
-- Items are deleted after **24 hours**. Copying something again, or picking it
-  from the history, moves it to the top and restarts its 24 hours.
+- Unpinned items are deleted after **24 hours**. Copying something again, or
+  picking it from the history, moves it to the top and restarts its 24 hours.
 - History survives quitting and restarting. It is stored, readable only by your
   user, in `~/Library/Application Support/Launcher/clipboard-history.json`,
   with images as PNG files in the `clipboard-images` folder next to it. If the
@@ -64,7 +72,8 @@ In `Sources/App/Config.swift` (rebuild after a change):
 
 - `clipboardHotKey`: the history shortcut, `.commandOptionC` (`⌘⌥C`) by default.
   Define your own `HotKey(keyCode:modifiers:display:)` with any `kVK_` key code.
-- `clipboardRetention` (24 h), `clipboardMaxItems` (500),
+- `clipboardRetention` (24 h), `clipboardMaxItems` (500, pinned items not
+  counted), `clipboardMaxPinnedItems` (100),
   `clipboardMaxTextBytes` (256 KB), `clipboardMaxImageBytes` (20 MB),
   `clipboardMaxImagePixels` (40 MP), `clipboardPollInterval` (0.5 s).
 - `clipboardIgnoredApps`: bundle IDs of apps whose copies are not recorded.

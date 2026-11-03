@@ -40,7 +40,7 @@ Each feature has its own README, next to its code in `Sources/`:
 | [Calendar](Sources/Calendar/README.md) | Your upcoming events under the input for `cal`, and a search with `cal <text>`, read from macOS Calendar (Google accounts included). Needs `build/Launcher.app`. |
 | [Built-ins](Sources/BuiltIns/README.md) | Answers in the launcher's hint, copied with Enter: a calculator and unit converter (`= 3*14`, `= 10 km in mi`), time zones (`time tokyo`), a new UUID (`uuid`) and the current time (`now`). |
 | [Pomodoro](Sources/Pomodoro/README.md) | A focus / break timer started with `pomo`, counting down in the menu bar. |
-| [Clipboard history](Sources/Clipboard/README.md) | 24 hours of copied text, images and files on `⌘⌥C`, pasted back into the app you were using. |
+| [Clipboard history](Sources/Clipboard/README.md) | 24 hours of copied text, images and files on `⌘⌥C`, pasted back into the app you were using. Pinned items stay on top and never expire. |
 | [Shared](Sources/Shared/README.md) | Local usage stats (menu bar **Usage…**), plus the hotkeys and the panel the features share. |
 | [App](Sources/App/README.md) | The wiring: menu bar, hotkey registration, `alfresco://` URLs, single instance, and `Config`. |
 

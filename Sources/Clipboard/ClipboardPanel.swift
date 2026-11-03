@@ -3,8 +3,10 @@
 // The clipboard history panel (Config.clipboardHotKey). Type to filter,
 // ↑/↓ to choose, ↩ (or double-click) to put the item back on the clipboard
 // and paste it into the app that was in front. ⌘1 to ⌘9 do the same for the
-// first nine rows, ⌘↩ only copies. ⌘⌫ deletes the selected item. The selected item is shown in full on
-// the right: text, the image, or the file.
+// first nine rows, ⌘↩ only copies. ⌘P pins or unpins the selected item
+// (pinned items stay on top and never expire). ⌘⌫ deletes the selected item.
+// The selected item is shown in full on the right: text, the image, or the
+// file.
 
 import Carbon.HIToolbox
 import Cocoa
@@ -80,7 +82,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     /// preview once for the selection change and again at the end.
     private var isReloading = false
 
-    /// The store's items that match the search field, newest first.
+    /// The store's items that match the search field, pinned ones first, then
+    /// newest first.
     private var visibleItems: [ClipItem] = []
 
     /// Set by a pick that should paste: the app that was in front, which
@@ -229,13 +232,17 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
         let total = store.items.count
         let noun = total == 1 ? "item" : "items"
-        countLabel.stringValue = query.isEmpty || visibleItems.count == total
+        var count = query.isEmpty || visibleItems.count == total
             ? "\(total) \(noun)"
             : "\(visibleItems.count) of \(total) \(noun)"
+        let pinned = store.pinnedCount
+        if pinned > 0 { count += ", \(pinned) pinned" }
+        countLabel.stringValue = count
 
+        let pin = selectedItem?.pinned == true ? "⌘P unpin" : "⌘P pin"
         hintLabel.stringValue = visibleItems.isEmpty
             ? "esc to close"
-            : "↩ paste · ⌘↩ copy · ⌘1–9 pick · ⌘⌫ delete · esc close"
+            : "↩ paste · ⌘↩ copy · ⌘1–9 pick · \(pin) · ⌘⌫ delete · esc close"
     }
 
     /// Rows reachable with ⌘1 to ⌘9; each shows its shortcut.
@@ -316,12 +323,18 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     }
 
     /// ⌘1 to ⌘9: paste the Nth row of the (filtered) list. ⌘↩: copy the
-    /// selected row without pasting.
+    /// selected row without pasting. ⌘P: pin or unpin the selected row.
     override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
         guard event.shortcutModifiers == .command else { return false }
         let keyCode = Int(event.keyCode)
         if keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter {
             pickSelected(paste: false)
+            return true
+        }
+        // By character, not key code, so ⌘P is the key that types "p" in the
+        // current layout (on Dvorak too).
+        if event.charactersIgnoringModifiers?.lowercased() == "p" {
+            togglePinSelected()
             return true
         }
         guard let number = DigitShortcuts.keyCodes[Int(event.keyCode)] else { return false }
@@ -332,6 +345,22 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         select(row: number - 1)
         pickSelected(paste: true)
         return true
+    }
+
+    /// Pins the selected item or unpins it. Beeps with nothing selected, or
+    /// when Config.clipboardMaxPinnedItems are pinned already. The selection
+    /// follows the item to its new place (onChange reloads, keeping it).
+    private func togglePinSelected() {
+        guard let item = selectedItem else {
+            NSSound.beep()
+            return
+        }
+        let pin = !item.pinned
+        guard store.setPinned(id: item.id, pin) else {
+            NSSound.beep()
+            return
+        }
+        UsageStats.shared.record(pin ? .clipboardPinned : .clipboardUnpinned)
     }
 
     private func deleteSelected() {
@@ -419,12 +448,15 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
         cell.detail.stringValue = details.joined(separator: " · ")
         cell.shortcut.stringValue = row < Self.numberedRows ? "⌘\(row + 1)" : ""
+        cell.pin.isHidden = !item.pinned
         return cell
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !isReloading else { return }
         updatePreview()
+        // The hint says "pin" or "unpin" for the selected item.
+        updateLabels(query: searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     // MARK: Preview
@@ -438,7 +470,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
         var copied = "Copied \(copiedFormatter.string(from: item.copiedAt))"
         if let app = item.sourceApp { copied += " from \(app)" }
-        var info = [copied]
+        var info = item.pinned ? ["Pinned", copied] : [copied]
 
         switch item.content {
         case .text(let text):
@@ -703,6 +735,8 @@ private final class ClipCellView: NSTableCellView {
     let detail = NSTextField(labelWithString: "")
     /// "⌘1" on the first nine rows, empty on the rest.
     let shortcut = NSTextField(labelWithString: "")
+    /// Shown on pinned items, left of the shortcut.
+    let pin = NSImageView(image: NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Pinned") ?? NSImage())
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -731,7 +765,13 @@ private final class ClipCellView: NSTableCellView {
         shortcut.setContentHuggingPriority(.required, for: .horizontal)
         shortcut.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        for view in [icon, title, detail, shortcut] {
+        pin.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+        pin.contentTintColor = .tertiaryLabelColor
+        pin.setContentHuggingPriority(.required, for: .horizontal)
+        pin.setContentCompressionResistancePriority(.required, for: .horizontal)
+        pin.isHidden = true
+
+        for view in [icon, title, detail, shortcut, pin] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
@@ -743,7 +783,7 @@ private final class ClipCellView: NSTableCellView {
             icon.heightAnchor.constraint(equalToConstant: 28),
 
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
-            title.trailingAnchor.constraint(equalTo: shortcut.leadingAnchor, constant: -8),
+            title.trailingAnchor.constraint(equalTo: pin.leadingAnchor, constant: -6),
             title.topAnchor.constraint(equalTo: topAnchor, constant: 5),
 
             detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
@@ -752,6 +792,9 @@ private final class ClipCellView: NSTableCellView {
 
             shortcut.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             shortcut.centerYAnchor.constraint(equalTo: centerYAnchor),
+            // A hidden pin keeps its place, so titles line up either way.
+            pin.trailingAnchor.constraint(equalTo: shortcut.leadingAnchor, constant: -6),
+            pin.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
 
@@ -769,6 +812,7 @@ private final class ClipCellView: NSTableCellView {
             shortcut.textColor = emphasized
                 ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.6)
                 : .tertiaryLabelColor
+            pin.contentTintColor = shortcut.textColor
         }
     }
 }
