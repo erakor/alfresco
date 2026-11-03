@@ -10,7 +10,8 @@
 // - Workflows (keyword -> URL) live in workflows.json and are reloaded
 //   automatically, so adding one needs no rebuild.
 // - alfresco:// workflow URLs run inside the app instead of being opened;
-//   alfresco://pomodoro/... drives the pomodoro timer.
+//   alfresco://pomodoro/... drives the pomodoro timer, alfresco://system/...
+//   sleeps or locks the Mac.
 //
 // Build:  ./build.sh   (or see README.md for a plain swiftc command)
 
@@ -129,6 +130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// beeps) for an unknown URL, or a command that doesn't apply now, like
     /// pausing a timer that isn't running.
     private func handleInternalURL(_ url: URL) -> Bool {
+        switch InternalURL.feature(of: url) {
+        case SystemCommand.feature: return SystemCommand(url: url)?.run() ?? false
+        case PomodoroCommand.feature: return handlePomodoroURL(url)
+        default: return false
+        }
+    }
+
+    private func handlePomodoroURL(_ url: URL) -> Bool {
         guard let pomodoro, let command = PomodoroCommand(url: url) else { return false }
         switch command {
         case .toggle:

@@ -37,8 +37,8 @@ private final class InputArea {
 @MainActor
 final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let store: WorkflowStore
-    /// Runs alfresco:// URLs (e.g. alfresco://pomodoro/start) inside the
-    /// app. False means the URL was not understood.
+    /// Runs alfresco:// URLs (e.g. alfresco://pomodoro/start,
+    /// alfresco://system/lock) inside the app. False means the URL was not understood.
     private let internalURLHandler: (URL) -> Bool
     private let textField = NSTextField()
     private let hintLabel = FloatingPanelController.makeHintLabel()
