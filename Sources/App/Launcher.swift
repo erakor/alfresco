@@ -5,7 +5,8 @@
 // the features live in the other folders under Sources/.
 //
 // - Runs as an accessory agent (no Dock icon). A small menu bar icon offers
-//   "Open", "Clipboard History", "Edit Workflows…" and "Quit"; turn it off
+//   "Open", "Clipboard History", "Edit Workflows…", "Launch at Login" and
+//   "Quit"; turn it off
 //   with Config.showMenuBarIcon.
 // - Workflows (keyword -> URL) live in workflows.json and are reloaded
 //   automatically, so adding one needs no rebuild.
@@ -97,6 +98,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             menu.addItem(menuItem("Usage…", #selector(showUsage)))
         }
         menu.addItem(.separator())
+        if LoginItem.isSupported {
+            menu.addItem(menuItem("Launch at Login", #selector(toggleLaunchAtLogin)))
+        }
         menu.addItem(NSMenuItem(title: "Quit Launcher", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
 
@@ -119,6 +123,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     @objc private func clearClipboardHistory() {
         clipboardStore?.clear()
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        LoginItem.toggle()
     }
 
     @objc private func startPomodoro() {
@@ -158,10 +166,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     // MARK: NSMenuItemValidation
 
     /// "Start Pomodoro" is only offered while no session is under way; the
-    /// pomodoro's own menu bar item handles a running one.
+    /// pomodoro's own menu bar item handles a running one. "Launch at Login"
+    /// shows its current state (a dash while it waits for approval), and can
+    /// only be turned on in an installed copy.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(startPomodoro) {
             return pomodoro?.state == .idle
+        }
+        if menuItem.action == #selector(toggleLaunchAtLogin) {
+            let state = LoginItem.state
+            let installed = LoginItem.isInstalled
+            menuItem.state = state.controlState
+            menuItem.toolTip = LoginItem.toolTip(state: state, installed: installed)
+            return LoginItem.canToggle(state: state, installed: installed)
         }
         return true
     }
@@ -236,12 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         alert.informativeText = stats.summary(days: 30)
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Show File in Finder")
-        if #available(macOS 14.0, *) {
-            NSApp.activate()
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        if alert.runModal() == .alertSecondButtonReturn {
+        if alert.runModalInFront() == .alertSecondButtonReturn {
             if FileManager.default.fileExists(atPath: stats.fileURL.path) {
                 NSWorkspace.shared.activateFileViewerSelecting([stats.fileURL])
             } else {
@@ -259,12 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             or macOS rejected \(hotKeys.count == 1 ? "it" : "them"). Change Config.hotKey or \
             Config.clipboardHotKey in Sources/App/Config.swift and rebuild.
             """
-        if #available(macOS 14.0, *) {
-            NSApp.activate()
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        alert.runModal()
+        alert.runModalInFront()
     }
 }
 
@@ -280,6 +287,13 @@ enum LauncherApp {
         // `Launcher --check [file ...]` checks workflows files (by default
         // the one the app would read) and exits. Before the single-instance
         // lock, so it also works while the app runs, and on CI.
+        // `Launcher --lock-path` prints the single-instance lock file, which
+        // install.sh uses to find every running copy, then exits.
+        if CommandLine.arguments.contains("--lock-path") {
+            print(lockFileURL.path)
+            exit(0)
+        }
+
         if let index = CommandLine.arguments.firstIndex(of: "--check") {
             let paths = CommandLine.arguments.dropFirst(index + 1)
             let source = Config.workflowsSource
@@ -325,15 +339,20 @@ enum LauncherApp {
 }
 
 extension LauncherApp {
+    /// Held by every running copy; install.sh reads it with --lock-path.
+    @MainActor
+    static var lockFileURL: URL {
+        ClipboardStore.directory.appendingPathComponent("launcher.lock")
+    }
+
     /// Takes an exclusive lock on a file in the shared support folder and holds
     /// it until the process exits (the descriptor is never closed; the system
     /// releases the lock on exit, including a crash). False if another copy
     /// holds it.
     @MainActor
     static func acquireSingleInstanceLock() -> Bool {
-        let directory = ClipboardStore.directory
-        try? ClipImageFile.createPrivateDirectory(directory)
-        let path = directory.appendingPathComponent("launcher.lock").path
+        try? ClipImageFile.createPrivateDirectory(ClipboardStore.directory)
+        let path = lockFileURL.path
         let descriptor = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
         // If the lock file can't be opened, run anyway rather than not at all.
         guard descriptor >= 0 else { return true }
