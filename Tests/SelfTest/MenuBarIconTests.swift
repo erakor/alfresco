@@ -20,6 +20,9 @@ enum MenuBarIconTests {
             SelfTest.check("menu bar icon: bitmap for drawing", false)
             return
         }
+        // 36 pixels for 18 points; without this the bitmap is 36 points and
+        // the icon fills only a quarter of it.
+        bitmap.size = image.size
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
         image.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
