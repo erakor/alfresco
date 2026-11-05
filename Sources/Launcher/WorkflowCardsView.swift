@@ -92,7 +92,7 @@ enum WorkflowIcon {
 /// `preferredHeight` and shows it only while the input is empty.
 @MainActor
 final class WorkflowCardsView: NSView {
-    static let columns = 4
+    static let columns = 3
     static let cardHeight: CGFloat = 52
     static let spacing: CGFloat = 10
     /// Space under the last row, above the panel's bottom edge.

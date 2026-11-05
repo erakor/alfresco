@@ -153,7 +153,7 @@ a space.
 
 ### Command cards
 
-While the input is empty, the commands show as cards under it, four per row
+While the input is empty, the commands show as cards under it, three per row
 (up to 12, `Config.workflowCardLimit`), each with the icon of what it opens,
 its title and its command (`/pr …`). The ones you run most come first, from
 the [usage stats](../Shared/README.md#usage-stats) of the last 90 days (both
