@@ -105,6 +105,19 @@ enum Config {
     /// live from the repo) can't do more than open web pages. To use an app's
     /// own scheme in a workflow, add it here (lowercase) and rebuild.
     static let workflowURLSchemes: Set<String> = ["alfresco", "http", "https", "mailto"]
+    /// Typed before every workflows.json keyword: `/pr 12`, `/cal`, `/zz`.
+    /// Keywords in the file are written without it. Bare words then only go
+    /// to apps, built-ins and the fallback search, so a command never runs
+    /// by accident, and input starting with it never goes anywhere else
+    /// (an unknown command beeps). The prefix alone, or followed by
+    /// `commandListKeyword`, lists every command. nil types keywords bare,
+    /// with no list. It must not overlap `calculatorPrefix` (neither may
+    /// start with the other), or the calculator's input would be taken as
+    /// a command; the self-test checks this.
+    static let commandPrefix: String? = "/"
+    /// `/help` lists every command, like `/` alone, unless a workflow uses
+    /// this keyword itself.
+    static let commandListKeyword = "help"
 
     // MARK: Apps
 
@@ -158,7 +171,7 @@ enum Config {
 
     // MARK: Weather
 
-    /// `weather` or `weather <place>` in the launcher shows the forecast
+    /// `/weather` or `/weather <place>` in the launcher shows the forecast
     /// under the input, once a WeatherAPI.com key is set. Enter still opens
     /// whatever workflows.json maps the keyword to.
     static let weatherKeyword = "weather"
@@ -197,18 +210,18 @@ enum Config {
 
     // MARK: Calendar
 
-    /// `cal` in the launcher lists upcoming events from the calendars macOS
+    /// `/cal` in the launcher lists upcoming events from the calendars macOS
     /// Calendar knows (add a Google account in System Settings > Internet
-    /// Accounts), `cal <text>` searches them. Needs build/Launcher.app and the
+    /// Accounts), `/cal <text>` searches them. Needs build/Launcher.app and the
     /// Calendars permission. Enter still opens whatever workflows.json maps
     /// the keyword to.
     static let calendarKeyword = "cal"
     /// Days listed by the bare keyword, today included.
     static let calendarDays = 3
-    /// Days searched by `cal <text>`, today included.
+    /// Days searched by `/cal <text>`, today included.
     static let calendarSearchDays = 30
-    /// Events listed at most by `cal <text>`; the rest are counted on a last
-    /// line. (`cal` shows the next event, then up to 4 per column.)
+    /// Events listed at most by `/cal <text>`; the rest are counted on a last
+    /// line. (`/cal` shows the next event, then up to 4 per column.)
     static let calendarMaxEvents = 8
     /// Account names (System Settings > Internet Accounts, e.g. a Gmail
     /// address) whose calendars are listed. Empty lists every account.
@@ -225,7 +238,7 @@ enum Config {
     // MARK: Pomodoro
 
     /// Controlled from the launcher through alfresco://pomodoro/... URLs in
-    /// workflows.json (the `pomo` keyword), and shown in the menu bar while
+    /// workflows.json (the `/pomo` keyword), and shown in the menu bar while
     /// it runs. Lengths in seconds.
     static let pomodoroFocus: TimeInterval = 25 * 60
     static let pomodoroShortBreak: TimeInterval = 5 * 60

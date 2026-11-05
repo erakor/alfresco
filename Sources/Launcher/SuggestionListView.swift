@@ -189,7 +189,8 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
             cell.detail.stringValue = (app.url.path as NSString).abbreviatingWithTildeInPath
         case .workflow(let suggestion):
             let workflow = suggestion.workflow
-            let keyword = workflow.takesArgument ? "\(suggestion.keyword) …" : suggestion.keyword
+            let typed = CommandInput.typed(suggestion.keyword)
+            let keyword = workflow.takesArgument ? "\(typed) …" : typed
             cell.title.stringValue = workflow.title
             cell.detail.stringValue = "\(keyword)  ·  \(workflow.help ?? workflow.url)"
         }

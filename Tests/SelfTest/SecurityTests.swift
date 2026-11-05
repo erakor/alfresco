@@ -78,7 +78,7 @@ enum SecurityTests {
               httpPreview?.workflows.count == 1 && httpPreview?.workflows.first?.preview == nil
                   && httpPreview?.refused.first?.hasSuffix("(its preview is left out)") == true,
               "\(httpPreview?.refused ?? [])")
-        let command = httpPreview.flatMap { CommandParser.parse("kw 12", using: $0) }
+        let command = httpPreview.flatMap { CommandParser.parse("/kw 12", using: $0) }
         check("workflows: its keyword still runs its url, with no preview",
               command?.url.absoluteString == "https://example.com/12" && command?.preview == nil,
               command?.url.absoluteString ?? "nil")
@@ -107,8 +107,8 @@ enum SecurityTests {
                   CommandParser.parse("secret search", using: set) == nil
                       && CommandParser.isUnmatched("secret search", using: set))
             check("workflows: with no fallback, keywords still run",
-                  CommandParser.parse("kw 12", using: set)?.url.absoluteString == "https://example.com/12"
-                      && !CommandParser.isUnmatched("kw 12", using: set))
+                  CommandParser.parse("/kw 12", using: set)?.url.absoluteString == "https://example.com/12"
+                      && !CommandParser.isUnmatched("/kw 12", using: set))
         }
         let noFallback = decode(json([workflow("https://example.com/{query}")]))
         check("workflows: a file without a fallback uses the built-in one",

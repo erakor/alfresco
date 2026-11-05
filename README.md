@@ -1,9 +1,9 @@
 # alfresco
 
 A small, Spotlight-style URL launcher for macOS. Press a global hotkey,
-type a command, hit Enter, and the URL opens in your default browser. Type an
-app's name instead and it opens the app. Type `cal` to see your upcoming
-events (Google calendars included), or `= 3*14` to calculate. It also keeps a 24-hour clipboard
+type a command (`/pr 12`; `/` lists them all), hit Enter, and the URL opens
+in your default browser. Type an app's name instead and it opens the app.
+Type `/cal` to see your upcoming events (Google calendars included), or `= 3*14` to calculate. It also keeps a 24-hour clipboard
 history on a second hotkey, runs a pomodoro timer you start from the
 launcher, and can sleep or lock the Mac.
 
@@ -11,20 +11,22 @@ launcher, and can sleep or lock the Mac.
 - Accessory agent: no Dock icon (optional menu bar icon with Open / Clipboard History / Edit Workflows / Launch at Login / Quit).
 - Workflows live in a JSON file and reload automatically: no rebuild to add one.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
-- Suggestions as you type, with icons: matching apps and keywords (`p` lists `pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
+- Commands start with `/`, so a bare word never runs one by accident; `/` or `/help` lists them all.
+- Suggestions as you type, with icons: matching apps, and commands after `/` (`/p` lists `/pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
 
 | Input          | Opens                                                             |
 | -------------- | ----------------------------------------------------------------- |
-| `pr 123`       | `https://github.com/<owner>/<repo>/pull/123` (`pr #123` works too) |
-| `jira abc-42`  | `https://understood.atlassian.net/browse/ABC-42`                  |
-| `cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
-| `weather`      | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
-| `weather paris` | `https://wttr.in/paris?lang=fr&m`                                |
-| `cal`          | `https://calendar.google.com/calendar/r`; the launcher lists your next [events](Sources/Calendar/README.md) |
-| `cal standup`  | Google Calendar's search for `standup`; the launcher lists the matching events |
+| `/` or `/help` | Nothing: lists every [command](Sources/Launcher/README.md#commands) |
+| `/pr 123`      | `https://github.com/<owner>/<repo>/pull/123` (`/pr #123` works too) |
+| `/jira abc-42` | `https://understood.atlassian.net/browse/ABC-42`                  |
+| `/cf 5KsDBWseXY` | `https://app.contentful.com/spaces/p0qf7j048i0q/entries/5KsDBWseXY` |
+| `/weather`     | `https://wttr.in/?lang=fr&m` (where you are, in French, metric); the hint shows the current weather |
+| `/weather paris` | `https://wttr.in/paris?lang=fr&m`                               |
+| `/cal`         | `https://calendar.google.com/calendar/r`; the launcher lists your next [events](Sources/Calendar/README.md) |
+| `/cal standup` | Google Calendar's search for `standup`; the launcher lists the matching events |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
-| `pomo`         | Starts a 25 min [pomodoro](Sources/Pomodoro/README.md), or pauses / resumes it (nothing opens) |
-| `zz`, `lockscreen`, `displaysleep` | Puts the Mac to sleep, locks the screen, or turns the display off ([System](Sources/System/README.md)) |
+| `/pomo`        | Starts a 25 min [pomodoro](Sources/Pomodoro/README.md), or pauses / resumes it (nothing opens) |
+| `/zz`, `/lockscreen`, `/displaysleep` | Puts the Mac to sleep, locks the screen, or turns the display off ([System](Sources/System/README.md)) |
 | `= 3*14`, `= 10 km in mi` | Nothing: the hint shows the [answer](Sources/BuiltIns/README.md) (`42`) and Enter copies it |
 | `time tokyo`, `time 15:00 in tokyo` | Nothing: the time there, copied with Enter |
 | `uuid`, `now`  | Nothing: Enter copies a new UUID, or the current time in ISO 8601 |
@@ -36,12 +38,12 @@ Each feature has its own README, next to its code in `Sources/`:
 
 | Feature | What it does |
 | ------- | ------------ |
-| [Launcher](Sources/Launcher/README.md) | The `⌘⇧Space` bar: workflows (`workflows.json`, its format and where it is read from), keyword suggestions, and opening apps by name. |
-| [Weather](Sources/Weather/README.md) | The forecast under the input for `weather` / `weather <place>`, and the current weather above it. Needs a free WeatherAPI.com key. |
-| [Calendar](Sources/Calendar/README.md) | Your upcoming events under the input for `cal`, and a search with `cal <text>`, read from macOS Calendar (Google accounts included). Needs `build/Launcher.app`. |
+| [Launcher](Sources/Launcher/README.md) | The `⌘⇧Space` bar: workflows (`workflows.json`, its format and where it is read from), `/` commands and their suggestions, and opening apps by name. |
+| [Weather](Sources/Weather/README.md) | The forecast under the input for `/weather` / `/weather <place>`, and the current weather above it. Needs a free WeatherAPI.com key. |
+| [Calendar](Sources/Calendar/README.md) | Your upcoming events under the input for `/cal`, and a search with `/cal <text>`, read from macOS Calendar (Google accounts included). Needs `build/Launcher.app`. |
 | [Built-ins](Sources/BuiltIns/README.md) | Answers in the launcher's hint, copied with Enter: a calculator and unit converter (`= 3*14`, `= 10 km in mi`), time zones (`time tokyo`), a new UUID (`uuid`) and the current time (`now`). |
-| [Pomodoro](Sources/Pomodoro/README.md) | A focus / break timer started with `pomo`, counting down in the menu bar. |
-| [System](Sources/System/README.md) | `zz` (sleep), `lockscreen` and `displaysleep` from the launcher, with no permission prompt. |
+| [Pomodoro](Sources/Pomodoro/README.md) | A focus / break timer started with `/pomo`, counting down in the menu bar. |
+| [System](Sources/System/README.md) | `/zz` (sleep), `/lockscreen` and `/displaysleep` from the launcher, with no permission prompt. |
 | [Clipboard history](Sources/Clipboard/README.md) | 24 hours of copied text, images and files on `⌘⌥C`, pasted back into the app you were using. Pinned items stay on top and never expire. |
 | [Shared](Sources/Shared/README.md) | Local usage stats (menu bar **Usage…**), plus the hotkeys and the panel the features share. |
 | [App](Sources/App/README.md) | The wiring: menu bar, hotkey registration, `alfresco://` URLs, single instance, and `Config`. |

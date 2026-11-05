@@ -1,6 +1,6 @@
 ---
 name: add-workflow
-description: Add, change, or remove a keyword in alfresco's workflows.json (keyword → URL shortcuts like "pr 12" or "jira abc-42"), and check the file with the app's own decoder. Use when the user wants a new launcher keyword, a different URL or transform for one, or asks why a keyword doesn't work.
+description: Add, change, or remove a keyword in alfresco's workflows.json (keyword → URL shortcuts typed as "/pr 12" or "/jira abc-42"), and check the file with the app's own decoder. Use when the user wants a new launcher keyword, a different URL or transform for one, or asks why a keyword doesn't work.
 ---
 
 # Add or change a workflow
@@ -15,14 +15,17 @@ reference is the table under "Workflows" in `Sources/Launcher/README.md`.
 {
   "keywords": ["pr"],
   "title": "GitHub PR",
-  "description": "erakor/alfresco PR by number, e.g. pr 12",
+  "description": "erakor/alfresco PR by number, e.g. /pr 12",
   "url": "https://github.com/erakor/alfresco/pull/{query}",
   "transforms": ["stripPrefix:#"]
 }
 ```
 
 - **`keywords`**: single lowercase words (the decoder lowercases and rejects
-  spaces). Short, easy to type, and not already in the file. A keyword may be
+  spaces), written without the `/` the user types before them
+  (`Config.commandPrefix`; a leading `/` in the file is dropped). Short, easy
+  to type, and not already in the file. `help` is free only if `/help` should
+  stop listing the commands. A keyword may be
   listed twice only as one workflow with `{query}` and one without (the bare
   keyword opens the second, the keyword plus an argument the first, as
   `weather` does). Two of the same form: the first wins, the second is
@@ -30,8 +33,8 @@ reference is the table under "Workflows" in `Sources/Launcher/README.md`.
 - **`url`**: does it take an argument?
   - With `{query}`, the keyword needs an argument. Typed alone, Enter does
     nothing and the hint shows `description`.
-  - Without `{query}`, only the bare keyword matches. `kw something` goes to the
-    fallback search instead, unless the same keyword also has a `{query}`
+  - Without `{query}`, only the keyword alone matches. `/kw something` is then
+    an unknown command (Enter beeps), unless the same keyword also has a `{query}`
     workflow.
   - The argument is percent-encoded with the RFC 3986 unreserved set, so `/`,
     `?`, `#` and spaces are encoded too. Put `{query}` where a single encoded
@@ -48,7 +51,7 @@ reference is the table under "Workflows" in `Sources/Launcher/README.md`.
   Use them for how people actually paste things (`#12`, `abc-42`, a trailing
   `/`).
 - **`description`**: always include one, with a concrete example ("…, e.g.
-  jira abc-42"). It's the only help shown while typing and in the menu bar's
+  /jira abc-42"). It's the only help shown while typing and in the menu bar's
   Workflows submenu.
 - **`title`**: short. It's shown as "<title> <argument>" in the hint.
 - **`preview`** (optional): an https URL (an http one is left out and reported) returning one short line of plain
@@ -69,7 +72,7 @@ must contain `{query}`.
 ## 3. Check
 
 ```bash
-.claude/skills/add-workflow/scripts/check.sh workflows.json "<kw> <sample arg>" "<kw>" "<other existing kw> <arg>"
+.claude/skills/add-workflow/scripts/check.sh workflows.json "/<kw> <sample arg>" "/<kw>" "/<other existing kw> <arg>"
 ```
 
 The script compiles the real `Workflow`/`WorkflowSet`/`CommandParser` code from
