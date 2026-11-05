@@ -161,6 +161,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     private func inputDidChange() {
+        let signposter = Signposts.signposter
+        let signpost = signposter.beginInterval(
+            "launcher.input", "length=\(self.textField.stringValue.count, privacy: .public)"
+        )
         currentBuiltIn = builtInAnswer(for: textField.stringValue)
         updateSuggestions()
         updateHint()
@@ -168,6 +172,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateCalendar(resize: false)
         updateWeather(resize: false)
         updateHeight()
+        signposter.endInterval("launcher.input", signpost, "rows=\(self.suggestionList.items.count, privacy: .public)")
     }
 
     /// A rescan finished. Nothing to refresh while the panel is hidden
@@ -642,6 +647,17 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             return false
         }
     }
+
+    #if SELFTEST
+    /// Puts `text` in the input as typing it would.
+    func typeForSelfTest(_ text: String) {
+        textField.stringValue = text
+        inputDidChange()
+    }
+
+    /// The installed apps found so far (0 until the first scan finishes).
+    var appCountForSelfTest: Int { apps.apps.count }
+    #endif
 
     // MARK: Setup
 

@@ -23,6 +23,15 @@ enum ClipContent: Equatable, Sendable {
     /// kept: the files themselves are not copied, so a moved or deleted file
     /// can no longer be restored.
     case files([String])
+
+    /// Its kind, for signpost metadata.
+    var signpostKind: Signposts.Kind {
+        switch self {
+        case .text: return .text
+        case .image: return .image
+        case .files: return .files
+        }
+    }
 }
 
 /// An image clip. Its PNG data is stored as `<sha256>.png` in the store's
@@ -242,6 +251,7 @@ final class ClipboardStore: NSObject {
         ClipImageFile.makePrivate(directory)
         ClipImageFile.makePrivate(imagesDirectory)
 
+        let launch = Signposts.signposter.beginInterval("clipboard.store.init")
         load()
         let lostImages = dropItemsWithMissingImages()
         knownImageFiles = usedImageFiles()
@@ -253,6 +263,7 @@ final class ClipboardStore: NSObject {
         if prune() || lostImages { saveNow() }
         removeStaleImages()
         removeStaleSetAsideFiles()
+        Signposts.signposter.endInterval("clipboard.store.init", launch, "items=\(self.items.count, privacy: .public)")
 
         // Expire old items even when nothing new is being copied.
         let timer = Timer(timeInterval: 60, target: self, selector: #selector(pruneTick), userInfo: nil, repeats: true)
@@ -377,6 +388,21 @@ final class ClipboardStore: NSObject {
         didChange()
     }
 
+    #if SELFTEST
+    /// Puts back a list read from `items` earlier, without saving: the perf
+    /// suite keeps its seeded history whole between runs.
+    func replaceItemsForSelfTest(_ items: [ClipItem]) { self.items = items }
+
+    /// Stops the timers, which hold on to the store, so one made only to be
+    /// measured is freed.
+    func stopTimersForSelfTest() {
+        pruneTimer?.invalidate()
+        pruneTimer = nil
+        saveTimer?.invalidate()
+        saveTimer = nil
+    }
+    #endif
+
     /// Deletes unpinned items past their retention period, from memory and
     /// disk.
     func expireOldItems() {
@@ -435,16 +461,25 @@ final class ClipboardStore: NSObject {
         saveTimer = nil
         guard canSave else { return }
 
+        let signposter = Signposts.signposter
+        let save = signposter.beginInterval("clipboard.save", "items=\(self.items.count, privacy: .public)")
+        defer { signposter.endInterval("clipboard.save", save) }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         do {
             // Clipboard contents can be sensitive: owner-only access.
             try ClipImageFile.createPrivateDirectory(fileURL.deletingLastPathComponent())
-            let data = try encoder.encode(StoredHistory(items: items))
-            try data.write(to: fileURL, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
-            // The atomic write replaced the file, and with it the flag.
-            excludeFromBackup(fileURL)
+            let data = try signposter.withIntervalSignpost(
+                "clipboard.save.encode", "items=\(self.items.count, privacy: .public)"
+            ) {
+                try encoder.encode(StoredHistory(items: items))
+            }
+            try signposter.withIntervalSignpost("clipboard.save.write", "bytes=\(data.count, privacy: .public)") {
+                try data.write(to: fileURL, options: .atomic)
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+                // The atomic write replaced the file, and with it the flag.
+                excludeFromBackup(fileURL)
+            }
         } catch {
             NSLog("Launcher: could not save clipboard history: \(error)")
             return
@@ -514,6 +549,14 @@ final class ClipboardStore: NSObject {
     }
 
     private func load() {
+        let signposter = Signposts.signposter
+        let signpost = signposter.beginInterval("clipboard.load")
+        var bytes = 0
+        defer {
+            signposter.endInterval(
+                "clipboard.load", signpost, "bytes=\(bytes, privacy: .public) items=\(self.items.count, privacy: .public)"
+            )
+        }
         let data: Data
         do {
             data = try Data(contentsOf: fileURL)
@@ -523,10 +566,13 @@ final class ClipboardStore: NSObject {
             setAside(error)
             return
         }
+        bytes = data.count
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
-            let loaded = try decoder.decode(StoredHistory.self, from: data).items
+            let loaded = try signposter.withIntervalSignpost("clipboard.load.decode", "bytes=\(data.count, privacy: .public)") {
+                try decoder.decode(StoredHistory.self, from: data).items
+            }
             // Pinned first, whatever the file says, so pinnedCount holds.
             items = loaded.filter(\.pinned) + loaded.filter { !$0.pinned }
         } catch {
@@ -649,13 +695,21 @@ final class ClipboardMonitor: NSObject {
         guard changeCount != lastChangeCount else { return }
         lastChangeCount = changeCount
 
+        // Only polls that read the clipboard; an image's conversion is
+        // ClipImageFile.save's own interval.
+        let signpost = Signposts.signposter.beginInterval("clipboard.poll")
+        var recorded = Signposts.Kind.none
+        defer { Signposts.end("clipboard.poll", signpost, recorded) }
+
         let types = pasteboard.types ?? []
         guard !types.contains(where: { Self.ignoredTypes.contains($0) }) else {
+            recorded = .marked
             UsageStats.shared.record(.clipboardSkippedMarked)
             return
         }
         let source = ClipSource.frontmost
         guard !Self.isIgnored(source) else {
+            recorded = .ignored
             UsageStats.shared.record(.clipboardSkippedApp)
             return
         }
@@ -681,13 +735,16 @@ final class ClipboardMonitor: NSObject {
         }
 
         if preferImage, let imageType {
-            recordImage(type: imageType, changeCount: changeCount, source: source, copiedAt: copiedAt)
+            recorded = recordImage(type: imageType, changeCount: changeCount, source: source, copiedAt: copiedAt)
         } else if let filePaths {
+            recorded = .files
             store.add(.files(filePaths), source: source, copiedAt: copiedAt)
         } else if let text {
+            recorded = .text
             store.add(.text(text), source: source, copiedAt: copiedAt)
         } else if types.contains(.string) {
             // Text refused by readText (too large, or only whitespace).
+            recorded = .skipped
             UsageStats.shared.record(.clipboardSkippedText)
         }
     }
@@ -724,19 +781,20 @@ final class ClipboardMonitor: NSObject {
     /// Reads the image's bytes here (the clipboard is read on the main
     /// thread) and checks its pixel size from the header alone. Decoding,
     /// PNG conversion, hashing and writing happen in the background, so a
-    /// huge image can't freeze the panels.
+    /// huge image can't freeze the panels. Returns `.image` once the save is
+    /// started (it can still fail: see the clipboard.image.save interval).
     private func recordImage(
         type: NSPasteboard.PasteboardType, changeCount: Int, source: ClipSource, copiedAt: Date
-    ) {
+    ) -> Signposts.Kind {
         guard let data = pasteboard.data(forType: type) else {
             UsageStats.shared.record(.clipboardSkippedImage)
-            return
+            return .skipped
         }
         // As in poll: a newer copy's image, read before its markers were checked.
-        guard pasteboard.changeCount == changeCount else { return }
+        guard pasteboard.changeCount == changeCount else { return .none }
         if let size = ClipImageFile.pixelSize(of: data), !ClipImageFile.isAcceptable(size) {
             UsageStats.shared.record(.clipboardSkippedImage)
-            return
+            return .skipped
         }
 
         let store = self.store
@@ -748,6 +806,7 @@ final class ClipboardMonitor: NSObject {
             }
             await store.add(.image(image), source: source, copiedAt: copiedAt)
         }
+        return .image
     }
 
     /// Copies made in an app of Config.clipboardIgnoredApps.
@@ -801,6 +860,23 @@ enum ClipImageFile {
     /// Converts to PNG, checks the limits and writes `<sha256>.png` into
     /// `directory` (or refreshes the date of an identical file already there).
     static func save(_ data: Data, type: NSPasteboard.PasteboardType, in directory: URL) -> ClipImage? {
+        let signposter = Signposts.signposter
+        let signpost = signposter.beginInterval(
+            "clipboard.image.save", id: signposter.makeSignpostID(), "bytes=\(data.count, privacy: .public)"
+        )
+        let image = convertAndWrite(data, type: type, in: directory)
+        if let image {
+            signposter.endInterval(
+                "clipboard.image.save", signpost,
+                "png=\(image.byteCount, privacy: .public) pixels=\(image.pixelWidth, privacy: .public)x\(image.pixelHeight, privacy: .public)"
+            )
+        } else {
+            Signposts.end("clipboard.image.save", signpost, .failed)
+        }
+        return image
+    }
+
+    private static func convertAndWrite(_ data: Data, type: NSPasteboard.PasteboardType, in directory: URL) -> ClipImage? {
         // recordImage checked this already; repeated so no caller can have a
         // huge image decoded. A PNG is kept as is and checked just below.
         if type != .png, let size = pixelSize(of: data), !isAcceptable(size) { return nil }

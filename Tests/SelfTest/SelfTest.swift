@@ -96,6 +96,17 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
                 SelfTest.finish()
             }
             return
+        case "perf":
+            // Timings only (see PerfTests); finishes once they are printed.
+            guard #available(macOS 13, *) else {
+                SelfTest.log("The perf suite needs macOS 13 or later (ContinuousClock)")
+                exit(2)
+            }
+            Task {
+                await PerfTests.run()
+                SelfTest.finish()
+            }
+            return
         case "relaunch-write":
             PomodoroTests.relaunchWrite()
         case "relaunch-read":
@@ -105,7 +116,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
             PomodoroTests.menuBarHold()
             return
         default:
-            SelfTest.log("Unknown suite \(suite); use unit, relaunch-write, relaunch-read or menubar-hold")
+            SelfTest.log("Unknown suite \(suite); use unit, perf, relaunch-write, relaunch-read or menubar-hold")
             exit(2)
         }
         SelfTest.finish()

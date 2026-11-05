@@ -211,6 +211,16 @@ final class CalendarProvider {
     }
 
     nonisolated private static func fetch(from box: EventStoreBox, days: Int) -> FetchResult {
+        let signposter = Signposts.signposter
+        let signpost = signposter.beginInterval(
+            "calendar.fetch", id: signposter.makeSignpostID(), "days=\(days, privacy: .public)"
+        )
+        let result = fetchEvents(from: box, days: days)
+        signposter.endInterval("calendar.fetch", signpost, "events=\(result.events.count, privacy: .public)")
+        return result
+    }
+
+    nonisolated private static func fetchEvents(from box: EventStoreBox, days: Int) -> FetchResult {
         let store = box.store
         let allCalendars = store.calendars(for: .event)
         guard !allCalendars.isEmpty else {
@@ -300,6 +310,8 @@ final class CalendarProvider {
     }
 
     private func storeDidChange() {
+        // Each one leads to a fetch the next time the list is drawn.
+        Signposts.signposter.emitEvent("calendar.storeChanged")
         invalidate()
         onUpdate?()
     }

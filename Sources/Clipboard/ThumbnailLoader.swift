@@ -51,7 +51,11 @@ final class ThumbnailLoader {
     /// (unless it failed before).
     func image(for url: URL) -> NSImage? {
         let path = url.path
-        if let image = cache.object(forKey: path as NSString) { return image }
+        if let image = cache.object(forKey: path as NSString) {
+            Signposts.signposter.emitEvent("thumbnail.hit", "maxPixel=\(self.maxPixelSize, privacy: .public)")
+            return image
+        }
+        Signposts.signposter.emitEvent("thumbnail.miss", "maxPixel=\(self.maxPixelSize, privacy: .public)")
         // Wanted again (an image copied again) before its dropped decode ended.
         if path == decoding { discardsDecoding = false }
         if !failed.contains(path), queued.insert(path).inserted {
@@ -142,13 +146,29 @@ final class ThumbnailLoader {
 
     /// Downsampled with ImageIO, so the full-size image is never kept.
     nonisolated private static func decode(_ url: URL, maxPixelSize: Int) -> CGImage? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let signposter = Signposts.signposter
+        let signpost = signposter.beginInterval(
+            "thumbnail.decode", id: signposter.makeSignpostID(), "maxPixel=\(maxPixelSize, privacy: .public)"
+        )
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            Signposts.end("thumbnail.decode", signpost, .failed)
+            return nil
+        }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
         ]
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        if let image {
+            signposter.endInterval(
+                "thumbnail.decode", signpost,
+                "pixels=\(image.width, privacy: .public)x\(image.height, privacy: .public)"
+            )
+        } else {
+            Signposts.end("thumbnail.decode", signpost, .failed)
+        }
+        return image
     }
 
     #if SELFTEST

@@ -79,22 +79,34 @@ private enum PreviewLoader {
     /// with something that is not HTML. Only the first `maxBytes` are read:
     /// the download stops there, however long the answer is.
     static func load(_ url: URL) async throws -> String {
+        let signposter = Signposts.signposter
+        let signpost = signposter.beginInterval("preview.load", id: signposter.makeSignpostID())
+        var outcome = Signposts.Kind.failed
+        var bytes = 0
+        defer { Signposts.end("preview.load", signpost, outcome, bytes: bytes) }
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
-        let (bytes, response) = try await HTTPSession.shared.bytes(for: request)
-        defer { bytes.task.cancel() }
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
         var data = Data()
-        for try await byte in bytes {
-            data.append(byte)
-            if data.count >= maxBytes { break }
+        do {
+            let (stream, response) = try await HTTPSession.shared.bytes(for: request)
+            defer { stream.task.cancel() }
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                throw URLError(.badServerResponse)
+            }
+            for try await byte in stream {
+                data.append(byte)
+                if data.count >= maxBytes { break }
+            }
+        } catch {
+            if (error as? URLError)?.code == .cancelled || error is CancellationError { outcome = .cancelled }
+            throw error
         }
+        bytes = data.count
         let text = String(decoding: data, as: UTF8.self)
         let line = text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty } ?? ""
         guard !line.isEmpty, !line.hasPrefix("<") else { throw URLError(.cannotParseResponse) }
+        outcome = .ok
         return line
     }
 }

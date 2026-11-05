@@ -60,22 +60,37 @@ final class AppIndex {
         guard Config.appSearch, limit > 0 else { return [] }
         let input = Self.fold(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !input.isEmpty else { return [] }
+        #if SELFTEST
+        Self.matchCallsForSelfTest += 1
+        #endif
 
+        let signposter = Signposts.signposter
+        let signpost = signposter.beginInterval(
+            "apps.match",
+            "apps=\(self.apps.count, privacy: .public) limit=\(limit, privacy: .public) inputLength=\(input.count, privacy: .public)"
+        )
         let ranked = apps.compactMap { app -> (score: Double, length: Int, name: String, app: AppEntry)? in
             guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
             let opens = app.bundleID.flatMap { openCounts[$0] } ?? 0
             return (Self.score(rank: rank, opens: opens), app.name.count, app.name, app)
         }
-        return ranked
+        let best = ranked
             .sorted { ($0.score, $0.length, $0.name) < ($1.score, $1.length, $1.name) }
             .prefix(limit)
             .map(\.app)
+        signposter.endInterval("apps.match", signpost, "matches=\(ranked.count, privacy: .public)")
+        return best
     }
 
     /// The best of `matches(for:limit:openCounts:)`, or nil.
     func bestMatch(for raw: String, openCounts: [String: Int] = [:]) -> AppEntry? {
         matches(for: raw, limit: 1, openCounts: openCounts).first
     }
+
+    #if SELFTEST
+    /// How many times `matches` ranked the apps, for the perf suite.
+    static var matchCallsForSelfTest = 0
+    #endif
 
     /// Opens worth one tier: about 31 opens lift an app one tier, about
     /// 1000 two (log2(1 + opens) / 5).
@@ -115,6 +130,8 @@ final class AppIndex {
     /// Lists the .app bundles directly in each folder and one level down
     /// (e.g. /Applications/Utilities), without looking inside bundles.
     nonisolated static func scan(_ folders: [URL]) -> [AppEntry] {
+        let signposter = Signposts.signposter
+        let signpost = signposter.beginInterval("apps.scan", id: signposter.makeSignpostID())
         let fileManager = FileManager.default
         var seen = Set<String>()
         var entries: [AppEntry] = []
@@ -151,6 +168,7 @@ final class AppIndex {
                 }
             }
         }
+        signposter.endInterval("apps.scan", signpost, "apps=\(entries.count, privacy: .public)")
         return entries
     }
 
