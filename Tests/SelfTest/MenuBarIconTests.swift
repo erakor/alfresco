@@ -15,14 +15,18 @@ enum MenuBarIconTests {
         // Drawn at 2x, like a Retina menu bar.
         guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 36, pixelsHigh: 36,
                                             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
-              let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+                                            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
             SelfTest.check("menu bar icon: bitmap for drawing", false)
             return
         }
         // 36 pixels for 18 points; without this the bitmap is 36 points and
-        // the icon fills only a quarter of it.
+        // the icon fills only a quarter of it. Set before the context is
+        // made from the bitmap, which keeps the size it sees then.
         bitmap.size = image.size
+        guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+            SelfTest.check("menu bar icon: bitmap for drawing", false)
+            return
+        }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
         image.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
