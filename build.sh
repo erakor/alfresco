@@ -77,26 +77,17 @@ PLIST
 # every build, so each rebuild silently loses them. A certificate of your own
 # keeps the same signature across builds (README.md, "Signing").
 DEFAULT_IDENTITY="alfresco Local Signing"
-SIGN_LABEL="${SIGN_IDENTITY:-}"
+SIGN_LABEL="${SIGN_IDENTITY:-$DEFAULT_IDENTITY}"
 if [ -z "${SIGN_IDENTITY:-}" ]; then
     # Only valid identities (-v: not expired, trusted), by SHA-1, so an
     # expired copy or a second certificate of the same name never makes
     # codesign fail or refuse an ambiguous name. Lines read
     #   1) <SHA-1> "<name>"
-    first_hash() {
-        awk -v name="\"$DEFAULT_IDENTITY\"" 'index($0, name) { print $2; exit }'
-    }
-    SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | first_hash || true)"
-    SIGN_LABEL="$DEFAULT_IDENTITY"
+    SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+        | awk -v name="\"$DEFAULT_IDENTITY\"" 'index($0, name) { print $2; exit }' || true)"
     if [ -z "$SIGN_IDENTITY" ]; then
         SIGN_IDENTITY="-"
-        if [ -z "${CI:-}" ]; then
-            if [ -n "$(security find-identity -p codesigning 2>/dev/null | first_hash || true)" ]; then
-                echo "build.sh: the \"$DEFAULT_IDENTITY\" certificate is not valid (expired, or not trusted for code signing), signing ad-hoc; see README.md, Signing" >&2
-            else
-                echo "build.sh: no \"$DEFAULT_IDENTITY\" certificate, signing ad-hoc (permissions reset on each build; see README.md, Signing)" >&2
-            fi
-        fi
+        [ -z "${CI:-}" ] && echo "build.sh: no valid \"$DEFAULT_IDENTITY\" certificate (missing, expired or not trusted), signing ad-hoc: permissions reset on each build; see README.md, Signing" >&2
     fi
 fi
 codesign --force --sign "$SIGN_IDENTITY" "$APP"

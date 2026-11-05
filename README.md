@@ -89,8 +89,7 @@ Run it again after pulling or changing the code. It quits whichever copy is
 running first (an app saves its clipboard history as it quits; a plain
 `./Launcher` binary is stopped with SIGTERM, which can lose the last few
 seconds of copies), and leaves the installed app in place if the build or the
-copy fails. `INSTALL_DIR=/Applications` installs there instead; no other
-folder is accepted, since Launch at Login works only from those two. The installed app keeps reading this
+copy fails. The installed app keeps reading this
 repo's `workflows.json`, so editing or pulling that file needs no reinstall,
 but moving the repo does.
 

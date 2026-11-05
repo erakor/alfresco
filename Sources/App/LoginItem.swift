@@ -17,6 +17,15 @@ enum LoginItem {
         /// user's approval, or turned off in System Settings > General >
         /// Login Items (which reports the same status).
         case needsApproval
+
+        /// The menu item's check mark: a dash while it can't run at login.
+        var controlState: NSControl.StateValue {
+            switch self {
+            case .off: return .off
+            case .on: return .on
+            case .needsApproval: return .mixed
+            }
+        }
     }
 
     /// Whether this macOS and this process can have a login item at all: a
@@ -49,13 +58,19 @@ enum LoginItem {
         }
     }
 
+    /// Whether the menu item is enabled: turning it on needs an installed
+    /// copy; turning it off or approving it works from anywhere.
+    nonisolated static func canToggle(state: State, installed: Bool) -> Bool {
+        installed || state != .off
+    }
+
     /// The menu item's tooltip: why it is dimmed or shows a dash.
     nonisolated static func toolTip(state: State, installed: Bool) -> String? {
         switch state {
         case .needsApproval:
             return "Not allowed to run at login: turn Launcher on in System Settings > General > Login Items."
         case .off where !installed:
-            return "Install the app first: run ./install.sh in the repo."
+            return "Only for a copy in /Applications or ~/Applications."
         default:
             return nil
         }

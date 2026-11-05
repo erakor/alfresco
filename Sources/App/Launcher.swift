@@ -176,13 +176,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         if menuItem.action == #selector(toggleLaunchAtLogin) {
             let state = LoginItem.state
             let installed = LoginItem.isInstalled
-            switch state {
-            case .on: menuItem.state = .on
-            case .needsApproval: menuItem.state = .mixed
-            case .off: menuItem.state = .off
-            }
+            menuItem.state = state.controlState
             menuItem.toolTip = LoginItem.toolTip(state: state, installed: installed)
-            return installed || state != .off
+            return LoginItem.canToggle(state: state, installed: installed)
         }
         return true
     }
@@ -291,6 +287,13 @@ enum LauncherApp {
         // `Launcher --check [file ...]` checks workflows files (by default
         // the one the app would read) and exits. Before the single-instance
         // lock, so it also works while the app runs, and on CI.
+        // `Launcher --lock-path` prints the single-instance lock file, which
+        // install.sh uses to find every running copy, then exits.
+        if CommandLine.arguments.contains("--lock-path") {
+            print(lockFileURL.path)
+            exit(0)
+        }
+
         if let index = CommandLine.arguments.firstIndex(of: "--check") {
             let paths = CommandLine.arguments.dropFirst(index + 1)
             let source = Config.workflowsSource
@@ -336,15 +339,20 @@ enum LauncherApp {
 }
 
 extension LauncherApp {
+    /// Held by every running copy; install.sh reads it with --lock-path.
+    @MainActor
+    static var lockFileURL: URL {
+        ClipboardStore.directory.appendingPathComponent("launcher.lock")
+    }
+
     /// Takes an exclusive lock on a file in the shared support folder and holds
     /// it until the process exits (the descriptor is never closed; the system
     /// releases the lock on exit, including a crash). False if another copy
     /// holds it.
     @MainActor
     static func acquireSingleInstanceLock() -> Bool {
-        let directory = ClipboardStore.directory
-        try? ClipImageFile.createPrivateDirectory(directory)
-        let path = directory.appendingPathComponent("launcher.lock").path
+        try? ClipImageFile.createPrivateDirectory(ClipboardStore.directory)
+        let path = lockFileURL.path
         let descriptor = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
         // If the lock file can't be opened, run anyway rather than not at all.
         guard descriptor >= 0 else { return true }
