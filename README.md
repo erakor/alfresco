@@ -76,6 +76,12 @@ swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.
 `-parse-as-library` is required because `Sources/App/Launcher.swift` uses `@main`.
 The build compiles every `.swift` file under `Sources/`.
 
+The app icon is `Resources/AppIcon.png` (1024 px), which `build.sh` turns into
+the bundle's `AppIcon.icns`; the plain binary has none. To change it, edit
+`Resources/AppIcon.svg` and export it again as a 1024 × 1024 PNG with a
+transparent background, for example by opening it in a browser and taking a
+screenshot of it, or with any vector editor.
+
 `./Launcher --check workflows.json` checks a workflows file and exits (see
 [Checking the file](Sources/Launcher/README.md#checking-the-file)).
 

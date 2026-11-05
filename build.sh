@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Compiles the Swift sources under Sources/ and wraps them in a minimal, ad-hoc signed .app
-# bundle (LSUIElement, so it never shows a Dock icon) at build/Launcher.app.
+# Compiles the Swift sources under Sources/ and wraps them in a minimal, signed .app
+# bundle (LSUIElement, so it never shows a Dock icon; the app icon from
+# Resources/AppIcon.png) at build/Launcher.app.
 # The app reads workflows from this repo's workflows.json.
 #
 # Environment (all optional, used by Tests/run-self-tests.sh):
@@ -50,6 +51,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <string>BUNDLE_ID_PLACEHOLDER</string>
     <key>CFBundleExecutable</key>
     <string>Launcher</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -67,6 +70,19 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
+
+# The app icon: every size macOS asks for, scaled from the one 1024 px PNG
+# (Resources/AppIcon.png, rendered from AppIcon.svg), then packed into an .icns.
+ICONSET="$BUILD_DIR/AppIcon.iconset"
+rm -rf "$ICONSET"
+mkdir -p "$ICONSET" "$APP/Contents/Resources"
+for size in 16 32 128 256 512; do
+    sips -z "$size" "$size" Resources/AppIcon.png --out "$ICONSET/icon_${size}x${size}.png" > /dev/null
+    double=$((size * 2))
+    sips -z "$double" "$double" Resources/AppIcon.png --out "$ICONSET/icon_${size}x${size}@2x.png" > /dev/null
+done
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+rm -rf "$ICONSET"
 
 # Point the app at this repo's workflows.json, so edits to it apply without
 # rebuilding. Rebuild if you move the repo.
