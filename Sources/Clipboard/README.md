@@ -4,11 +4,11 @@ Copy and paste with `⌘C` / `⌘V` as usual; alfresco only watches the
 clipboard and records each copy: text, images (screenshots, "Copy Image" in a
 browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the history:
 
-- Type to filter (case and accents don't matter: `cafe` finds `Café`), `↑` / `↓` to choose, `↩` (or double-click) to paste the
+- Type to filter (case and accents don't matter: `cafe` finds `Café`), `↑` / `↓` to choose, `↩` (or a click) to paste the
   item into the app you were using. It is also put back on the clipboard.
 - `⌘1` to `⌘9` do the same for the first nine rows of the (filtered) list,
   without arrowing down. Each of those rows shows its shortcut on the right.
-- `⌘↩` only puts the selected item back on the clipboard, without pasting.
+- `⌘↩` (or `⌘`-click) only puts the item back on the clipboard, without pasting.
 - `⌘P` pins the selected item, or unpins a pinned one. Pinned items stay at
   the top of the list (the latest pin first) with a pin on their row, and are
   never deleted for their age or by the item limit: they're for snippets you
