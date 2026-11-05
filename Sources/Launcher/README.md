@@ -1,6 +1,6 @@
 # Launcher
 
-The Spotlight-style bar on `⌘⇧Space`. Type a command (`/pr 12`), hit Enter,
+The Spotlight-style bar on `⌘Space`. Type a command (`/pr 12`), hit Enter,
 and the URL opens in your default browser. Type an app's name instead and it
 opens the app; anything else is searched for. Type `/` (or `/help`) to list
 every command.
@@ -182,8 +182,11 @@ forward if it's already running). Press `⌘↩` to search for the text instead.
 
 In `Sources/App/Config.swift` (rebuild after a change):
 
-- `hotKey`: `.commandShiftSpace` (default) or `.optionSpace`. macOS 15+ rejects
-  Option-only hotkeys, so `.optionSpace` only works on macOS 14 and earlier.
+- `hotKey`: `.commandSpace` (default), `.commandShiftSpace` or `.optionSpace`.
+  `.commandSpace` is Spotlight's shortcut, so turn it off for Spotlight first
+  (System Settings > Keyboard > Keyboard Shortcuts > Spotlight), or the hotkey
+  can't be registered. macOS 15+ rejects Option-only hotkeys, so `.optionSpace`
+  only works on macOS 14 and earlier.
 - `workflowsSource`: how the workflows file is found (see above).
 - `commandPrefix` (`"/"`): typed before every keyword; `nil` types them bare.
   `commandListKeyword` (`"help"`): `/help` lists the commands, unless a
