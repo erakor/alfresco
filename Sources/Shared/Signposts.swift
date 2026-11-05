@@ -5,9 +5,11 @@
 // They cost next to nothing while nobody records them.
 //
 // Metadata is counts, sizes and kinds only: never text, queries, paths, URLs
-// or bundle IDs of copied items. Numbers are interpolated with
-// `privacy: .public`; the only public strings are the names of `Kind`'s
-// cases, written in `end(_:_:_:)` below.
+// or bundle IDs of copied items. The one count taken from what is typed is
+// the length of a search field's text (launcher.input, apps.match,
+// clipboard.filter), since a search's cost depends on it. Numbers are
+// interpolated with `privacy: .public`; the only public strings are the
+// names of `Kind`'s cases, written in `end(_:_:_:)` below.
 // An OSLogMessage must be written at the call that logs it, so a message
 // with numbers calls `Signposts.signposter` directly.
 
@@ -36,6 +38,8 @@ enum Signposts {
         case marked
         /// A copy refused (too large, only whitespace, unreadable image).
         case skipped
+        /// A copy made while an app of Config.clipboardIgnoredApps was in front.
+        case ignored
         /// Nothing to record or show.
         case none
         case ok, failed, cancelled

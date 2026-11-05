@@ -318,8 +318,12 @@ enum PerfTests {
         }
         let directory = ClipboardStore.directory.appendingPathComponent("perf-tiff", isDirectory: true)
         let count = min(runs, 5)
-        let samples = (0..<count).map { _ in clock.measure { _ = ClipImageFile.save(tiff, type: .tiff, in: directory) } }
+        var saved = 0
+        let samples = (0..<count).map { _ in
+            clock.measure { if ClipImageFile.save(tiff, type: .tiff, in: directory) != nil { saved += 1 } }
+        }
         report("ClipImageFile.save, 5K TIFF copied (to PNG)", samples, .background)
+        check("perf: every TIFF copy was saved as a PNG", saved == count, "\(saved) of \(count)")
     }
 
     // MARK: Clipboard panel
@@ -437,18 +441,24 @@ enum PerfTests {
             let loader = ThumbnailLoader(maxPixelSize: size, costLimit: 512 * 1024 * 1024)
             var samples: [Duration] = []
             var failed = 0
+            var timedOut = 0
             for run in 0..<runs {
                 if run > 0, run % seed.screenshots.count == 0 { loader.removeAll() }
                 let url = seed.store.imageURL(for: seed.screenshots[run % seed.screenshots.count])
                 let start = clock.now
                 _ = loader.image(for: url)
-                guard await wait(until: { loader.isIdleForSelfTest }) else { continue }
+                guard await wait(until: { loader.isIdleForSelfTest }) else {
+                    timedOut += 1
+                    continue
+                }
                 let elapsed = clock.now - start
                 // A file that didn't decode would time a failure, not a decode.
                 if loader.cachedImageForSelfTest(url) != nil { samples.append(elapsed) } else { failed += 1 }
             }
-            report("thumbnail decode, 5K PNG to \(size) px", samples, .background)
-            check("perf: every \(size) px decode gave a picture", failed == 0, "\(failed) failed")
+            report("thumbnail decode, 5K PNG to \(size) px", samples, .background,
+                   note: timedOut > 0 ? "\(timedOut) timed out" : "")
+            check("perf: every \(size) px decode gave a picture", failed == 0 && timedOut == 0,
+                  "\(failed) failed, \(timedOut) timed out")
         }
     }
 

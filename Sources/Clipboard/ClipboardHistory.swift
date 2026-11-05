@@ -23,6 +23,15 @@ enum ClipContent: Equatable, Sendable {
     /// kept: the files themselves are not copied, so a moved or deleted file
     /// can no longer be restored.
     case files([String])
+
+    /// Its kind, for signpost metadata.
+    var signpostKind: Signposts.Kind {
+        switch self {
+        case .text: return .text
+        case .image: return .image
+        case .files: return .files
+        }
+    }
 }
 
 /// An image clip. Its PNG data is stored as `<sha256>.png` in the store's
@@ -700,6 +709,7 @@ final class ClipboardMonitor: NSObject {
         }
         let source = ClipSource.frontmost
         guard !Self.isIgnored(source) else {
+            recorded = .ignored
             UsageStats.shared.record(.clipboardSkippedApp)
             return
         }

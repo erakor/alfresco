@@ -6,6 +6,7 @@
 #   Tests/signposts.sh                     # the app (local.launcher)
 #   Tests/signposts.sh SUBSYSTEM           # e.g. local.launcher.selftest
 #   SIGNPOSTS_MIN_MS=5 Tests/signposts.sh  # only intervals of 5 ms or more
+#                                          # (and no point events)
 #
 # Uses /usr/bin/log by its full path: zsh has a `log` builtin of its own.
 set -euo pipefail
@@ -27,8 +28,9 @@ minimum = float(os.environ["SIGNPOSTS_MIN_MS"])
 began = {}
 
 def when(entry):
-    # "2026-11-02 09:33:55.927446-0500": microseconds, on every Mac.
-    return datetime.strptime(entry["timestamp"][:26], "%Y-%m-%d %H:%M:%S.%f")
+    # "2026-11-02 09:33:55.927446-0500": microseconds and the UTC offset,
+    # so an interval across a daylight saving change still measures right.
+    return datetime.strptime(entry["timestamp"], "%Y-%m-%d %H:%M:%S.%f%z")
 
 for line in sys.stdin:
     try:
@@ -46,6 +48,8 @@ for line in sys.stdin:
         ms = (when(entry) - when(start)).total_seconds() * 1000
         if ms >= minimum:
             print("%9.2f ms  %-24s %s" % (ms, name, message or start.get("eventMessage") or ""))
-    elif kind == "event":
+    elif kind == "event" and minimum <= 0:
+        # Point events (thumbnail.hit fires on every row drawn) have no
+        # duration: shown only when every interval is.
         print("%12s  %-24s %s" % ("", name, message))
 '

@@ -308,7 +308,6 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         case .text(let text):
             pasteboard.clearContents()
             pasteboard.setString(text, forType: .string)
-            written = .text
             bytes = text.utf8.count
 
         case .image(let image):
@@ -325,14 +324,12 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             }
             pasteboard.clearContents()
             pasteboard.writeObjects([item])
-            written = .image
 
         case .files(let paths):
             let urls = paths
                 .filter { FileManager.default.fileExists(atPath: $0) }
                 .map { URL(fileURLWithPath: $0) }
             guard !urls.isEmpty else { return false }
-            written = .files
             // Like Finder: the files, plus their names for pasting as text.
             let items = urls.enumerated().map { index, url -> NSPasteboardItem in
                 let item = NSPasteboardItem()
@@ -345,6 +342,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             pasteboard.clearContents()
             pasteboard.writeObjects(items)
         }
+        written = content.signpostKind
         return true
     }
 
@@ -499,13 +497,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             Signposts.end("clipboard.preview", signpost, .none)
             return
         }
-        defer {
-            switch item.content {
-            case .text: Signposts.end("clipboard.preview", signpost, .text)
-            case .image: Signposts.end("clipboard.preview", signpost, .image)
-            case .files: Signposts.end("clipboard.preview", signpost, .files)
-            }
-        }
+        defer { Signposts.end("clipboard.preview", signpost, item.content.signpostKind) }
 
         var copied = "Copied \(copiedFormatter.string(from: item.copiedAt))"
         if let app = item.sourceApp { copied += " from \(app)" }

@@ -92,7 +92,7 @@ The app marks its slow-prone work with signpost intervals (subsystem
 `local.launcher`, the bundle ID; category `performance`; defined in
 `Sources/Shared/Signposts.swift`). They cost next to nothing until something
 records them, and carry only counts, sizes and kinds, never what you typed or
-copied.
+copied (a search field's text is reduced to its length).
 
 | Interval | What it covers |
 | --- | --- |
@@ -112,7 +112,7 @@ interval with its duration:
 
 ```bash
 Tests/signposts.sh                       # every interval
-SIGNPOSTS_MIN_MS=8 Tests/signposts.sh    # only the ones that could cost a frame
+SIGNPOSTS_MIN_MS=8 Tests/signposts.sh    # only the ones that could cost a frame (no point events)
 ```
 
 It reads `/usr/bin/log stream --signpost --style ndjson` and pairs each begin
