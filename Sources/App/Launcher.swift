@@ -79,7 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Launcher")
+        item.button?.image = MenuBarIcon.make()
 
         let menu = NSMenu()
         menu.addItem(menuItem("Open Launcher (\(Config.hotKey.display))", #selector(openLauncher)))
