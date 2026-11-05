@@ -38,7 +38,7 @@ Each feature has its own README, next to its code in `Sources/`:
 
 | Feature | What it does |
 | ------- | ------------ |
-| [Launcher](Sources/Launcher/README.md) | The `⌘⇧Space` bar: workflows (`workflows.json`, its format and where it is read from), `/` commands and their suggestions, and opening apps by name. |
+| [Launcher](Sources/Launcher/README.md) | The `⌘Space` bar: workflows (`workflows.json`, its format and where it is read from), `/` commands and their suggestions, and opening apps by name. |
 | [Weather](Sources/Weather/README.md) | The forecast under the input for `/weather` / `/weather <place>`, and the current weather above it. Needs a free WeatherAPI.com key. |
 | [Calendar](Sources/Calendar/README.md) | Your upcoming events under the input for `/cal`, and a search with `/cal <text>`, read from macOS Calendar (Google accounts included). Needs `build/Launcher.app`. |
 | [Built-ins](Sources/BuiltIns/README.md) | Answers in the launcher's hint, copied with Enter: a calculator and unit converter (`= 3*14`, `= 10 km in mi`), time zones (`time tokyo`), a new UUID (`uuid`) and the current time (`now`). |
@@ -54,8 +54,9 @@ Settings are compile-time: edit the `Config` enum in `Sources/App/Config.swift`,
 then rebuild. Each feature's README lists the settings it uses; the most common
 ones are:
 
-- `hotKey`: `.commandShiftSpace` (default) or `.optionSpace` (macOS 14 and
-  earlier only). See [Launcher](Sources/Launcher/README.md#settings).
+- `hotKey`: `.commandSpace` (default; turn Spotlight's ⌘Space off first),
+  `.commandShiftSpace` or `.optionSpace` (macOS 14 and earlier only).
+  See [Launcher](Sources/Launcher/README.md#settings).
 - `clipboardHotKey`: `⌘⌥C` by default. See
   [Clipboard history](Sources/Clipboard/README.md#settings).
 - `showMenuBarIcon`: set to `false` for a fully invisible agent.

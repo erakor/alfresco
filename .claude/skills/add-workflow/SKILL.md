@@ -91,7 +91,7 @@ source layout moved; fix the paths or the `awk` range in the script.
 ## 4. Report
 
 Show the user the entry and the sample expansions. They can try it right away
-(⌘⇧Space). Say that it needs no rebuild, unless the app they run reads a
+(⌘Space). Say that it needs no rebuild, unless the app they run reads a
 different file: an `ALFRESCO_WORKFLOWS` LaunchAgent pointing elsewhere, or a
 build made before the repo moved.
 

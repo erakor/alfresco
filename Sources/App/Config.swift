@@ -14,6 +14,14 @@ struct HotKey: Sendable {
     let modifiers: UInt32
     let display: String
 
+    /// Spotlight's shortcut: turn it off for Spotlight first (System Settings >
+    /// Keyboard > Keyboard Shortcuts > Spotlight), or registering it fails.
+    static let commandSpace = HotKey(
+        keyCode: UInt32(kVK_Space),
+        modifiers: UInt32(cmdKey),
+        display: "⌘Space"
+    )
+
     static let commandShiftSpace = HotKey(
         keyCode: UInt32(kVK_Space),
         modifiers: UInt32(cmdKey | shiftKey),
@@ -38,7 +46,7 @@ struct HotKey: Sendable {
 }
 
 enum Config {
-    static let hotKey = HotKey.commandShiftSpace
+    static let hotKey = HotKey.commandSpace
     static let showMenuBarIcon = true
 
     /// Opens the clipboard history panel.

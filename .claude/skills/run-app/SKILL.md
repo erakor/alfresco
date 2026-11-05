@@ -35,7 +35,7 @@ copy before launching the new build, or its hotkeys will silently do nothing.
 
 5. **Hand over.** You can't press the hotkeys yourself, and the app needs no
    Accessibility permission for that, so don't ask for it. Tell the user what to
-   try: ⌘⇧Space for the launcher and ⌘⌥C for the clipboard history (or whatever
+   try: ⌘Space for the launcher and ⌘⌥C for the clipboard history (or whatever
    `Config.hotKey` / `Config.clipboardHotKey` now say), plus the specific
    behavior that changed.
 
