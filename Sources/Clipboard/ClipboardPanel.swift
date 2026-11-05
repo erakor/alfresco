@@ -1,7 +1,7 @@
 // ClipboardPanel.swift
 //
 // The clipboard history panel (Config.clipboardHotKey). Type to filter,
-// ↑/↓ to choose, ↩ (or double-click) to put the item back on the clipboard
+// ↑/↓ to choose, ↩ (or a click) to put the item back on the clipboard
 // and paste it into the app that was in front. ⌘1 to ⌘9 do the same for the
 // first nine rows, ⌘↩ only copies. ⌘P pins or unpins the selected item
 // (pinned items stay on top and never expire). ⌘⌫ deletes the selected item.
@@ -381,10 +381,11 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         select(row: row)
     }
 
-    @objc private func rowDoubleClicked() {
+    /// A click on a row picks it like ↩; ⌘-click only copies, like ⌘↩.
+    @objc private func rowClicked() {
         guard tableView.clickedRow >= 0 else { return }
         select(row: tableView.clickedRow)
-        pickSelected(paste: true)
+        pickSelected(paste: NSApp.currentEvent?.shortcutModifiers != .command)
     }
 
     // MARK: NSTextFieldDelegate
@@ -644,12 +645,12 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         tableView.rowHeight = Layout.rowHeight
         tableView.backgroundColor = .clear
         tableView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        // Clicks still select rows, but typing keeps going to the search field.
+        // A click picks the row; typing keeps going to the search field.
         tableView.refusesFirstResponder = true
         tableView.dataSource = self
         tableView.delegate = self
         tableView.target = self
-        tableView.doubleAction = #selector(rowDoubleClicked)
+        tableView.action = #selector(rowClicked)
 
         scrollView.documentView = tableView
         scrollView.drawsBackground = false
