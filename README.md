@@ -85,8 +85,12 @@ The build compiles every `.swift` file under `Sources/`.
 ./install.sh   # builds, replaces ~/Applications/Launcher.app and starts it
 ```
 
-Run it again after pulling or changing the code; it quits the running copy
-first (the clipboard history is saved). The installed app keeps reading this
+Run it again after pulling or changing the code. It quits whichever copy is
+running first (an app saves its clipboard history as it quits; a plain
+`./Launcher` binary is stopped with SIGTERM, which can lose the last few
+seconds of copies), and leaves the installed app in place if the build or the
+copy fails. `INSTALL_DIR=/Applications` installs there instead; no other
+folder is accepted, since Launch at Login works only from those two. The installed app keeps reading this
 repo's `workflows.json`, so editing or pulling that file needs no reinstall,
 but moving the repo does.
 
@@ -102,7 +106,9 @@ once, keeps the signature the same across builds:
 1. Keychain Access > Keychain Access menu > Certificate Assistant > **Create a
    Certificate…**
 2. Name: `alfresco Local Signing`, Identity Type: Self Signed Root,
-   Certificate Type: **Code Signing**. Create.
+   Certificate Type: **Code Signing**, and tick **Let me override defaults**.
+   Continue, set Validity Period to `3650` days (the default is one year),
+   and accept the other defaults.
 3. In the login keychain, double-click the new certificate > Trust > Code
    Signing: **Always Trust**.
 4. `./install.sh`. The first build asks to let `codesign` use the key: choose
@@ -110,7 +116,9 @@ once, keeps the signature the same across builds:
 
 `build.sh` then says `signed with "alfresco Local Signing"` and picks it up by
 itself from then on (`SIGN_IDENTITY` picks another certificate, `-` forces
-ad-hoc). Grant the permissions one last time, since the earlier ones belong to
+ad-hoc). It uses only a valid certificate: once it expires, or if step 3 was
+skipped, it signs ad-hoc and says why. Make a new one then (the signature
+changes, so grant the permissions again as below). Grant the permissions one last time, since the earlier ones belong to
 the ad-hoc signature: clear them with
 
 ```bash
@@ -121,8 +129,8 @@ tccutil reset Accessibility local.launcher
 tccutil reset Calendar local.launcher
 ```
 
-then pick an item in the clipboard history and type `cal` to get both prompts
-again. The certificate only works on this Mac; it is not for
+then pick an item in the clipboard history and type `/cal` to get both
+prompts again. The certificate only works on this Mac; it is not for
 sharing the app with others, which needs a paid Developer ID and notarization.
 
 ## Start automatically at login

@@ -99,11 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         }
         menu.addItem(.separator())
         if LoginItem.isSupported {
-            let loginItem = menuItem("Launch at Login", #selector(toggleLaunchAtLogin))
-            if !LoginItem.isInstalled {
-                loginItem.toolTip = "Install the app first: run ./install.sh in the repo."
-            }
-            menu.addItem(loginItem)
+            menu.addItem(menuItem("Launch at Login", #selector(toggleLaunchAtLogin)))
         }
         menu.addItem(NSMenuItem(title: "Quit Launcher", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
@@ -171,14 +167,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     /// "Start Pomodoro" is only offered while no session is under way; the
     /// pomodoro's own menu bar item handles a running one. "Launch at Login"
-    /// shows its current state, and is only enabled in an installed copy.
+    /// shows its current state (a dash while it waits for approval), and can
+    /// only be turned on in an installed copy.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(startPomodoro) {
             return pomodoro?.state == .idle
         }
         if menuItem.action == #selector(toggleLaunchAtLogin) {
-            menuItem.state = LoginItem.isEnabled ? .on : .off
-            return LoginItem.isInstalled || LoginItem.isEnabled
+            let state = LoginItem.state
+            let installed = LoginItem.isInstalled
+            switch state {
+            case .on: menuItem.state = .on
+            case .needsApproval: menuItem.state = .mixed
+            case .off: menuItem.state = .off
+            }
+            menuItem.toolTip = LoginItem.toolTip(state: state, installed: installed)
+            return installed || state != .off
         }
         return true
     }
@@ -253,12 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         alert.informativeText = stats.summary(days: 30)
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Show File in Finder")
-        if #available(macOS 14.0, *) {
-            NSApp.activate()
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        if alert.runModal() == .alertSecondButtonReturn {
+        if alert.runModalInFront() == .alertSecondButtonReturn {
             if FileManager.default.fileExists(atPath: stats.fileURL.path) {
                 NSWorkspace.shared.activateFileViewerSelecting([stats.fileURL])
             } else {
@@ -276,12 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             or macOS rejected \(hotKeys.count == 1 ? "it" : "them"). Change Config.hotKey or \
             Config.clipboardHotKey in Sources/App/Config.swift and rebuild.
             """
-        if #available(macOS 14.0, *) {
-            NSApp.activate()
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        alert.runModal()
+        alert.runModalInFront()
     }
 }
 

@@ -59,9 +59,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>LSUIElement</key>
     <true/>
     <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>Typing "cal" in the launcher lists your upcoming events.</string>
+    <string>Typing "/cal" in the launcher lists your upcoming events.</string>
     <key>NSCalendarsUsageDescription</key>
-    <string>Typing "cal" in the launcher lists your upcoming events.</string>
+    <string>Typing "/cal" in the launcher lists your upcoming events.</string>
 </dict>
 </plist>
 PLIST
@@ -77,17 +77,31 @@ PLIST
 # every build, so each rebuild silently loses them. A certificate of your own
 # keeps the same signature across builds (README.md, "Signing").
 DEFAULT_IDENTITY="alfresco Local Signing"
+SIGN_LABEL="${SIGN_IDENTITY:-}"
 if [ -z "${SIGN_IDENTITY:-}" ]; then
-    if security find-identity -p codesigning 2>/dev/null | grep -qF "\"$DEFAULT_IDENTITY\""; then
-        SIGN_IDENTITY="$DEFAULT_IDENTITY"
-    else
+    # Only valid identities (-v: not expired, trusted), by SHA-1, so an
+    # expired copy or a second certificate of the same name never makes
+    # codesign fail or refuse an ambiguous name. Lines read
+    #   1) <SHA-1> "<name>"
+    first_hash() {
+        awk -v name="\"$DEFAULT_IDENTITY\"" 'index($0, name) { print $2; exit }'
+    }
+    SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | first_hash || true)"
+    SIGN_LABEL="$DEFAULT_IDENTITY"
+    if [ -z "$SIGN_IDENTITY" ]; then
         SIGN_IDENTITY="-"
-        [ -z "${CI:-}" ] && echo "build.sh: no \"$DEFAULT_IDENTITY\" certificate, signing ad-hoc (permissions reset on each build; see README.md, Signing)" >&2
+        if [ -z "${CI:-}" ]; then
+            if [ -n "$(security find-identity -p codesigning 2>/dev/null | first_hash || true)" ]; then
+                echo "build.sh: the \"$DEFAULT_IDENTITY\" certificate is not valid (expired, or not trusted for code signing), signing ad-hoc; see README.md, Signing" >&2
+            else
+                echo "build.sh: no \"$DEFAULT_IDENTITY\" certificate, signing ad-hoc (permissions reset on each build; see README.md, Signing)" >&2
+            fi
+        fi
     fi
 fi
 codesign --force --sign "$SIGN_IDENTITY" "$APP"
 if [ "$SIGN_IDENTITY" = "-" ]; then
     echo "Built $APP (ad-hoc signed)"
 else
-    echo "Built $APP (signed with \"$SIGN_IDENTITY\")"
+    echo "Built $APP (signed with \"$SIGN_LABEL\")"
 fi

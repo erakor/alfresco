@@ -21,5 +21,12 @@ enum LoginItemTests {
             SelfTest.check("login item: \(path) is \(expected ? "" : "not ")installed",
                            LoginItem.isInstalledLocation(path, home: home) == expected)
         }
+        SelfTest.check("login item: waiting for approval says where to allow it",
+                       LoginItem.toolTip(state: .needsApproval, installed: true)?.contains("Login Items") == true)
+        SelfTest.check("login item: off outside Applications points at install.sh",
+                       LoginItem.toolTip(state: .off, installed: false)?.contains("install.sh") == true)
+        SelfTest.check("login item: on, or off in an installed copy, has no tooltip",
+                       LoginItem.toolTip(state: .on, installed: false) == nil
+                           && LoginItem.toolTip(state: .off, installed: true) == nil)
     }
 }
