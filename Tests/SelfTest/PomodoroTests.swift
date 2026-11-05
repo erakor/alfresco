@@ -482,9 +482,11 @@ enum PomodoroTests {
 
     private static var heldTimer: PomodoroTimer?
     private static var heldItem: PomodoroStatusItem?
+    private static var heldAppIcon: NSStatusItem?
 
     /// Runs a real focus session for SELFTEST_HOLD_SECONDS (default 15) so
-    /// a screenshot can show the menu bar item, then exits.
+    /// a screenshot can show its menu bar item, next to the app's own
+    /// menu bar icon, then exits.
     static func menuBarHold() {
         let timer = PomodoroTimer()
         let item = PomodoroStatusItem(timer: timer)
@@ -492,14 +494,21 @@ enum PomodoroTests {
         timer.startFocus()
         heldTimer = timer
         heldItem = item
+        // The app's own menu bar icon too, which AppDelegate would show, so
+        // the screenshot has both.
+        let appIcon = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        appIcon.button?.image = MenuBarIcon.make()
+        heldAppIcon = appIcon
         let seconds = Double(ProcessInfo.processInfo.environment["SELFTEST_HOLD_SECONDS"] ?? "") ?? 15
         SelfTest.log("HOLDING \(item.buttonTitle ?? "nil") for \(Int(seconds)) s")
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
             MainActor.assumeIsolated {
                 let shown = heldItem?.isShown ?? false
                 let title = heldItem?.buttonTitle ?? "nil"
+                let iconShown = heldAppIcon?.isVisible == true && heldAppIcon?.button?.image != nil
                 heldTimer?.stop()
                 check("menubar-hold: the item was still shown, reading \(title)", shown)
+                check("menubar-hold: the app's menu bar icon was shown", iconShown)
                 SelfTest.finish()
             }
         }
