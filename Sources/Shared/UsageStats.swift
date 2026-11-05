@@ -37,6 +37,9 @@ enum UsageCounter: String, Sendable {
     case launcherUnknownCommand = "launcher.unknownCommand"
     /// An installed app was opened; which one is in UsageDay.appsOpened.
     case launcherOpenedApp = "launcher.openedApp"
+    /// A command card under the empty input was clicked (which one is
+    /// counted if it is then run, under keywords).
+    case launcherCardPicked = "launcher.cardPicked"
 
     case previewLoaded = "preview.loaded"
     case previewFailed = "preview.failed"
@@ -385,6 +388,7 @@ final class UsageStats: NSObject {
             "  closed without running: \(closed) (\(count(.launcherClosedTyped)) with text typed)",
             "  Enter on a keyword missing its argument: \(count(.launcherEnterNeedsArgument))",
             "  Enter on an unknown command: \(count(.launcherUnknownCommand))",
+            "  command cards clicked: \(count(.launcherCardPicked))",
             "Keywords:",
             top(total.keywords, 10),
             "Apps opened: \(count(.launcherOpenedApp))",

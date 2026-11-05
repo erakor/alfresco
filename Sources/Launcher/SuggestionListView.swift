@@ -144,29 +144,8 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
             iconCache[path] = image
             return image
         case .workflow(let suggestion):
-            return workflowIcon(for: suggestion.workflow)
+            return WorkflowIcon.image(for: suggestion.workflow, cache: &iconCache)
         }
-    }
-
-    /// The icon of the app that opens the workflow's URL (the default
-    /// browser for web links), alfresco's own for alfresco:// URLs, else a
-    /// link symbol.
-    private func workflowIcon(for workflow: Workflow) -> NSImage? {
-        let template = workflow.url.replacingOccurrences(of: "{query}", with: "x")
-        guard let url = URL(string: template), let scheme = url.scheme?.lowercased() else {
-            return NSImage(systemSymbolName: "link", accessibilityDescription: nil)
-        }
-        if let cached = iconCache[scheme] { return cached }
-        let image: NSImage?
-        if scheme == "alfresco" {
-            image = NSApp.applicationIconImage
-        } else if let app = NSWorkspace.shared.urlForApplication(toOpen: url) {
-            image = NSWorkspace.shared.icon(forFile: app.path)
-        } else {
-            image = NSImage(systemSymbolName: "link", accessibilityDescription: nil)
-        }
-        iconCache[scheme] = image
-        return image
     }
 
     // MARK: NSTableViewDataSource, NSTableViewDelegate

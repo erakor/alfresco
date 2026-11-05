@@ -53,6 +53,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let calendar = CalendarProvider()
     private let calendarView = CalendarView(frame: .zero)
     private let suggestionList = SuggestionListView(frame: .zero)
+    private let cardsView = WorkflowCardsView(frame: .zero)
     /// The input row (icon, field, hint); moves down when the strip is shown.
     private let rowGuide = NSLayoutGuide()
     private var rowTop: NSLayoutConstraint?
@@ -60,6 +61,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// What can take the area under the input (see InputArea). A new one
     /// goes here, and its feature shows it and fills it.
     private lazy var inputAreas: [InputArea] = [
+        InputArea(
+            view: cardsView,
+            height: { [unowned self] in self.cardsView.preferredHeight },
+            claims: { [unowned self] in self.showsCards(for: $0) }
+        ),
         InputArea(
             view: weatherView,
             height: { WeatherView.height },
@@ -112,6 +118,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         calendar.onAccessAnswered = { [weak self] in self?.calendarAccessAnswered(granted: $0) }
         apps.onUpdate = { [weak self] in self?.appsDidChange() }
         suggestionList.onPick = { [weak self] in self?.activate($0) }
+        cardsView.onPick = { [weak self] in self?.pick($0) }
     }
 
     override var initialFirstResponder: NSResponder? { textField }
@@ -168,7 +175,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         currentBuiltIn = builtInAnswer(for: textField.stringValue)
         updateSuggestions()
         updateHint()
-        // Both change what is under the input: resize once, after both.
+        // Each changes what is under the input: resize once, after all.
+        updateCards()
         updateCalendar(resize: false)
         updateWeather(resize: false)
         updateHeight()
@@ -361,6 +369,32 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         suggestionList.show(items, highlightFirst: highlightFirst)
         suggestionList.isHidden = items.isEmpty
         suggestionListHeight?.constant = suggestionList.preferredHeight
+    }
+
+    /// Whether the command cards take the area under the input: only while
+    /// it is empty (spaces count as empty), and only when they are on and
+    /// workflows.json has a command.
+    private func showsCards(for input: String) -> Bool {
+        Config.workflowCardLimit.map { $0 > 0 } == true
+            && input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !store.current.workflows.isEmpty
+    }
+
+    /// Fills the cards while the input is empty, the most run first (from
+    /// the usage read when the panel opened). updateHeight sizes the panel.
+    private func updateCards() {
+        let shown = showsCards(for: textField.stringValue)
+        if shown, let limit = Config.workflowCardLimit {
+            cardsView.show(WorkflowCard.cards(from: store.current, usage: usage, limit: limit))
+        }
+        cardsView.isHidden = !shown
+    }
+
+    /// A card was clicked: its command goes in the input (`/pr `), which
+    /// hides the cards, and Enter or the argument comes next.
+    private func pick(_ card: WorkflowCard) {
+        UsageStats.shared.record(.launcherCardPicked)
+        complete(with: card.completion)
     }
 
     /// Keyword suggestions with the one typed in full first (as before),
@@ -654,6 +688,15 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         textField.stringValue = text
         inputDidChange()
     }
+
+    /// The command cards' keywords while they are shown, else nil.
+    var cardKeywordsForSelfTest: [String]? { cardsView.isHidden ? nil : cardsView.keywordsForSelfTest }
+
+    /// Clicks the card at `index`.
+    func clickCardForSelfTest(_ index: Int) { cardsView.clickForSelfTest(index) }
+
+    /// What the input reads.
+    var inputForSelfTest: String { textField.stringValue }
 
     /// The installed apps found so far (0 until the first scan finishes).
     var appCountForSelfTest: Int { apps.apps.count }
