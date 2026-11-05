@@ -126,6 +126,10 @@ enum Config {
     /// `/help` lists every command, like `/` alone, unless a workflow uses
     /// this keyword itself.
     static let commandListKeyword = "help"
+    /// At most this many commands are shown as cards under the empty
+    /// launcher input, the most run first (three per row); clicking one types
+    /// it. nil turns the cards off.
+    static let workflowCardLimit: Int? = 12
 
     // MARK: Apps
 

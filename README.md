@@ -13,6 +13,7 @@ launcher, and can sleep or lock the Mac.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
 - Commands start with `/`, so a bare word never runs one by accident; `/` or `/help` lists them all.
 - Suggestions as you type, with icons: matching apps, and commands after `/` (`/p` lists `/pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
+- Your commands as [cards](Sources/Launcher/README.md#command-cards) under the empty input, the most used first; click one to type it.
 
 | Input          | Opens                                                             |
 | -------------- | ----------------------------------------------------------------- |

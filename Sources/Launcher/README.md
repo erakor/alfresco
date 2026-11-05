@@ -9,6 +9,7 @@ every command.
 - `Esc`, clicking outside, or pressing the hotkey again dismisses it.
 - `⌘X/C/V/A/Z` work in the input even though the app has no menu bar.
 - Suggestions as you type, with icons: matching apps, and commands once you type `/` (`/p` lists `/pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
+- With nothing typed, your commands show as [cards](#command-cards), the most used first; click one to type it.
 
 | Input          | Opens                                                             |
 | -------------- | ----------------------------------------------------------------- |
@@ -150,6 +151,23 @@ nothing more; on an app row it opens the app. With no row highlighted,
 `p`). The workflow rows go away once the word is a whole keyword or you type
 a space.
 
+### Command cards
+
+While the input is empty, the commands show as cards under it, three per row
+(up to 12, `Config.workflowCardLimit`), each with the icon of what it opens,
+its title and its command (`/pr …`). The ones you run most come first, from
+the [usage stats](../Shared/README.md#usage-stats) of the last 90 days (both
+forms of a keyword count for its card); file order breaks ties, so before
+you have run anything they are in `workflows.json` order.
+
+A keyword with two workflows (`/weather` and `/weather paris`) is one card,
+titled after the one without an argument. Clicking a card types its command
+in the input, followed by a space when it can take an argument (`/pr `,
+`/weather `), and the cards go away: type the argument, or press `Enter` to
+run it (`/weather ` alone runs the bare form). Nothing runs on the click
+itself, not even `/zz`. Typing anything, a space aside, hides the cards too;
+clearing the input brings them back. Hover a card for its description.
+
 ## Apps
 
 When what you type doesn't start with `/`, the launcher looks for an
@@ -189,6 +207,8 @@ In `Sources/App/Config.swift` (rebuild after a change):
   only works on macOS 14 and earlier.
 - `workflowsSource`: how the workflows file is found (see above).
 - `commandPrefix` (`"/"`): typed before every keyword; `nil` types them bare.
+- `workflowCardLimit` (12): how many [command cards](#command-cards) the empty
+  input shows at most; `nil` turns them off.
   `commandListKeyword` (`"help"`): `/help` lists the commands, unless a
   workflow uses that keyword.
 - `appSearch`: set to `false` to turn app launching off. `appFolders` lists
@@ -205,5 +225,7 @@ In `Sources/App/Config.swift` (rebuild after a change):
   workflows file.
 - `SuggestionListView.swift`: the list under the input (apps and keywords,
   with icons and `⌘1` to `⌘9`).
+- `WorkflowCardsView.swift`: the command cards under the empty input, how
+  they are grouped and sorted, and the workflow icons both use.
 - `AppIndex.swift`: installed apps, name matching and ranking by use.
 - `PreviewFetcher.swift`: fetches a workflow's `preview` URL for the hint.
