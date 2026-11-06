@@ -23,7 +23,7 @@ final class PomodoroStatusItem: NSObject {
     #if SELFTEST
     // What the menu bar shows, for the self-test.
     var isShown: Bool { item != nil }
-    var symbolName: String? { shownPhase.map(Self.symbolName(for:)) }
+    var symbolName: String? { shownPhase?.symbolName }
     var buttonTitle: String? { item?.button?.title }
     var appearsDisabled: Bool { item?.button?.appearsDisabled ?? false }
     var menuTitles: [String] { menu.items.map(\.title) }
@@ -52,7 +52,7 @@ final class PomodoroStatusItem: NSObject {
         let item = self.item ?? makeStatusItem()
         guard let button = item.button else { return }
         if shownPhase != phase {
-            button.image = NSImage(systemSymbolName: Self.symbolName(for: phase), accessibilityDescription: phase.name)
+            button.image = NSImage(systemSymbolName: phase.symbolName, accessibilityDescription: phase.name)
             button.imagePosition = .imageLeading
             shownPhase = phase
         }
@@ -64,10 +64,6 @@ final class PomodoroStatusItem: NSObject {
         statusLine.title = timer.summary
         pauseItem.title = paused ? "Resume" : "Pause"
         skipItem.title = phase == .focus ? "Skip to Break" : "End Break"
-    }
-
-    private static func symbolName(for phase: PomodoroPhase) -> String {
-        phase.isBreak ? "cup.and.saucer" : "timer"
     }
 
     private func makeStatusItem() -> NSStatusItem {

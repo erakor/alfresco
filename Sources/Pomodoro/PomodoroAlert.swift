@@ -59,7 +59,7 @@ enum PomodoroAlert {
         switch phase {
         case .focus:
             guard let breakPhase = next.phase else { return ("Focus session done", "") }
-            let minutes = Int((breakPhase.duration / 60).rounded())
+            let minutes = breakPhase.minutes
             let kind = breakPhase == .longBreak ? "long break" : "break"
             if next.isPaused {
                 return ("Focus session done", "Your \(minutes) min \(kind) is waiting in the menu bar.")
