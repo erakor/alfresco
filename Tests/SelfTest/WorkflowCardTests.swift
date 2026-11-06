@@ -105,5 +105,25 @@ enum WorkflowCardTests {
                            controller.inputForSelfTest == forecast, controller.inputForSelfTest)
         }
         SelfTest.check("weather strip: and hides the cards", controller.cardKeywordsForSelfTest == nil)
+
+        meetingStrip(withoutCalendar: controller)
+    }
+
+    /// The next meeting above the input: hidden without calendar access
+    /// (the test build never asks for it), and a click with no `cal`
+    /// workflow beeps and leaves the input alone. A click that types `/cal`
+    /// isn't driven here: the test bundle has the calendar usage
+    /// description, so `/cal` would bring up the permission prompt.
+    private static func meetingStrip(withoutCalendar controller: LauncherController) {
+        func check(_ name: String, _ condition: Bool, _ detail: @autoclosure () -> String = "") {
+            SelfTest.check("next meeting: \(name)", condition, detail())
+        }
+        controller.typeForSelfTest("")
+        check("hidden without calendar access", controller.meetingStripForSelfTest == nil,
+              controller.meetingStripForSelfTest ?? "")
+        controller.typeForSelfTest("saf")
+        controller.clickMeetingStripForSelfTest()
+        check("a click without a cal workflow leaves the input", controller.inputForSelfTest == "saf",
+              controller.inputForSelfTest)
     }
 }

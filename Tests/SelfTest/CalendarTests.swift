@@ -4,7 +4,8 @@
 // search, with a pinned clock and time zone; what Enter runs for it; which
 // events a day is read from (the shared window or that day alone); and the
 // events a day's list keeps: any part of that day, finished ones left out
-// first past the limit. EventKit itself is never touched.
+// first past the limit; and the next meeting above the input, which event
+// and how it says when. EventKit itself is never touched.
 
 import Foundation
 
@@ -30,6 +31,7 @@ enum CalendarTests {
         enterCommand()
         fetchRange()
         dayList()
+        nextMeeting()
     }
 
     // MARK: /cal <argument>
@@ -202,5 +204,47 @@ enum CalendarTests {
             on: date(2026, 11, 4), now: context.now, limit: 8, calendar: paris
         )
         check("an event of no length at midnight is on that day", instant.shown.count == 1)
+    }
+
+    // MARK: The next meeting above the input
+
+    /// In the system's own time zone, since the strip's clock follows it.
+    private static func nextMeeting() {
+        let local = Calendar.current
+        let today = local.startOfDay(for: context.now)
+        func at(_ days: Int, _ hour: Int, _ minute: Int = 0, _ second: Int = 0) -> Date {
+            let day = local.date(byAdding: .day, value: days, to: today)!
+            return local.date(bySettingHour: hour, minute: minute, second: second, of: day)!
+        }
+        let now = at(0, 10)
+        let events = [
+            event("all day", at(0, 0), at(1, 0), allDay: true),
+            event("under way", at(0, 9, 30), at(0, 10, 30)),
+            event("standup", at(0, 10, 12), at(0, 10, 30)),
+            event("review", at(0, 15, 30), at(0, 16)),
+        ]
+        check("the next meeting is the first timed event still to start",
+              NextMeeting.find(in: events, now: now)?.title == "standup")
+        check("no next meeting once every event has started",
+              NextMeeting.find(in: Array(events.prefix(2)), now: now) == nil)
+        func when(_ start: Date) -> String {
+            NextMeeting.whenText(for: event("x", start, start.addingTimeInterval(1800)), now: now)
+        }
+        let cases: [(String, Date, String)] = [
+            ("within the hour", at(0, 10, 12), "dans 12 min"),
+            ("seconds away", at(0, 10, 0, 20), "dans 1 min"),
+            ("59 min away", at(0, 10, 59), "dans 59 min"),
+            ("later today", at(0, 15, 30), "15:30"),
+            ("tomorrow", at(1, 9), "demain 09:00"),
+        ]
+        for (name, start, expected) in cases {
+            let got = when(start)
+            check("next meeting \(name) reads \(expected)", got == expected, "got \(got)")
+        }
+        let later = when(at(3, 9))
+        check("next meeting after tomorrow names the day", later.hasSuffix(", 09:00") && !later.hasPrefix("demain"),
+              "got \(later)")
+        check("next meeting within the hour is soon", NextMeeting.isSoon(events[2], now: now))
+        check("next meeting later today is not", !NextMeeting.isSoon(events[3], now: now))
     }
 }

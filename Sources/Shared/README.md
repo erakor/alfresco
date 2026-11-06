@@ -73,6 +73,10 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `StatusRow.swift`: the loading / error line (spinner or icon, then text)
   that the [weather](../Weather/README.md) and
   [calendar](../Calendar/README.md) areas show under the input.
+- `StripButton.swift`: the clickable part of each line in the strip above
+  the launcher input, the [weather](../Weather/README.md) on the right and
+  the [next meeting](../Calendar/README.md) on the left (hover highlight,
+  clicked on mouse up, never takes focus from the input).
 - `AreaLabel.swift`: the text label style of the
   [calendar](../Calendar/README.md) and [pomodoro](../Pomodoro/README.md)
   areas under the input.

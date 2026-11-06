@@ -60,6 +60,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let weatherStrip = WeatherStripView(frame: .zero)
     private let calendar = CalendarProvider()
     private let calendarView = CalendarView(frame: .zero)
+    /// The next meeting, on the strip's line opposite the weather.
+    private let meetingStrip = MeetingStripView(frame: .zero)
     /// The timer `/pomo` drives; nil (no pomodoro view) in self-tests that
     /// don't pass one.
     private let pomodoro: PomodoroTimer?
@@ -73,6 +75,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// The input row (icon, field, hint); moves down when the strip is shown.
     private let rowGuide = NSLayoutGuide()
     private var rowTop: NSLayoutConstraint?
+    /// Keeps the meeting clear of the weather while both are shown.
+    private var stripGap: NSLayoutConstraint?
     private var suggestionListHeight: NSLayoutConstraint?
     /// What can take the area under the input (see InputArea). A new one
     /// goes here, and its feature shows it and fills it.
@@ -125,11 +129,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// The next show reopens the launcher for the prompt's answer, which is
     /// not an opening to count.
     private var isReopeningForAccess = false
-    /// Height of the weather strip above the input, 0 while hidden; set by
-    /// updateWeather, read by updateHeight.
+    /// Height of the strip above the input (the weather, the next meeting),
+    /// 0 while both are hidden; set by layoutStrips, read by updateHeight.
     private var stripHeight: CGFloat = 0
-    /// Redraws the calendar while it is shown, so countdowns and "en cours"
-    /// follow the clock.
+    /// Redraws the calendar and the next meeting while either is shown, so
+    /// countdowns and "en cours" follow the clock.
     private var calendarTimer: Timer?
     private static let calendarRefreshInterval: TimeInterval = 30
 
@@ -141,13 +145,14 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
         weather.onUpdate = { [weak self] in self?.updateWeather() }
-        calendar.onUpdate = { [weak self] in self?.updateCalendar() }
+        calendar.onUpdate = { [weak self] in self?.calendarDidUpdate() }
         calendar.onAccessAnswered = { [weak self] in self?.calendarAccessAnswered(granted: $0) }
         apps.onUpdate = { [weak self] in self?.appsDidChange() }
         suggestionList.onPick = { [weak self] in self?.activate($0) }
         suggestionList.onHover = { [weak self] in self?.updateHint() }
         cardsView.onPick = { [weak self] in self?.pick($0) }
         weatherStrip.onClick = { [weak self] in self?.showForecast() }
+        meetingStrip.onClick = { [weak self] in self?.showCalendar() }
         pomodoro?.addObserver { [weak self] in self?.pomodoroDidChange() }
     }
 
@@ -194,6 +199,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         weather.cancel()
         for area in inputAreas { area.view.isHidden = true }
         weatherStrip.clearHover()
+        meetingStrip.clearHover()
+        // Worked out again on the next opening; hidden meanwhile so a
+        // calendar update doesn't restart the timer.
+        meetingStrip.isHidden = true
+        layoutStrips()
         stopCalendarTimer()
         suggestionList.show([])
         suggestionList.isHidden = true
@@ -214,6 +224,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateCards()
         updateCalendar(resize: false)
         updatePomodoro()
+        updateMeetingStrip(resize: false)
         updateWeather(resize: false)
         updateHeight()
         signposter.endInterval("launcher.input", signpost, "rows=\(self.suggestionList.items.count, privacy: .public)")
@@ -441,6 +452,19 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         complete(with: CommandInput.typed(Config.weatherKeyword))
     }
 
+    /// The next meeting was clicked: `/cal` goes in the input, which opens
+    /// the event list. Beeps when no `cal` workflow takes it (the list
+    /// would not show).
+    private func showCalendar() {
+        let typed = CommandInput.typed(Config.calendarKeyword)
+        guard calendarQuery(for: typed) != nil else {
+            NSSound.beep()
+            return
+        }
+        UsageStats.shared.record(.launcherMeetingStripClicked)
+        complete(with: typed)
+    }
+
     /// Keyword suggestions with the one typed in full first (as before),
     /// then the most run ones; file order breaks ties.
     private func sortedByUse(_ suggestions: [Suggestion], input: String) -> [Suggestion] {
@@ -569,8 +593,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             weatherStrip.show(weather.state(for: homeQuery))
         }
         weatherStrip.isHidden = homeQuery == nil
-        stripHeight = homeQuery == nil ? 0 : WeatherStripView.height
-        rowTop?.constant = stripHeight
+        layoutStrips()
 
         if let panelQuery {
             weatherView.show(weather.state(for: panelQuery), for: panelQuery)
@@ -617,12 +640,48 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             let state = calendar.state(for: query)
             if calendar.isAwaitingAccess { accessPromptInput = input }
             calendarView.show(state, for: query)
-            startCalendarTimer()
-        } else {
-            stopCalendarTimer()
         }
         calendarView.isHidden = query == nil
+        updateCalendarTimer()
         if resize { updateHeight() }
+    }
+
+    /// Shows the next meeting above the input, left of the weather, while
+    /// Config.calendarStrip is on, calendar access was already granted (the
+    /// strip never asks), and a timed event starts within
+    /// Config.calendarDays. Reads the same events as `/cal`, fetching them
+    /// when missing or stale; the result comes back through
+    /// calendarDidUpdate.
+    private func updateMeetingStrip(resize: Bool = true) {
+        let now = Date()
+        var next: CalendarEvent?
+        if Config.calendarStrip, calendar.canReadWithoutAsking,
+           case .loaded(let events, _) = calendar.state(for: .upcoming) {
+            next = NextMeeting.find(in: events, now: now)
+        }
+        if let next { meetingStrip.show(next, now: now) }
+        meetingStrip.isHidden = next == nil
+        layoutStrips()
+        updateCalendarTimer()
+        if resize { updateHeight() }
+    }
+
+    /// New events, or the calendars changed: the list and the next meeting
+    /// follow (the meeting only while the panel is shown, so a change in a
+    /// calendar never starts a fetch for a closed launcher).
+    private func calendarDidUpdate() {
+        updateCalendar(resize: false)
+        if isShown { updateMeetingStrip(resize: false) }
+        updateHeight()
+    }
+
+    /// Room for the strip above the input while the weather or the next
+    /// meeting is shown, and the gap between them when both are.
+    private func layoutStrips() {
+        let bothShown = !weatherStrip.isHidden && !meetingStrip.isHidden
+        stripHeight = weatherStrip.isHidden && meetingStrip.isHidden ? 0 : StripButton.stripHeight
+        rowTop?.constant = stripHeight
+        stripGap?.isActive = bothShown
     }
 
     /// Clicking the permission prompt closes the launcher. If access was
@@ -633,12 +692,22 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         let input = accessPromptInput
         accessPromptInput = nil
         if isShown {
-            updateCalendar()
+            calendarDidUpdate()
         } else if granted, let input {
             // A fade-out still running is cancelled by show() (see
             // FloatingPanelController.finishHide).
             isReopeningForAccess = true
             show(prefill: input)
+        }
+    }
+
+    /// The 30 s redraw runs while the event list or the next meeting is
+    /// shown.
+    private func updateCalendarTimer() {
+        if calendarView.isHidden && meetingStrip.isHidden {
+            stopCalendarTimer()
+        } else {
+            startCalendarTimer()
         }
     }
 
@@ -661,7 +730,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     @objc private func calendarTimerFired() {
         // `/cal demain` names another day after midnight.
         currentCalendarQuery = calendarQuery(for: textField.stringValue)
-        updateCalendar()
+        calendarDidUpdate()
     }
 
     /// The alfresco://pomodoro/... URL `input` runs (`/pomo`, `/pomo 50`,
@@ -799,6 +868,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// WeatherAPI key, but its click still goes through).
     func clickWeatherStripForSelfTest() { weatherStrip.clickForSelfTest() }
 
+    /// Clicks the next meeting (hidden in the test build, which has no
+    /// calendar access, but its click still goes through).
+    func clickMeetingStripForSelfTest() { meetingStrip.clickForSelfTest() }
+
+    /// What the next meeting reads while it is shown, else nil.
+    var meetingStripForSelfTest: String? { meetingStrip.isHidden ? nil : meetingStrip.textForSelfTest }
+
     /// What the input reads.
     var inputForSelfTest: String { textField.stringValue }
 
@@ -824,9 +900,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         hintLabel.setContentHuggingPriority(.required, for: .horizontal)
 
         weatherStrip.isHidden = true
+        meetingStrip.isHidden = true
         suggestionList.isHidden = true
 
-        for view in [weatherStrip, icon, textField, hintLabel, suggestionList] {
+        for view in [meetingStrip, weatherStrip, icon, textField, hintLabel, suggestionList] {
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
@@ -835,16 +912,25 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         self.rowTop = rowTop
         let suggestionListHeight = suggestionList.heightAnchor.constraint(equalToConstant: 0)
         self.suggestionListHeight = suggestionListHeight
+        // Both strips hug their content; this one only applies while both
+        // are shown (layoutStrips), and the meeting's title gives way first.
+        stripGap = meetingStrip.trailingAnchor.constraint(lessThanOrEqualTo: weatherStrip.leadingAnchor, constant: -12)
 
+        // The strips' content lines up with the input row's edges (20 pt
+        // in); their click highlight reaches a little past.
+        let stripLeading = contentView.leadingAnchor
+        let stripTrailing = contentView.trailingAnchor
+        let stripInset = 20 - StripButton.inset
         NSLayoutConstraint.activate([
+            meetingStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
+            meetingStrip.leadingAnchor.constraint(equalTo: stripLeading, constant: stripInset),
+            meetingStrip.trailingAnchor.constraint(lessThanOrEqualTo: stripTrailing, constant: -stripInset),
+            meetingStrip.heightAnchor.constraint(equalToConstant: StripButton.stripHeight),
+
             weatherStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
-            weatherStrip.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            // Its text ends where the input row's does; its click highlight
-            // reaches a little past.
-            weatherStrip.trailingAnchor.constraint(
-                equalTo: contentView.trailingAnchor, constant: -20 + WeatherStripView.highlightInset
-            ),
-            weatherStrip.heightAnchor.constraint(equalToConstant: WeatherStripView.height),
+            weatherStrip.leadingAnchor.constraint(greaterThanOrEqualTo: stripLeading, constant: stripInset),
+            weatherStrip.trailingAnchor.constraint(equalTo: stripTrailing, constant: -stripInset),
+            weatherStrip.heightAnchor.constraint(equalToConstant: StripButton.stripHeight),
 
             rowTop,
             rowGuide.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
