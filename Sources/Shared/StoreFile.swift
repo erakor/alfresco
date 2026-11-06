@@ -3,7 +3,8 @@
 // A versioned JSON data file in the support folder, shared by the usage
 // stats and the learned app picks: reading it (a newer build's file is left
 // alone, a damaged one set aside), saving it 5 s after a change and on quit,
-// owner-only. The owner keeps the contents and says when they changed.
+// owner-only. The owner keeps the contents and hands them in with each
+// scheduleSave.
 
 import Foundation
 import os
@@ -31,8 +32,9 @@ final class StoreFile {
     /// until the next launch.
     private(set) var canSave = true
     private var saveTimer: Timer?
-    /// What a save writes, set by the owner.
-    var contents: (@MainActor () -> any Encodable)?
+    /// What the pending save writes, from the latest scheduleSave. Held
+    /// (with its owner) only until that save, like a timer's target.
+    private var pending: (@MainActor () -> any Encodable)?
 
     init(url: URL, name: String, kind: Signposts.Kind) {
         self.url = url
@@ -78,9 +80,12 @@ final class StoreFile {
         }
     }
 
-    /// Saves in 5 s, unless a save is already due.
-    func scheduleSave() {
-        guard canSave, saveTimer == nil else { return }
+    /// Saves what `contents` returns then in 5 s (or at the save already
+    /// due).
+    func scheduleSave(_ contents: @escaping @MainActor () -> any Encodable) {
+        guard canSave else { return }
+        pending = contents
+        guard saveTimer == nil else { return }
         let timer = Timer(timeInterval: 5, repeats: false) { _ in
             MainActor.assumeIsolated { self.saveNow() }
         }
@@ -91,9 +96,10 @@ final class StoreFile {
 
     /// Writes a pending change now (on quit, or when it can't wait).
     func saveNow() {
-        guard saveTimer != nil, let contents else { return }
         saveTimer?.invalidate()
         saveTimer = nil
+        guard let contents = pending else { return }
+        pending = nil
 
         let signposter = Signposts.signposter
         let signpost = signposter.beginInterval("store.save")

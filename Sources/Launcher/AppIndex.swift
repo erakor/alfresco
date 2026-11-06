@@ -86,7 +86,7 @@ final class AppIndex {
         _ apps: [AppEntry], for input: String, limit: Int,
         openCounts: [String: Int] = [:], picks: [String: Double] = [:]
     ) -> [AppEntry] {
-        guard !input.isEmpty else { return [] }
+        guard limit > 0, !input.isEmpty else { return [] }
         let ranked = apps.compactMap { app -> (exact: Int, weight: Double, score: Double, length: Int, name: String, app: AppEntry)? in
             guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
             let opens = app.bundleID.flatMap { openCounts[$0] } ?? 0

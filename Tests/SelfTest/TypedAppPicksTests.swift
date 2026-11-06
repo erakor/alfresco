@@ -165,7 +165,10 @@ enum TypedAppPicksTests {
         picks.record(input: "new", bundleID: slack)
         check("an input typed \(Config.typedAppPicksRetentionDays - 1) days ago is kept",
               picks.inputsForSelfTest == ["new", "old"], "\(picks.inputsForSelfTest)")
+        check("it still ranks", picks.picks(for: "old") == [safari: 1], "\(picks.picks(for: "old"))")
         clock.date = paris.date(byAdding: .day, value: 1, to: clock.date)!
+        check("one past the retention window no longer ranks, before anything prunes it",
+              picks.picks(for: "old").isEmpty && picks.inputsForSelfTest == ["new", "old"], "\(picks.picks(for: "old"))")
         picks.record(input: "new", bundleID: slack)
         check("one past the retention window is dropped", picks.inputsForSelfTest == ["new"], "\(picks.inputsForSelfTest)")
         picks.saveNow()

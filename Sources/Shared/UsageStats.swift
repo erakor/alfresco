@@ -153,7 +153,6 @@ final class UsageStats {
         file = StoreFile(url: fileURL, name: "usage stats", kind: .usage)
         self.now = now
         self.calendar = calendar
-        file.contents = { [unowned self] in self.stored }
         guard Config.usageTracking else { return }
         stored = file.load(StoredUsage.self, currentVersion: StoredUsage.currentVersion) ?? StoredUsage()
         prune()
@@ -434,7 +433,7 @@ final class UsageStats {
     }
 
     private func scheduleSave() {
-        file.scheduleSave()
+        file.scheduleSave { self.stored }
     }
 
     /// Writes any pending change; called on quit.

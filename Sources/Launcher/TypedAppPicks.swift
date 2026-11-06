@@ -60,7 +60,6 @@ final class TypedAppPicks {
         file = StoreFile(url: fileURL, name: "learned app picks", kind: .typedAppPicks)
         self.now = now
         self.calendar = calendar
-        file.contents = { [unowned self] in self.stored }
         guard Config.learnTypedAppPicks else { return }
         stored = file.load(StoredTypedPicks.self, currentVersion: StoredTypedPicks.currentVersion)
             ?? StoredTypedPicks()
@@ -78,9 +77,13 @@ final class TypedAppPicks {
 
     /// Bundle ID → weight of the apps opened for exactly this input, for
     /// AppIndex.matches. Empty when nothing was, or when learning is off.
+    /// An input past the retention window counts as forgotten even before
+    /// prune drops it (a long-running app prunes only when it records).
     func picks(for input: String) -> [String: Double] {
-        guard Config.learnTypedAppPicks, let key = Self.key(for: input) else { return [:] }
-        return stored.inputs[key]?.apps ?? [:]
+        guard Config.learnTypedAppPicks, let key = Self.key(for: input),
+              let entry = stored.inputs[key], entry.lastUsed >= retentionCutoff()
+        else { return [:] }
+        return entry.apps
     }
 
     /// The launcher opened the app with `bundleID` while `input` was typed.
@@ -91,7 +94,7 @@ final class TypedAppPicks {
         apps[bundleID] = min(Self.maxWeight, (previous[bundleID] ?? 0) + 1)
         stored.inputs[key] = TypedInputPicks(apps: apps, lastUsed: DayKey.of(now(), in: calendar))
         prune(keeping: key)
-        file.scheduleSave()
+        scheduleSave()
     }
 
     /// Forgets everything learned and empties the file right away (the menu
@@ -99,7 +102,7 @@ final class TypedAppPicks {
     func forgetAll() {
         guard !stored.inputs.isEmpty else { return }
         stored.inputs = [:]
-        file.scheduleSave()
+        scheduleSave()
         file.saveNow()
     }
 
@@ -114,7 +117,7 @@ final class TypedAppPicks {
     /// calendar days (today included), then the least recently typed ones
     /// past Config.typedAppPicksMaxInputs, never `kept` (the one just typed).
     private func prune(keeping kept: String? = nil) {
-        let cutoff = DayKey.first(keeping: Config.typedAppPicksRetentionDays, upTo: now(), in: calendar)
+        let cutoff = retentionCutoff()
         let before = stored.inputs.count
         stored.inputs = stored.inputs.filter { $0.value.lastUsed >= cutoff }
         let excess = stored.inputs.count - max(0, Config.typedAppPicksMaxInputs)
@@ -125,7 +128,16 @@ final class TypedAppPicks {
                 .prefix(excess)
             for (key, _) in oldest { stored.inputs[key] = nil }
         }
-        if stored.inputs.count != before { file.scheduleSave() }
+        if stored.inputs.count != before { scheduleSave() }
+    }
+
+    /// The oldest day an input may have been last typed on and still count.
+    private func retentionCutoff() -> String {
+        DayKey.first(keeping: Config.typedAppPicksRetentionDays, upTo: now(), in: calendar)
+    }
+
+    private func scheduleSave() {
+        file.scheduleSave { self.stored }
     }
 
     #if SELFTEST
