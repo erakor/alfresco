@@ -2,15 +2,16 @@
 //
 // Launcher answers the app works out itself instead of opening a URL: a
 // calculator and unit converter (`= 3*14`, `= 10 km in mi`), world clocks
-// (`time tokyo`, `time 15:00 in tokyo`), and a fresh UUID or timestamp
-// (`uuid`, `now`). The hint shows the answer and Enter copies it. They only
+// (`time tokyo`, `time 15:00 in tokyo`), a fresh UUID or timestamp
+// (`uuid`, `now`), and dates (`days until 25/12`, `= today + 30 days`,
+// `week`). The hint shows the answer and Enter copies it. They only
 // take input no workflow takes, so a workflows.json keyword always wins.
 
 import Foundation
 
 /// Which built-in answered; each is counted in the usage stats.
 enum BuiltInKind: Sendable {
-    case calculation, conversion, time, uuid, timestamp
+    case calculation, conversion, time, uuid, timestamp, date, week
 
     var usageCounter: UsageCounter {
         switch self {
@@ -19,6 +20,8 @@ enum BuiltInKind: Sendable {
         case .time: return .builtInTime
         case .uuid: return .builtInUUID
         case .timestamp: return .builtInTimestamp
+        case .date: return .builtInDate
+        case .week: return .builtInWeek
         }
     }
 
@@ -30,6 +33,8 @@ enum BuiltInKind: Sendable {
         case .time: return "clock"
         case .uuid: return "number"
         case .timestamp: return "calendar.badge.clock"
+        case .date: return "calendar"
+        case .week: return "calendar.circle"
         }
     }
 }
@@ -109,7 +114,7 @@ enum BuiltIns {
     static func answer(for input: String, context: BuiltInContext) -> BuiltInAnswer? {
         let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if let prefix = Config.calculatorPrefix, !prefix.isEmpty, input.hasPrefix(prefix) {
-            return calculate(String(input.dropFirst(prefix.count)))
+            return calculate(String(input.dropFirst(prefix.count)), context: context)
         }
         guard let parts = KeywordInput(input) else { return nil }
         if parts.keyword == Config.timeKeyword {
@@ -125,16 +130,27 @@ enum BuiltIns {
         if parts.keyword == Config.timestampKeyword {
             return timestamp(parts.argument.map { AppIndex.fold($0) }, context: context)
         }
+        if parts.keyword == Config.daysKeyword {
+            // `days` alone, or with no date after it, is left to apps and the search.
+            return DateMath.days(parts.argument, context: context)
+        }
+        if parts.keyword == Config.weekKeyword {
+            return DateMath.week(parts.argument, context: context)
+        }
         return nil
     }
 
     // MARK: Calculator
 
-    private static func calculate(_ text: String) -> BuiltInAnswer {
+    private static func calculate(_ text: String, context: BuiltInContext) -> BuiltInAnswer {
         let text = text.trimmingCharacters(in: .whitespaces)
         let prefix = Config.calculatorPrefix ?? ""
         guard !text.isEmpty else {
             return .incomplete(kind: .calculation, message: "Calculate (\(prefix) 3*14) or convert (\(prefix) 10 km in mi)")
+        }
+        // `today + 30 days`; digits alone (`25/12`) stay a division.
+        if let date = DateMath.calculate(text, context: context) {
+            return date
         }
         if let conversion = UnitConverter.convert(text) {
             switch conversion {

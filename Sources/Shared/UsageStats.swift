@@ -57,6 +57,8 @@ enum UsageCounter: String, Sendable {
     case builtInTime = "builtin.time"
     case builtInUUID = "builtin.uuid"
     case builtInTimestamp = "builtin.timestamp"
+    case builtInDate = "builtin.date"
+    case builtInWeek = "builtin.week"
 
     case clipboardCopiedText = "clipboard.copied.text"
     case clipboardCopiedImage = "clipboard.copied.image"
@@ -349,7 +351,7 @@ final class UsageStats: NSObject {
         }
 
         let builtIns: Int = count(.builtInCalculation) + count(.builtInConversion) + count(.builtInTime)
-            + count(.builtInUUID) + count(.builtInTimestamp)
+            + count(.builtInUUID) + count(.builtInTimestamp) + count(.builtInDate) + count(.builtInWeek)
         let launched: Int = total.keywords.values.reduce(0, +) + count(.launcherFallback) + count(.launcherOpenedApp)
             + builtIns
         let closed = count(.launcherClosedEmpty) + count(.launcherClosedTyped)
@@ -380,7 +382,8 @@ final class UsageStats: NSObject {
 
         let builtInKinds: String = "\(count(.builtInCalculation)) calculations, "
             + "\(count(.builtInConversion)) conversions, \(count(.builtInTime)) times, "
-            + "\(count(.builtInUUID)) UUIDs, \(count(.builtInTimestamp)) timestamps"
+            + "\(count(.builtInUUID)) UUIDs, \(count(.builtInTimestamp)) timestamps, "
+            + "\(count(.builtInDate)) dates, \(count(.builtInWeek)) weeks"
         let builtInLine = "Built-ins copied: \(builtIns) (\(builtInKinds))"
 
         var lines: [String] = [

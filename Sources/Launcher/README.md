@@ -24,7 +24,7 @@ every command.
 | `/pomo`        | Starts a 25 min [pomodoro](../Pomodoro/README.md), or pauses / resumes it (nothing opens) |
 | `/zz`, `/lockscreen`, `/displaysleep` | Sleep, lock the screen, display off ([System](../System/README.md)) |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
-| `= 3*14`, `= 10 km in mi`, `time tokyo`, `uuid`, `now` | Nothing: a [built-in](../BuiltIns/README.md) shows the answer in the hint and Enter copies it |
+| `= 3*14`, `= 10 km in mi`, `time tokyo`, `uuid`, `now`, `days until 25/12`, `week` | Nothing: a [built-in](../BuiltIns/README.md) shows the answer in the hint and Enter copies it |
 | anything else  | `https://www.google.com/search?q=...`                             |
 
 ## Commands

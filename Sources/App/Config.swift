@@ -166,6 +166,12 @@ enum Config {
     static let uuidKeyword: String? = "uuid"
     /// `now`, `now utc`, `now unix`, `now ms`, `now date`: the current time.
     static let timestampKeyword: String? = "now"
+    /// `days until 25/12`, `days since 1/1`, `days from 1/1 to 25/12`: a
+    /// number of days. `days` alone is left to apps and the search. Date
+    /// arithmetic (`= today + 30 days`) goes with `calculatorPrefix`.
+    static let daysKeyword: String? = "days"
+    /// `week` (this ISO week's number), `week 25/12`, `week 12` (its dates).
+    static let weekKeyword: String? = "week"
 
     // MARK: Usage stats
 

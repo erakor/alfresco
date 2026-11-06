@@ -42,7 +42,7 @@ Each feature has its own README, next to its code in `Sources/`:
 | [Launcher](Sources/Launcher/README.md) | The `⌘Space` bar: workflows (`workflows.json`, its format and where it is read from), `/` commands and their suggestions, and opening apps by name. |
 | [Weather](Sources/Weather/README.md) | The forecast under the input for `/weather` / `/weather <place>`, and the current weather above it. Needs a free WeatherAPI.com key. |
 | [Calendar](Sources/Calendar/README.md) | Your upcoming events under the input for `/cal`, and a search with `/cal <text>`, read from macOS Calendar (Google accounts included). Needs `build/Launcher.app`. |
-| [Built-ins](Sources/BuiltIns/README.md) | Answers in the launcher's hint, copied with Enter: a calculator and unit converter (`= 3*14`, `= 10 km in mi`), time zones (`time tokyo`), a new UUID (`uuid`) and the current time (`now`). |
+| [Built-ins](Sources/BuiltIns/README.md) | Answers in the launcher's hint, copied with Enter: a calculator and unit converter (`= 3*14`, `= 10 km in mi`), time zones (`time tokyo`), a new UUID (`uuid`), the current time (`now`) and dates (`days until 25/12`, `= today + 30 days`, `week`). |
 | [Pomodoro](Sources/Pomodoro/README.md) | A focus / break timer started with `/pomo`, counting down in the menu bar. |
 | [System](Sources/System/README.md) | `/zz` (sleep), `/lockscreen` and `/displaysleep` from the launcher, with no permission prompt. |
 | [Clipboard history](Sources/Clipboard/README.md) | 24 hours of copied text, images and files on `⌘⌥C`, pasted back into the app you were using. Pinned items stay on top and never expire. |
