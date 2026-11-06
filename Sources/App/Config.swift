@@ -260,6 +260,10 @@ enum Config {
     /// Events are read again after this long; a change in a calendar
     /// (EKEventStoreChanged) refreshes them at once anyway.
     static let calendarCacheLifetime: TimeInterval = 5 * 60
+    /// A line above the launcher input shows the next timed event (within
+    /// calendarDays) on the left, opposite the weather, once calendar
+    /// access has been granted through `/cal`.
+    static let calendarStrip = true
 
     // MARK: Pomodoro
 

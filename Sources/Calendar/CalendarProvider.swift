@@ -197,6 +197,14 @@ final class CalendarProvider {
     /// Whether the permission prompt is up.
     var isAwaitingAccess: Bool { isRequestingAccess }
 
+    /// Whether events can be read without bringing up the permission
+    /// prompt (which closes the launcher): access was already granted, in
+    /// an app bundle, and not while the prompt is up (the status can read
+    /// granted before accessAnswered replaces the store made before it). The next meeting above the input only shows then.
+    var canReadWithoutAsking: Bool {
+        Self.isAvailable && !isRequestingAccess && Self.access() == .granted
+    }
+
     /// What a query needs read: `.search` also covers `.upcoming`, so going
     /// back to `/cal` after a search reuses the events, and a day inside
     /// either window uses it; a day outside both is read on its own.
