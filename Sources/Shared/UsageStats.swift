@@ -37,6 +37,9 @@ enum UsageCounter: String, Sendable {
     case launcherUnknownCommand = "launcher.unknownCommand"
     /// An installed app was opened; which one is in UsageDay.appsOpened.
     case launcherOpenedApp = "launcher.openedApp"
+    /// A System Settings pane was opened from the launcher (which one isn't
+    /// kept).
+    case launcherOpenedSettingsPane = "launcher.openedSettingsPane"
     /// A command card under the empty input was clicked (which one is
     /// counted if it is then run, under keywords).
     case launcherCardPicked = "launcher.cardPicked"
@@ -355,7 +358,7 @@ final class UsageStats: NSObject {
         let builtIns: Int = count(.builtInCalculation) + count(.builtInConversion) + count(.builtInTime)
             + count(.builtInUUID) + count(.builtInTimestamp) + count(.builtInDate) + count(.builtInWeek)
         let launched: Int = total.keywords.values.reduce(0, +) + count(.launcherFallback) + count(.launcherOpenedApp)
-            + builtIns
+            + count(.launcherOpenedSettingsPane) + builtIns
         let closed = count(.launcherClosedEmpty) + count(.launcherClosedTyped)
         let failurePrefix = "weather.failed."
         var weatherFailures: [String: Int] = [:]
@@ -399,6 +402,7 @@ final class UsageStats: NSObject {
             top(total.keywords, 10),
             "Apps opened: \(count(.launcherOpenedApp))",
             top(appsOpened, 10),
+            "System Settings panes opened: \(count(.launcherOpenedSettingsPane))",
             "Fallback: \(count(.launcherFallback)), first words:",
             top(total.fallbackWords, 10),
             builtInLine,

@@ -1,7 +1,8 @@
 // AppIndex.swift
 //
 // The installed applications the launcher can open: AppIndex scans the
-// usual Applications folders and matches launcher input against app names.
+// usual Applications folders and matches launcher input against app names,
+// and against the System Settings panes this Mac has (SettingsPanes).
 
 import Cocoa
 
@@ -25,6 +26,9 @@ struct AppEntry: Sendable {
 @MainActor
 final class AppIndex {
     private(set) var apps: [AppEntry] = []
+    /// The System Settings panes this Mac has (Config.settingsPaneSearch),
+    /// read once with the first scan: they only change with macOS.
+    private(set) var panes: [SettingsPane] = []
     /// Called on the main actor after a scan replaced `apps`.
     var onUpdate: (() -> Void)?
     private var lastScan: Date?
@@ -35,29 +39,37 @@ final class AppIndex {
     }
 
     func refreshIfStale() {
-        guard Config.appSearch, !scanning else { return }
+        guard Config.appSearch || Config.settingsPaneSearch, !scanning else { return }
         if let lastScan, Date().timeIntervalSince(lastScan) < Config.appRescanInterval { return }
         scanning = true
-        let folders = Config.appFolders
+        let folders = Config.appSearch ? Config.appFolders : []
+        let readPanes = Config.settingsPaneSearch && lastScan == nil
         Task {
-            let found = await Task.detached(priority: .utility) { AppIndex.scan(folders) }.value
+            let (found, panes) = await Task.detached(priority: .utility) {
+                (AppIndex.scan(folders), readPanes ? SettingsPanes.installed() : nil)
+            }.value
             self.apps = found
+            if let panes { self.panes = panes }
             self.lastScan = Date()
             self.scanning = false
             self.onUpdate?()
         }
     }
 
-    /// The apps whose name matches the whole input, best first, at most
-    /// `limit`. Each match has a tier: the exact name, a name starting with
-    /// the input, a word of the name starting with the input ("code" for
-    /// "Visual Studio Code"), then the initials ("vsc"). `openCounts` (bundle
-    /// ID → times opened) lifts an app by up to `maxUsageBoost` tiers, one
-    /// tier per `opensPerTier`-ish opens (logarithmic), so a much-used app can
-    /// beat a closer-matching one; an exact name always comes first. Ties go
-    /// to the shorter name, then alphabetical order.
-    func matches(for raw: String, limit: Int, openCounts: [String: Int] = [:]) -> [AppEntry] {
-        guard Config.appSearch, limit > 0 else { return [] }
+    /// The apps and System Settings panes whose name matches the whole
+    /// input, best first, at most `limit`: `.app` and `.settingsPane` rows.
+    /// Each match has a tier: the exact name, a name starting with the
+    /// input, a word of the name starting with the input ("code" for "Visual
+    /// Studio Code"), then the initials ("vsc"). `openCounts` (bundle ID →
+    /// times opened) lifts an app by up to `maxUsageBoost` tiers, one tier
+    /// per `opensPerTier`-ish opens (logarithmic), so a much-used app can
+    /// beat a closer-matching one; an exact name always comes first. Panes
+    /// get no lift, and an app comes before a pane of the same score, so
+    /// `bluetooth` gives the Bluetooth pane (an exact name) before Bluetooth
+    /// File Exchange, but `s` keeps apps first. Ties go to the shorter name,
+    /// then alphabetical order.
+    func results(for raw: String, limit: Int, openCounts: [String: Int] = [:]) -> [LauncherItem] {
+        guard limit > 0, !apps.isEmpty || !panes.isEmpty else { return [] }
         let input = Self.fold(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !input.isEmpty else { return [] }
         #if SELFTEST
@@ -67,45 +79,64 @@ final class AppIndex {
         let signposter = Signposts.signposter
         let signpost = signposter.beginInterval(
             "apps.match",
-            "apps=\(self.apps.count, privacy: .public) limit=\(limit, privacy: .public) inputLength=\(input.count, privacy: .public)"
+            "apps=\(self.apps.count, privacy: .public) panes=\(self.panes.count, privacy: .public) limit=\(limit, privacy: .public) inputLength=\(input.count, privacy: .public)"
         )
-        let ranked = apps.compactMap { app -> (score: Double, length: Int, name: String, app: AppEntry)? in
-            guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
-            let opens = app.bundleID.flatMap { openCounts[$0] } ?? 0
-            return (Self.score(rank: rank, opens: opens), app.name.count, app.name, app)
-        }
-        let best = ranked
-            .sorted { ($0.score, $0.length, $0.name) < ($1.score, $1.length, $1.name) }
-            .prefix(limit)
-            .map(\.app)
-        signposter.endInterval("apps.match", signpost, "matches=\(ranked.count, privacy: .public)")
+        let (best, matched) = Self.rank(input, apps: apps, panes: panes, limit: limit, openCounts: openCounts)
+        signposter.endInterval("apps.match", signpost, "matches=\(matched, privacy: .public)")
         return best
     }
 
-    /// The best of `matches(for:limit:openCounts:)`, or nil.
-    func bestMatch(for raw: String, openCounts: [String: Int] = [:]) -> AppEntry? {
-        matches(for: raw, limit: 1, openCounts: openCounts).first
+    /// The best of `results(for:limit:openCounts:)`, or nil.
+    func bestResult(for raw: String, openCounts: [String: Int] = [:]) -> LauncherItem? {
+        results(for: raw, limit: 1, openCounts: openCounts).first
+    }
+
+    /// `results`' ranking for folded `input`, and how many matched in all.
+    nonisolated static func rank(
+        _ input: String, apps: [AppEntry], panes: [SettingsPane], limit: Int, openCounts: [String: Int]
+    ) -> (best: [LauncherItem], matched: Int) {
+        typealias Ranked = (score: Double, isPane: Bool, length: Int, name: String, item: LauncherItem)
+        let rankedApps = apps.compactMap { app -> Ranked? in
+            guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
+            let opens = app.bundleID.flatMap { openCounts[$0] } ?? 0
+            return (Self.score(rank: rank, opens: opens), false, app.name.count, app.name, LauncherItem.app(app))
+        }
+        let rankedPanes = panes.compactMap { pane -> Ranked? in
+            guard let rank = pane.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
+            let title = pane.title
+            return (Self.score(rank: rank, opens: 0), true, title.count, title, LauncherItem.settingsPane(pane))
+        }
+        let ranked = rankedApps + rankedPanes
+        let best = ranked
+            .sorted { lhs, rhs in
+                if lhs.score != rhs.score { return lhs.score < rhs.score }
+                if lhs.isPane != rhs.isPane { return !lhs.isPane }
+                return (lhs.length, lhs.name) < (rhs.length, rhs.name)
+            }
+            .prefix(limit)
+            .map(\.item)
+        return (best, ranked.count)
     }
 
     #if SELFTEST
-    /// How many times `matches` ranked the apps, for the perf suite.
+    /// How many times `results` ranked the apps, for the perf suite.
     static var matchCallsForSelfTest = 0
     #endif
 
     /// Opens worth one tier: about 31 opens lift an app one tier, about
     /// 1000 two (log2(1 + opens) / 5).
-    private static let opensPerTier = 5.0
-    private static let maxUsageBoost = 2.0
+    nonisolated private static let opensPerTier = 5.0
+    nonisolated private static let maxUsageBoost = 2.0
 
     /// Lower is better.
-    private static func score(rank: Int, opens: Int) -> Double {
+    nonisolated private static func score(rank: Int, opens: Int) -> Double {
         // An exact name stays first whatever the counts.
         if rank == 0 { return -maxUsageBoost - 1 }
         let boost = min(maxUsageBoost, log2(1 + Double(opens)) / opensPerTier)
         return Double(rank) - boost
     }
 
-    private static func rank(_ input: String, in name: String) -> Int? {
+    nonisolated private static func rank(_ input: String, in name: String) -> Int? {
         if name == input { return 0 }
         if name.hasPrefix(input) { return 1 }
         let words = name.split(whereSeparator: { !$0.isLetter && !$0.isNumber })

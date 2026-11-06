@@ -151,6 +151,10 @@ enum Config {
     /// The folders are scanned again when the launcher opens if the last
     /// scan is older than this, so new apps show up without a restart.
     static let appRescanInterval: TimeInterval = 60
+    /// Typing a System Settings pane's name, in English or French (`wifi`,
+    /// `bluetooth`, `moniteurs`), offers that pane next to the apps (see
+    /// SettingsPanes; macOS 13 and later).
+    static let settingsPaneSearch = true
 
     // MARK: Built-ins
 

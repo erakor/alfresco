@@ -1,7 +1,8 @@
 // SuggestionListView.swift
 //
-// The list under the launcher input: installed apps matching what is typed
-// and workflows whose keyword starts with it, one row each with an icon, a
+// The list under the launcher input: installed apps and System Settings
+// panes matching what is typed and workflows whose keyword starts with it,
+// one row each with an icon, a
 // title and a subtitle. The input keeps focus: LauncherController routes
 // Tab, ↑ ↓ and ⌘1 to ⌘9 here.
 
@@ -11,20 +12,23 @@ import Cocoa
 enum LauncherItem {
     case workflow(Suggestion)
     case app(AppEntry)
+    case settingsPane(SettingsPane)
 
     /// What Tab puts in the field.
     var completion: String {
         switch self {
         case .workflow(let suggestion): suggestion.completion
         case .app(let app): app.name
+        case .settingsPane(let pane): pane.title
         }
     }
 
-    /// Whether both rows show the same app (by path) or keyword (its
+    /// Whether both rows show the same app (by path), pane or keyword (its
     /// completion is the keyword, plus a space for the argument form).
     func isSame(as other: LauncherItem) -> Bool {
         switch (self, other) {
         case (.app(let a), .app(let b)): a.url == b.url
+        case (.settingsPane(let a), .settingsPane(let b)): a.id == b.id
         case (.workflow(let a), .workflow(let b)): a.completion == b.completion
         default: false
         }
@@ -166,6 +170,8 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
             let image = NSWorkspace.shared.icon(forFile: path)
             iconCache[path] = image
             return image
+        case .settingsPane:
+            return SettingsPanes.icon(cache: &iconCache)
         case .workflow(let suggestion):
             return WorkflowIcon.image(for: suggestion.workflow, cache: &iconCache)
         }
@@ -189,6 +195,9 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
         case .app(let app):
             cell.title.stringValue = app.name
             cell.detail.stringValue = (app.url.path as NSString).abbreviatingWithTildeInPath
+        case .settingsPane(let pane):
+            cell.title.stringValue = pane.title
+            cell.detail.stringValue = SettingsPanes.appName
         case .workflow(let suggestion):
             let workflow = suggestion.workflow
             let typed = CommandInput.typed(suggestion.keyword)
