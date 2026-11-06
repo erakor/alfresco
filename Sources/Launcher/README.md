@@ -21,6 +21,7 @@ every command.
 | `/weather paris` | `https://wttr.in/paris?lang=fr&m`                               |
 | `/cal`         | `https://calendar.google.com/calendar/r`; the launcher lists your next [events](../Calendar/README.md) |
 | `/cal standup` | Google Calendar's search for `standup`; the launcher lists the matching events |
+| `/cal demain`  | Google Calendar; the launcher lists tomorrow's events (also `lundi`, `12/11`, `25 dec`) |
 | `/pomo`        | Starts a 25 min [pomodoro](../Pomodoro/README.md), or pauses / resumes it (nothing opens); the launcher shows the timer and the hint says what Enter will do |
 | `/zz`, `/lockscreen`, `/displaysleep` | Sleep, lock the screen, display off ([System](../System/README.md)) |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |

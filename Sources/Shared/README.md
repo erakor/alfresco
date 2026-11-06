@@ -76,6 +76,11 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `AreaLabel.swift`: the text label style of the
   [calendar](../Calendar/README.md) and [pomodoro](../Pomodoro/README.md)
   areas under the input.
+- `DateReading.swift`: reads typed dates (`25/12`, `2026-12-25`, `25 dec`,
+  `demain`, `friday`) for the [built-ins](../BuiltIns/README.md) (`days`,
+  `week`, `= today + 30 days`) and the [calendar](../Calendar/README.md)
+  (`/cal demain`), plus `BuiltInContext` (the clock, time zone and locale,
+  pinned by the self-test).
 - `KeywordInput.swift`: reads input as `<keyword> [argument]`, bare for the
   built-ins (`time tokyo`) and after the `/` for the features that own a
   workflow keyword (`/weather paris`).

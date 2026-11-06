@@ -25,6 +25,7 @@ launcher, and can sleep or lock the Mac.
 | `/weather paris` | `https://wttr.in/paris?lang=fr&m`                               |
 | `/cal`         | `https://calendar.google.com/calendar/r`; the launcher lists your next [events](Sources/Calendar/README.md) |
 | `/cal standup` | Google Calendar's search for `standup`; the launcher lists the matching events |
+| `/cal demain`  | Google Calendar; the launcher lists tomorrow's events (also `lundi`, `12/11`, `25 dec`) |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | `/pomo`        | Starts a 25 min [pomodoro](Sources/Pomodoro/README.md), or pauses / resumes it (nothing opens); the launcher shows the timer and the hint says what Enter will do |
 | `/zz`, `/lockscreen`, `/displaysleep` | Puts the Mac to sleep, locks the screen, or turns the display off ([System](Sources/System/README.md)) |
@@ -41,7 +42,7 @@ Each feature has its own README, next to its code in `Sources/`:
 | ------- | ------------ |
 | [Launcher](Sources/Launcher/README.md) | The `⌘Space` bar: workflows (`workflows.json`, its format and where it is read from), `/` commands and their suggestions, and opening apps by name. |
 | [Weather](Sources/Weather/README.md) | The forecast under the input for `/weather` / `/weather <place>`, and the current weather above it. Needs a free WeatherAPI.com key. |
-| [Calendar](Sources/Calendar/README.md) | Your upcoming events under the input for `/cal`, and a search with `/cal <text>`, read from macOS Calendar (Google accounts included). Needs `build/Launcher.app`. |
+| [Calendar](Sources/Calendar/README.md) | Your upcoming events under the input for `/cal`, one day's with `/cal demain` or `/cal 12/11`, and a search with `/cal <text>`, read from macOS Calendar (Google accounts included). Needs `build/Launcher.app`. |
 | [Built-ins](Sources/BuiltIns/README.md) | Answers in the launcher's hint, copied with Enter: a calculator and unit converter (`= 3*14`, `= 10 km in mi`), time zones (`time tokyo`), a new UUID (`uuid`), the current time (`now`) and dates (`days until 25/12`, `= today + 30 days`, `week`). |
 | [Pomodoro](Sources/Pomodoro/README.md) | A focus / break timer started with `/pomo`, counting down in the menu bar. |
 | [System](Sources/System/README.md) | `/zz` (sleep), `/lockscreen` and `/displaysleep` from the launcher, with no permission prompt. |

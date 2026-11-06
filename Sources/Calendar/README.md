@@ -3,8 +3,8 @@
 Type `/cal` in the [launcher](../Launcher/README.md) and it shows what's next
 over today and the next two days, from every calendar the macOS Calendar app
 knows: your Google calendars once the account is added, plus iCloud, Exchange
-and the rest. Enter still runs the `cal` workflows in `workflows.json`: Google
-Calendar, or its search for the text.
+and the rest. `/cal demain` shows one day. Enter still runs the `cal` workflows
+in `workflows.json`: Google Calendar, or its search for the text.
 
 The list shows only while what you typed runs a workflow whose first keyword
 is `cal` (`Config.calendarKeyword`), so Enter always opens what the list is
@@ -33,6 +33,21 @@ then stays hidden.
   - two columns: "Plus tard aujourd'hui" and the next day that has events
     (Demain, or the date), up to 4 events each, all-day events as "Journée";
   - a last line counting what didn't fit.
+- `/cal <day>` lists the events of that day under its name, finished ones
+  dimmed: `demain`, `aujourd'hui`, `après-demain`, `hier` (or `tomorrow`,
+  `today`, `yesterday`), a weekday written in full (`lundi`, `friday`: the
+  coming one, so `/cal mardi` on a Tuesday is next week's), or a date as the
+  [`days` built-in](../BuiltIns/README.md) reads it (`12/11`, `25 dec`,
+  `1er janvier`, `2027-02-14`; without a year, the next one, today included;
+  with dots only with its year, `25.12.2026`, so `/cal 1.2` looks for a
+  version).
+  Up to 8 events; past that, the ones already over are left out first and a
+  last line counts the rest. A day further than the 30 days the search reads,
+  or before today, is read on its own, once you stop typing for a moment. Enter opens Google Calendar (the bare
+  `/cal` workflow) rather than searching for the word; the usage stats still
+  count it as a `/cal …`. Weekday abbreviations
+  (`sam`, `jeu`, `mon`) and anything else are searched for, so
+  `/cal demain matin` looks for "demain matin".
 - `/cal <text>` lists up to 8 events of the next 30 days whose title or place
   contains the text, ignoring case and accents, under day headers. Each row
   shows its calendar's color, its time, and on the right "en cours", "dans
@@ -59,7 +74,7 @@ In `Sources/App/Config.swift` (rebuild after a change):
   workflow in `workflows.json` takes it; those workflows decide what Enter
   opens.
 - `calendarDays` (3, today included) and `calendarSearchDays` (30).
-- `calendarMaxEvents` (8): results listed by `/cal <text>`.
+- `calendarMaxEvents` (8): results listed by `/cal <text>` and `/cal <day>`.
 - `calendarAccounts` (empty, every account): only these accounts, by the name
   shown in Internet Accounts (usually the address). If the filters leave no
   calendar, `/cal` says so and lists the account names it found.
@@ -67,11 +82,14 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `calendarHidesBirthdays`, `calendarHidesDeclined` (both `true`).
 - `calendarCacheLifetime` (5 min): how long events are reused; a change in a
   calendar refreshes them at once anyway. `/cal` reads `calendarDays` of
-  events, `/cal <text>` the wider `calendarSearchDays`.
+  events, `/cal <text>` the wider `calendarSearchDays`, and `/cal <day>`
+  whichever of the two holds the day, else that day alone.
 
 ## Code
 
-- `CalendarProvider.swift`: turns launcher input into a query, asks for
-  access, reads and caches the events through EventKit.
-- `CalendarView.swift`: the "next up" layout for `/cal` and the result list
-  for `/cal <text>`, under the input.
+- `CalendarProvider.swift`: turns launcher input into a query (a day through
+  `DateMath.namedDay`, in `Sources/Shared/DateReading.swift`) and says what
+  Enter runs for a day, asks for access, reads and caches the events through
+  EventKit.
+- `CalendarView.swift`: the "next up" layout for `/cal`, the day's list for
+  `/cal <day>` and the result list for `/cal <text>`, under the input.
