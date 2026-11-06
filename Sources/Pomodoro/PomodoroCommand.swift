@@ -40,3 +40,81 @@ enum PomodoroCommand: Equatable, Sendable {
         }
     }
 }
+
+// MARK: - What Enter would do
+
+extension PomodoroCommand {
+    /// What running a command would do right now, for the launcher's hint
+    /// under `/pomo`: `runs` is false when the timer would refuse it (Enter
+    /// beeps), and `text` then says why.
+    struct Preview: Equatable, Sendable {
+        let text: String
+        let runs: Bool
+
+        /// "↩ Pause the focus session", or the reason alone ("Nothing to pause").
+        var hint: String { runs ? "↩ \(text)" : text }
+    }
+
+    /// `command` is nil for an action PomodoroCommand doesn't know
+    /// (`/pomo 500`), which the launcher beeps at.
+    static func preview(
+        of command: PomodoroCommand?, state: PomodoroState, completedFocusSessions: Int
+    ) -> Preview {
+        guard let command else {
+            return Preview(text: "Type a number of minutes (1 to \(maxMinutes)), pause, resume, skip or stop", runs: false)
+        }
+        let current = state.phase.map(\.noun)
+        switch command {
+        case .toggle:
+            switch state {
+            case .idle: return Preview(text: "Start a \(minutes(nil)) min focus session", runs: true)
+            case .running: return Preview(text: "Pause the \(current ?? "")", runs: true)
+            case .paused: return Preview(text: "Resume the \(current ?? "")", runs: true)
+            }
+        case .start(let length):
+            guard let current else { return Preview(text: "Start a \(minutes(length)) min focus session", runs: true) }
+            return Preview(text: "Replace the \(current) with a \(minutes(length)) min focus session", runs: true)
+        case .pause:
+            switch state {
+            case .idle: return Preview(text: "Nothing to pause", runs: false)
+            case .running: return Preview(text: "Pause the \(current ?? "")", runs: true)
+            case .paused: return Preview(text: "Already paused", runs: false)
+            }
+        case .resume:
+            switch state {
+            case .idle: return Preview(text: "Nothing to resume", runs: false)
+            case .running: return Preview(text: "Already running", runs: false)
+            case .paused: return Preview(text: "Resume the \(current ?? "")", runs: true)
+            }
+        case .skip:
+            switch state.phase {
+            case nil: return Preview(text: "Nothing to skip", runs: false)
+            case .focus?: return Preview(text: "Skip to the break", runs: true)
+            case let phase?: return Preview(text: "End the \(phase.noun)", runs: true)
+            }
+        case .stop:
+            guard let current else {
+                return completedFocusSessions > 0
+                    ? Preview(text: "Reset the cycle", runs: true)
+                    : Preview(text: "Nothing to stop", runs: false)
+            }
+            return Preview(text: "Stop the \(current) and reset the cycle", runs: true)
+        }
+    }
+
+    /// The length `start(minutes:)` gives a focus session, in whole minutes.
+    static func minutes(_ length: Int?) -> Int {
+        length ?? Int((Config.pomodoroFocus / 60).rounded())
+    }
+}
+
+extension PomodoroPhase {
+    /// "focus session", "short break", "long break", for sentences.
+    var noun: String {
+        switch self {
+        case .focus: return "focus session"
+        case .shortBreak: return "short break"
+        case .longBreak: return "long break"
+        }
+    }
+}

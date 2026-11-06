@@ -55,9 +55,14 @@ final class PomodoroTimer: NSObject {
     private(set) var state: PomodoroState = .idle
     /// Focus sessions finished since the last long break (or stop).
     private(set) var completedFocusSessions = 0
+    /// When the last focus session that ran its full length ended, and how
+    /// many did on that day (focusSessionsToday).
+    private var lastFocusEnd: Date?
+    private var focusSessionsOnLastDay = 0
 
-    /// Called after every change, and every second while running.
-    var onChange: (() -> Void)?
+    /// Called after every change, and every second while running: the menu
+    /// bar item and the launcher's pomodoro view, in the order added.
+    private var observers: [@MainActor () -> Void] = []
     /// Called when a phase runs out by itself (not on skip or stop). `state`
     /// already holds what comes next.
     var onPhaseEnd: ((PomodoroPhase) -> Void)?
@@ -66,6 +71,8 @@ final class PomodoroTimer: NSObject {
     private let fileURL: URL
     /// The current time. Only the self-test passes another clock.
     private let now: @MainActor () -> Date
+    /// Says which day a session ended on, for focusSessionsToday.
+    private let calendar: Calendar
 
     /// Saved in ~/Library/Application Support/Launcher, next to the
     /// clipboard history.
@@ -78,15 +85,24 @@ final class PomodoroTimer: NSObject {
 
     /// `wakeNotifications` posts NSWorkspace.didWakeNotification. The self-test
     /// gives each timer its own center, so a wake reaches only that timer.
-    init(fileURL: URL, now: @escaping @MainActor () -> Date, wakeNotifications: NotificationCenter) {
+    init(
+        fileURL: URL, now: @escaping @MainActor () -> Date, wakeNotifications: NotificationCenter,
+        calendar: Calendar = .current
+    ) {
         self.fileURL = fileURL
         self.now = now
+        self.calendar = calendar
         super.init()
         restore()
         // A Timer doesn't fire while the Mac sleeps; catch up as soon as it
         // wakes rather than on the next tick.
         wakeNotifications.addObserver(
             self, selector: #selector(systemDidWake), name: NSWorkspace.didWakeNotification, object: nil)
+    }
+
+    /// `observer` runs after every change, and every second while running.
+    func addObserver(_ observer: @escaping @MainActor () -> Void) {
+        observers.append(observer)
     }
 
     // MARK: Commands
@@ -117,7 +133,7 @@ final class PomodoroTimer: NSObject {
         guard case .running(let phase, let endsAt) = state else { return false }
         let left = endsAt.timeIntervalSince(now())
         if left <= 0 {
-            finish(phase, alert: true)
+            finish(phase, alert: true, ranOutAt: endsAt)
         } else {
             transition(to: .paused(phase, remaining: max(1, left)))
         }
@@ -136,7 +152,7 @@ final class PomodoroTimer: NSObject {
     @discardableResult
     func skip() -> Bool {
         guard let phase = state.phase else { return false }
-        finish(phase, alert: false)
+        finish(phase, alert: false, ranOutAt: nil)
         return true
     }
 
@@ -150,6 +166,20 @@ final class PomodoroTimer: NSObject {
     }
 
     // MARK: Reading
+
+    /// Focus sessions that ran their full length and ended today (local
+    /// time), whether the alert came or they ended during sleep or while
+    /// the app was closed. Skipped ones don't count; stop doesn't reset it.
+    var focusSessionsToday: Int {
+        guard let lastFocusEnd, calendar.isDate(lastFocusEnd, inSameDayAs: now()) else { return 0 }
+        return focusSessionsOnLastDay
+    }
+
+    /// The end date while running, else nil.
+    var endsAt: Date? {
+        if case .running(_, let endsAt) = state { return endsAt }
+        return nil
+    }
 
     /// Time left in the current phase; nil when idle.
     func remaining() -> TimeInterval? {
@@ -176,7 +206,7 @@ final class PomodoroTimer: NSObject {
     }
 
     /// m:ss, rounded up so the last second reads 0:01 rather than 0:00.
-    static func format(_ seconds: TimeInterval) -> String {
+    nonisolated static func format(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds.rounded(.up)))
         return String(format: "%ld:%02ld", total / 60, total % 60)
     }
@@ -185,11 +215,15 @@ final class PomodoroTimer: NSObject {
 
     /// Moves on from `phase`: a focus session leads to a break (started
     /// right away when `autoStart` is on, otherwise waiting paused), a break
-    /// back to idle.
-    private func finish(_ phase: PomodoroPhase, alert: Bool, autoStart: Bool = Config.pomodoroAutoStartBreaks) {
+    /// back to idle. `ranOutAt` is the phase's end date when it ran its full
+    /// length, nil when it was skipped.
+    private func finish(
+        _ phase: PomodoroPhase, alert: Bool, autoStart: Bool = Config.pomodoroAutoStartBreaks, ranOutAt: Date?
+    ) {
         switch phase {
         case .focus:
             completedFocusSessions += 1
+            if let ranOutAt { countFocusSession(endedAt: ranOutAt) }
             let next: PomodoroPhase =
                 completedFocusSessions >= Config.pomodoroSessionsBeforeLongBreak ? .longBreak : .shortBreak
             transition(to: autoStart
@@ -204,11 +238,28 @@ final class PomodoroTimer: NSObject {
         if alert { onPhaseEnd?(phase) }
     }
 
+    /// Counts a finished focus session on the day it ended (not the day it
+    /// was noticed, after sleep or a relaunch). One ending on an earlier
+    /// day than the last counted one is left out.
+    private func countFocusSession(endedAt end: Date) {
+        if let last = lastFocusEnd, calendar.isDate(last, inSameDayAs: end) {
+            focusSessionsOnLastDay += 1
+            lastFocusEnd = max(last, end)
+        } else if lastFocusEnd.map({ end > $0 }) ?? true {
+            lastFocusEnd = end
+            focusSessionsOnLastDay = 1
+        }
+    }
+
     private func transition(to newState: PomodoroState) {
         state = newState
         updateTicker()
         save()
-        onChange?()
+        notifyObservers()
+    }
+
+    private func notifyObservers() {
+        for observer in observers { observer() }
     }
 
     /// A one-second timer, only while running. Restarted on each change so
@@ -229,9 +280,9 @@ final class PomodoroTimer: NSObject {
     @objc private func tick() {
         guard case .running(let phase, let endsAt) = state else { return }
         if endsAt.timeIntervalSince(now()) <= 0 {
-            finish(phase, alert: true)
+            finish(phase, alert: true, ranOutAt: endsAt)
         } else {
-            onChange?()
+            notifyObservers()
         }
     }
 
@@ -243,7 +294,7 @@ final class PomodoroTimer: NSObject {
     @objc private func systemDidWake() {
         if case .running(let phase, let endsAt) = state,
            now().timeIntervalSince(endsAt) > lateWakeLimit(for: phase) {
-            finish(phase, alert: false, autoStart: false)
+            finish(phase, alert: false, autoStart: false, ranOutAt: endsAt)
         } else {
             tick()
         }
@@ -271,7 +322,9 @@ final class PomodoroTimer: NSObject {
     // MARK: Saving
 
     private func save() {
-        var stored = StoredPomodoro(phase: state.phase, completedFocusSessions: completedFocusSessions)
+        var stored = StoredPomodoro(
+            phase: state.phase, completedFocusSessions: completedFocusSessions,
+            lastFocusEnd: lastFocusEnd, focusSessionsOnLastDay: lastFocusEnd == nil ? nil : focusSessionsOnLastDay)
         switch state {
         case .idle: break
         case .running(_, let endsAt): stored.endsAt = endsAt
@@ -302,6 +355,11 @@ final class PomodoroTimer: NSObject {
             Config.pomodoroFocus, Config.pomodoroShortBreak, Config.pomodoroLongBreak
         )
         completedFocusSessions = min(max(0, stored.completedFocusSessions), Config.pomodoroSessionsBeforeLongBreak)
+        // Older files have neither. A day holds at most 1440 one-minute sessions.
+        if let end = stored.lastFocusEnd, let count = stored.focusSessionsOnLastDay, count > 0 {
+            lastFocusEnd = end
+            focusSessionsOnLastDay = min(count, 24 * 60)
+        }
 
         switch (stored.phase, stored.endsAt, stored.remaining) {
         case (let phase?, let endsAt?, nil):
@@ -312,7 +370,7 @@ final class PomodoroTimer: NSObject {
             }
             state = .running(phase, endsAt: endsAt)
             if left <= 0 {
-                finish(phase, alert: false, autoStart: false)
+                finish(phase, alert: false, autoStart: false, ranOutAt: endsAt)
             }
         case (let phase?, nil, let remaining?) where remaining > 0 && remaining <= longest:
             state = .paused(phase, remaining: remaining)
@@ -327,7 +385,7 @@ extension PomodoroTimer {
     /// The app's wiring: the menu bar item follows every change, and a phase
     /// that runs out by itself plays the alert.
     func connect(to statusItem: PomodoroStatusItem) {
-        onChange = { [weak statusItem] in statusItem?.update() }
+        addObserver { [weak statusItem] in statusItem?.update() }
         onPhaseEnd = { [weak self] phase in
             guard let self else { return }
             PomodoroAlert.play(ended: phase, next: self.state)
@@ -336,10 +394,13 @@ extension PomodoroTimer {
 }
 
 /// pomodoro.json: the phase with its end date (running) or time left
-/// (paused), and the cycle count.
+/// (paused), the cycle count, and the day's finished focus sessions (absent
+/// from files older builds wrote, which then read as none today).
 private struct StoredPomodoro: Codable {
     var phase: PomodoroPhase?
     var endsAt: Date?
     var remaining: TimeInterval?
     var completedFocusSessions: Int
+    var lastFocusEnd: Date?
+    var focusSessionsOnLastDay: Int?
 }

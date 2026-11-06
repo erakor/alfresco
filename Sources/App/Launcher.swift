@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         self.pomodoro = pomodoro
         self.pomodoroStatusItem = pomodoroStatusItem
 
-        let launcher = LauncherController(store: workflowStore) { [weak self] url in
+        let launcher = LauncherController(store: workflowStore, pomodoro: pomodoro) { [weak self] url in
             self?.handleInternalURL(url) ?? false
         }
         self.launcher = launcher

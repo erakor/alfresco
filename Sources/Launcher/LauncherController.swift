@@ -1,7 +1,7 @@
 // LauncherController.swift
 //
 // The launcher panel: input field, hint line, keyword suggestions, the
-// weather and calendar areas, and Enter handling, which opens a workflow's
+// weather, calendar and pomodoro areas, and Enter handling, which opens a workflow's
 // URL or an installed app, or copies a built-in's answer.
 
 import Carbon.HIToolbox
@@ -10,7 +10,7 @@ import Cocoa
 // MARK: - Area under the input
 
 /// A view that takes the area under the input row in place of the
-/// suggestion list: the forecast, the event list. Each one is an entry in
+/// suggestion list: the forecast, the event list, the pomodoro. Each one is an entry in
 /// `LauncherController.inputAreas`, which lays them out, hides them with the
 /// panel, empties the suggestion list while one claims the input, and sizes
 /// the panel for the one shown. Its feature still fills it and sets
@@ -52,6 +52,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let weatherStrip = WeatherStripView(frame: .zero)
     private let calendar = CalendarProvider()
     private let calendarView = CalendarView(frame: .zero)
+    /// The timer `/pomo` drives; nil (no pomodoro view) in self-tests that
+    /// don't pass one.
+    private let pomodoro: PomodoroTimer?
+    private let pomodoroView = PomodoroView(frame: .zero)
     private let suggestionList = SuggestionListView(frame: .zero)
     private let cardsView = WorkflowCardsView(frame: .zero)
     /// The input row (icon, field, hint); moves down when the strip is shown.
@@ -75,6 +79,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             view: calendarView,
             height: { [unowned self] in self.calendarView.preferredHeight },
             claims: { [unowned self] in self.calendarQuery(for: $0) != nil }
+        ),
+        InputArea(
+            view: pomodoroView,
+            height: { PomodoroView.height },
+            claims: { [unowned self] in self.pomodoroURL(for: $0) != nil }
         ),
     ]
     /// Height of the input row, which is the whole panel without the weather.
@@ -107,8 +116,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private var calendarTimer: Timer?
     private static let calendarRefreshInterval: TimeInterval = 30
 
-    init(store: WorkflowStore, internalURLHandler: @escaping (URL) -> Bool) {
+    init(store: WorkflowStore, pomodoro: PomodoroTimer? = nil, internalURLHandler: @escaping (URL) -> Bool) {
         self.store = store
+        self.pomodoro = pomodoro
         self.internalURLHandler = internalURLHandler
         super.init(size: NSSize(width: 680, height: LauncherController.rowHeight), verticalOffset: 0.15)
         buildContent()
@@ -120,6 +130,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         suggestionList.onPick = { [weak self] in self?.activate($0) }
         cardsView.onPick = { [weak self] in self?.pick($0) }
         weatherStrip.onClick = { [weak self] in self?.showForecast() }
+        pomodoro?.addObserver { [weak self] in self?.pomodoroDidChange() }
     }
 
     override var initialFirstResponder: NSResponder? { textField }
@@ -180,6 +191,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         // Each changes what is under the input: resize once, after all.
         updateCards()
         updateCalendar(resize: false)
+        updatePomodoro()
         updateWeather(resize: false)
         updateHeight()
         signposter.endInterval("launcher.input", signpost, "rows=\(self.suggestionList.items.count, privacy: .public)")
@@ -475,7 +487,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         } else if let command = CommandParser.parse(textField.stringValue, using: store.current) {
             hintLabel.stringValue = "↩ \(command.label)"
             hintLabel.toolTip = nil
-            if let preview = command.preview, !showsWeather {
+            if let action = pomodoroPreview(for: command.url) {
+                // `/pomo`: what Enter would do to the timer as it is now.
+                hintLabel.stringValue = action.hint
+                hintLabel.toolTip = command.label
+            } else if let preview = command.preview, !showsWeather {
                 if let text = previews.cachedText(for: preview) {
                     // e.g. "paris: ☀️ +14°C ↙11km/h  ↩ Weather in paris"
                     hintLabel.stringValue = "\(text)  ↩ \(command.label)"
@@ -612,6 +628,48 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateCalendar()
     }
 
+    /// The alfresco://pomodoro/... URL `input` runs (`/pomo`, `/pomo 50`,
+    /// or any workflow pointing there), while there is a timer to show.
+    private func pomodoroURL(for input: String) -> URL? {
+        guard pomodoro != nil, let url = CommandParser.parse(input, using: store.current)?.url,
+              InternalURL.feature(of: url) == PomodoroCommand.feature
+        else { return nil }
+        return url
+    }
+
+    /// What Enter on `url` would do to the timer now; nil for a URL that
+    /// isn't the pomodoro's.
+    private func pomodoroPreview(for url: URL) -> PomodoroCommand.Preview? {
+        guard let pomodoro, InternalURL.feature(of: url) == PomodoroCommand.feature else { return nil }
+        return PomodoroCommand.preview(
+            of: PomodoroCommand(url: url), state: pomodoro.state,
+            completedFocusSessions: pomodoro.completedFocusSessions
+        )
+    }
+
+    /// Fills the pomodoro view while the input runs a pomodoro URL. Its
+    /// height is fixed, so inputDidChange's updateHeight covers it.
+    private func updatePomodoro() {
+        let url = pomodoroURL(for: textField.stringValue)
+        if let pomodoro, let url {
+            var startMinutes = PomodoroCommand.minutes(nil)
+            if case .start(let minutes)? = PomodoroCommand(url: url) {
+                startMinutes = PomodoroCommand.minutes(minutes)
+            }
+            pomodoroView.show(pomodoro, startMinutes: startMinutes)
+        }
+        pomodoroView.isHidden = url == nil
+    }
+
+    /// Every timer change and tick: the view and the hint follow while the
+    /// view is shown (Enter may now do something else, e.g. once a break
+    /// starts by itself).
+    private func pomodoroDidChange() {
+        guard isShown, !pomodoroView.isHidden else { return }
+        updatePomodoro()
+        updateHint()
+    }
+
     /// Sizes the panel for the strip, the input row, and the InputArea
     /// shown below it, else the suggestion list.
     private func updateHeight() {
@@ -711,6 +769,15 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     /// What the input reads.
     var inputForSelfTest: String { textField.stringValue }
+
+    /// The hint line, right of the input.
+    var hintForSelfTest: String { hintLabel.stringValue }
+
+    /// What the pomodoro view shows while it is shown, else nil.
+    var pomodoroForSelfTest: PomodoroViewContent? {
+        pomodoroView.isHidden ? nil : pomodoroView.contentForSelfTest
+    }
+
 
     /// The installed apps found so far (0 until the first scan finishes).
     var appCountForSelfTest: Int { apps.apps.count }
