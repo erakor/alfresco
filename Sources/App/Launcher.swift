@@ -146,7 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         }
     }
 
-    /// `/stats`: the launcher showed the last days; Enter opens the 30-day
+    /// `/stats`: the launcher showed the last days; Enter opens the Usage…
     /// summary, once the launcher has closed (the alert is modal).
     private func handleStatsURL(_ url: URL) -> Bool {
         guard Config.usageTracking, StatsCommand.isSummary(url) else { return false }
@@ -246,13 +246,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         NSWorkspace.shared.activateFileViewerSelecting([workflowStore.fileURL])
     }
 
-    /// The last 30 days of UsageStats, with a button to the file itself.
+    /// The last UsageStats.summaryDays days, with a button to the file itself.
     @objc private func showUsage() {
         let stats = UsageStats.shared
         stats.saveNow()
         let alert = NSAlert()
-        alert.messageText = "Usage, last 30 days"
-        alert.informativeText = stats.summary(days: 30)
+        alert.messageText = "Usage, last \(UsageStats.summaryDays) days"
+        alert.informativeText = stats.summary(days: UsageStats.summaryDays)
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Show File in Finder")
         if alert.runModalInFront() == .alertSecondButtonReturn {

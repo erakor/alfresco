@@ -45,9 +45,6 @@ struct UsageReport: Equatable, Sendable {
     /// "never run" only reaches back to then.
     var unusedSince: Date?
 
-    /// Nothing at all in the days summed up.
-    var isEmpty: Bool { commandsRun + appsOpened + clipsRestored + focusSessions == 0 }
-
     /// `recent` is the last `days` days added up, `kept` every kept day.
     /// `appName` turns a bundle ID into what the list shows; two IDs with the
     /// same name share a line.
@@ -61,7 +58,7 @@ struct UsageReport: Equatable, Sendable {
 
         var byKeyword: [String: Int] = [:]
         for (key, count) in recent.keywords {
-            byKeyword[Self.keyword(fromUsageKey: key), default: 0] += count
+            byKeyword[UsageStats.keyword(fromKey: key), default: 0] += count
         }
         commandsRun = byKeyword.values.reduce(0, +)
         topCommands = Self.top(byKeyword.map { Entry(name: CommandInput.typed($0.key), key: $0.key, count: $0.value) })
@@ -78,24 +75,16 @@ struct UsageReport: Equatable, Sendable {
         clipsRestored = recent.clipboardRestores.values.reduce(0, +)
         focusSessions = recent.counts[UsageCounter.pomodoroFocusCompleted.rawValue] ?? 0
 
-        // Counted as UsageStats.recordLaunch keys them: under the first
-        // keyword of the workflow that ran, " …" for the argument form.
-        var seen = Set<String>()
-        for workflow in workflows.workflows where !Self.opensReport(workflow) {
-            guard let keyword = workflow.keywords.first, seen.insert(keyword).inserted else { continue }
-            let runs = (kept.keywords[keyword] ?? 0) + (kept.keywords["\(keyword) …"] ?? 0)
-            if runs == 0 { unusedCommands.append(CommandInput.typed(keyword)) }
-        }
-    }
-
-    /// `pr` for both "pr" and "pr …" (the argument form) in usage.json.
-    static func keyword(fromUsageKey key: String) -> String {
-        key.hasSuffix(" …") ? String(key.dropLast(2)) : key
+        // The command cards count runs of both forms the same way; with no
+        // limit they are every keyword, and those never run stay in file order.
+        unusedCommands = WorkflowCard.cards(from: workflows, usage: kept, limit: .max)
+            .filter { $0.runs == 0 && !Self.opensReport($0.workflow) }
+            .map { CommandInput.typed($0.keyword) }
     }
 
     /// Whether a workflow opens this report (alfresco://stats): looking at
     /// the report is no reason to list it as unused.
-    static func opensReport(_ workflow: Workflow) -> Bool {
+    private static func opensReport(_ workflow: Workflow) -> Bool {
         URL(string: workflow.url).map(StatsCommand.isSummary) == true
     }
 
@@ -118,7 +107,7 @@ struct UsageReport: Equatable, Sendable {
 
     /// The line under the lists: which commands never ran, over
     /// `retentionDays` or since `since` (the day counting started, as shown).
-    static func unusedLine(_ unused: [String], since: String?, retentionDays: Int) -> String {
+    static func unusedLine(_ unused: [String], since: String?, retentionDays: Int = Config.usageRetentionDays) -> String {
         let period = since.map { "since \($0)" } ?? "in \(retentionDays) days"
         if unused.isEmpty { return "Every command ran \(period)" }
         let what = unused.count == 1 ? "Never run" : "\(unused.count) never run"
@@ -127,14 +116,19 @@ struct UsageReport: Equatable, Sendable {
 }
 
 extension UsageReport {
-    /// The report for `stats` as it is now, over `days` days.
+    /// The report for `stats` as it is now, over `days` days. `appName`
+    /// names a bundle ID (the self-test passes its own); nil asks Launch
+    /// Services, as the Usage… alert does.
     @MainActor
-    static func make(from stats: UsageStats, workflows: WorkflowSet, days: Int = Config.usageReportDays) -> UsageReport {
+    static func make(
+        from stats: UsageStats, workflows: WorkflowSet, days: Int = Config.usageReportDays,
+        appName: ((String) -> String)? = nil
+    ) -> UsageReport {
         UsageReport(
             recent: stats.merged(days: days), kept: stats.totals(), days: days,
             countingSince: stats.countingSince(withinLast: days),
             unusedSince: stats.countingSince(withinLast: Config.usageRetentionDays),
-            workflows: workflows, appName: { UsageStats.appName(for: $0) }
+            workflows: workflows, appName: appName ?? { UsageStats.appName(for: $0) }
         )
     }
 }

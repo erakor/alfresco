@@ -33,6 +33,13 @@ enum StatsTests {
         return calendar
     }
 
+    /// Fresh stats on their own file, on Friday 6 November 2026, 12:00 in Paris.
+    private static func makeStats(_ name: String) -> (TestClock, UsageStats) {
+        let clock = TestClock(ISO8601DateFormatter().date(from: "2026-11-06T11:00:00Z")!)
+        let stats = UsageStats.makeForSelfTest(fileURL: SelfTest.scratchFile(name), now: { clock.date }, calendar: paris)
+        return (clock, stats)
+    }
+
     static func run() {
         guard Config.usageTracking else {
             check("Config.usageTracking is off, nothing to test", true)
@@ -54,11 +61,7 @@ enum StatsTests {
     }
 
     private static func report(_ set: WorkflowSet) {
-        // Friday 6 November 2026, 12:00 in Paris.
-        let clock = TestClock(ISO8601DateFormatter().date(from: "2026-11-06T11:00:00Z")!)
-        let stats = UsageStats.makeForSelfTest(
-            fileURL: SelfTest.scratchFile("usage-stats"), now: { clock.date }, calendar: paris
-        )
+        let (clock, stats) = makeStats("usage-stats")
         func daysAgo(_ days: Int) -> Date { clock.date.addingTimeInterval(-Double(days) * 86_400) }
 
         // 10 days ago: before the week, still kept.
@@ -87,12 +90,7 @@ enum StatsTests {
               stats.merged(days: 1).counts[UsageCounter.pomodoroFocusCompleted.rawValue] == 1)
 
         let names = ["com.apple.Safari": "Safari", "com.example.Notes": "Notes"]
-        let report = UsageReport(
-            recent: stats.merged(days: 7), kept: stats.totals(), days: 7,
-            countingSince: stats.countingSince(withinLast: 7),
-            unusedSince: stats.countingSince(withinLast: Config.usageRetentionDays),
-            workflows: set, appName: { names[$0] ?? $0 }
-        )
+        let report = UsageReport.make(from: stats, workflows: set, days: 7, appName: { names[$0] ?? $0 })
         let commands = report.topCommands.map { "\($0.name) \($0.count)" }
         check("both forms of a keyword make one line, most run first",
               commands == ["/pr 5", "/stats 4", "/jira 1"], "\(commands)")
@@ -110,21 +108,13 @@ enum StatsTests {
         check("the week is covered: no 'since'", report.countingSince == nil)
         check("counting started 10 days ago, so 'never run' reaches back to then",
               report.unusedSince == paris.startOfDay(for: daysAgo(10)), "\(String(describing: report.unusedSince))")
-        check("not empty", !report.isEmpty)
     }
 
     private static func empty(_ set: WorkflowSet) {
-        let clock = TestClock(ISO8601DateFormatter().date(from: "2026-11-06T11:00:00Z")!)
-        let stats = UsageStats.makeForSelfTest(
-            fileURL: SelfTest.scratchFile("usage-stats-empty"), now: { clock.date }, calendar: paris
-        )
-        let report = UsageReport(
-            recent: stats.merged(days: 7), kept: stats.totals(), days: 7,
-            countingSince: stats.countingSince(withinLast: 7),
-            unusedSince: stats.countingSince(withinLast: Config.usageRetentionDays),
-            workflows: set, appName: { $0 }
-        )
-        check("nothing recorded: empty", report.isEmpty && report.topCommands.isEmpty && report.topApps.isEmpty)
+        let (clock, stats) = makeStats("usage-stats-empty")
+        let report = UsageReport.make(from: stats, workflows: set, days: 7, appName: { $0 })
+        let figures = [report.commandsRun, report.appsOpened, report.clipsRestored, report.focusSessions]
+        check("nothing recorded: empty", figures == [0, 0, 0, 0] && report.topCommands.isEmpty && report.topApps.isEmpty)
         check("nothing recorded: counting starts today", report.countingSince == paris.startOfDay(for: clock.date))
         check("nothing recorded: every command is unused",
               report.unusedCommands == ["/pr", "/jira", "/weather", "/cf", "/statsx", "/zz"], "\(report.unusedCommands)")
@@ -141,25 +131,24 @@ enum StatsTests {
         check("unused line, none", none == "Every command ran in 90 days", none)
     }
 
-    /// A focus session that runs its full length counts in the usage stats;
-    /// a skipped one doesn't.
+    /// A focus session that runs its full length is handed to the timer's
+    /// recorder (the app's counts it in the usage stats); a skipped one isn't.
     private static func pomodoro() {
-        let key = UsageCounter.pomodoroFocusCompleted.rawValue
-        func count() -> Int { UsageStats.shared.merged(days: 1).counts[key] ?? 0 }
+        var finished: [Date] = []
         let clock = TestClock(Date())
         let timer = PomodoroTimer(
             fileURL: SelfTest.scratchFile("stats-pomodoro"), now: { clock.date },
-            wakeNotifications: NotificationCenter()
+            wakeNotifications: NotificationCenter(), focusSessionFinished: { finished.append($0) }
         )
-        let before = count()
         timer.startFocus()
         timer.skip()
-        check("a skipped focus session isn't counted", count() == before, "\(count()) after \(before)")
+        check("a skipped focus session isn't recorded", finished.isEmpty, "\(finished)")
         timer.stop()
         timer.startFocus()
+        let endsAt = clock.date.addingTimeInterval(Config.pomodoroFocus)
         clock.advance(Config.pomodoroFocus + 1)
         timer.tickForSelfTest()
-        check("a finished focus session is counted", count() == before + 1, "\(count()) after \(before)")
+        check("a finished focus session is recorded on its end date", finished == [endsAt], "\(finished)")
         timer.stop()
     }
 

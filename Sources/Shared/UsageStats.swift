@@ -219,13 +219,25 @@ final class UsageStats: NSObject {
         record(named: "weather.failed.\(error.usageName)")
     }
 
+    /// The key a workflow run is counted under in `keywords`: its first
+    /// keyword, "pr", or "pr …" for the argument form. Read back by the
+    /// launcher's ranking, the command cards and `/stats`.
+    nonisolated static func keywordKey(_ keyword: String, withArgument: Bool) -> String {
+        withArgument ? "\(keyword) …" : keyword
+    }
+
+    /// The keyword a `keywords` key counts runs of: "pr" for "pr" and "pr …".
+    nonisolated static func keyword(fromKey key: String) -> String {
+        key.hasSuffix(" …") ? String(key.dropLast(2)) : key
+    }
+
     /// Enter ran a workflow, or the fallback with `input` as its query.
     /// `keywords` are every workflow keyword, which a fallback word must be
     /// close to for it to be kept.
     func recordLaunch(_ source: CommandSource, input: String, keywords: Set<String>) {
         switch source {
         case .workflow(let keyword, let withArgument):
-            update { $0.keywords[withArgument ? "\(keyword) …" : keyword, default: 0] += 1 }
+            update { $0.keywords[Self.keywordKey(keyword, withArgument: withArgument), default: 0] += 1 }
         case .fallback:
             update { day in
                 day.counts[UsageCounter.launcherFallback.rawValue, default: 0] += 1
@@ -288,9 +300,12 @@ final class UsageStats: NSObject {
         let today = dayKey(for: now())
         if today != lastDayKey { prune() }
         lastDayKey = today
-        // Later than today counts as today; before the days kept, nowhere.
-        let key = min(date.map { self.dayKey(for: $0) } ?? today, today)
-        guard key >= firstDayKey(keeping: Config.usageRetentionDays) else { return }
+        var key = today
+        if let date {
+            // Later than today counts as today; before the days kept, nowhere.
+            key = min(dayKey(for: date), today)
+            guard key >= firstDayKey(keeping: Config.usageRetentionDays) else { return }
+        }
         change(&stored.days[key, default: UsageDay()])
         scheduleSave()
     }
@@ -391,8 +406,11 @@ final class UsageStats: NSObject {
 
     // MARK: Summary
 
+    /// The days the "Usage…" alert sums up.
+    nonisolated static let summaryDays = 30
+
     /// A plain-text summary of the last `days` days, for the "Usage…" alert.
-    func summary(days: Int = 30) -> String {
+    func summary(days: Int) -> String {
         let total = merged(days: days)
         func count(_ counter: UsageCounter) -> Int { total.counts[counter.rawValue] ?? 0 }
         func top(_ map: [String: Int], _ limit: Int) -> String {

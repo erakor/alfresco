@@ -63,8 +63,7 @@ final class StatsView: NSView {
         commandsList.show(report.topCommands) { commandIcon($0, workflows: workflows) }
         appsList.show(report.topApps) { appIcon($0) }
         let unused = UsageReport.unusedLine(
-            report.unusedCommands, since: report.unusedSince.map(Self.dayFormatter.string(from:)),
-            retentionDays: Config.usageRetentionDays
+            report.unusedCommands, since: report.unusedSince.map(Self.dayFormatter.string(from:))
         )
         unusedLabel.stringValue = unused
         unusedLabel.toolTip = report.unusedCommands.isEmpty ? nil : unused
