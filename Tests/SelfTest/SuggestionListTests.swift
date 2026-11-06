@@ -1,8 +1,7 @@
 // SuggestionListTests.swift
 //
-// The launcher's suggestion list: the row under the pointer is hovered,
-// the hover never moves the highlight Enter takes, and new rows or leaving
-// the list clear it.
+// The launcher's suggestion list: moving the pointer over a row highlights
+// it for Enter, leaving the list keeps it, and new rows reset it.
 
 import Cocoa
 
@@ -39,26 +38,32 @@ enum SuggestionListTests {
         list.layoutSubtreeIfNeeded()
         check("three rows to hover", list.items.count == 3, "\(list.items.count)")
 
+        var hovers = 0
+        list.onHover = { hovers += 1 }
+        func selected() -> String { String(describing: list.selectedRowForSelfTest) }
+
         list.moveMouseForSelfTest(toRow: 1)
-        check("the row under the pointer is hovered",
-              list.hoveredRowForSelfTest == 1, "\(String(describing: list.hoveredRowForSelfTest))")
-        check("hovering doesn't highlight a row for Enter", list.selected == nil)
+        check("the row under the pointer is highlighted for Enter",
+              list.selectedRowForSelfTest == 1 && hovers == 1, "row \(selected()), \(hovers) hovers")
+        list.moveMouseForSelfTest(toRow: 1)
+        check("moving within the same row doesn't report a change", hovers == 1, "\(hovers) hovers")
 
         list.moveMouseForSelfTest(toRow: 2)
-        check("the hover follows the pointer",
-              list.hoveredRowForSelfTest == 2, "\(String(describing: list.hoveredRowForSelfTest))")
+        check("the highlight follows the pointer", list.selectedRowForSelfTest == 2, selected())
 
         list.moveMouseForSelfTest(toRow: nil)
-        check("leaving the rows clears the hover", list.hoveredRowForSelfTest == nil)
+        check("leaving the rows keeps the last one highlighted", list.selectedRowForSelfTest == 2, selected())
+
+        list.moveSelection(by: -1)
+        check("↑ goes on from the hovered row", list.selectedRowForSelfTest == 1, selected())
+
+        list.show(items)
+        check("new rows drop the hovered highlight", list.selectedRowForSelfTest == nil, selected())
 
         list.show(items, highlightFirst: true)
         list.moveMouseForSelfTest(toRow: 2)
-        let enterTakesFirst: Bool
-        if case .workflow(let suggestion)? = list.selected { enterTakesFirst = suggestion.keyword == "pr" } else { enterTakesFirst = false }
-        check("hovering leaves the highlighted row as it was", enterTakesFirst)
-
-        list.show(items)
-        check("new rows clear the hover", list.hoveredRowForSelfTest == nil)
+        check("hovering moves the highlight off the first row",
+              list.selectedRowForSelfTest == 2, selected())
         withExtendedLifetime(window) {}
     }
 }

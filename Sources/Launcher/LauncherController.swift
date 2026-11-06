@@ -118,6 +118,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         calendar.onAccessAnswered = { [weak self] in self?.calendarAccessAnswered(granted: $0) }
         apps.onUpdate = { [weak self] in self?.appsDidChange() }
         suggestionList.onPick = { [weak self] in self?.activate($0) }
+        suggestionList.onHover = { [weak self] in self?.updateHint() }
         cardsView.onPick = { [weak self] in self?.pick($0) }
         weatherStrip.onClick = { [weak self] in self?.showForecast() }
     }

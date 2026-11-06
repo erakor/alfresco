@@ -46,6 +46,8 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
 
     /// A row was clicked.
     var onPick: ((LauncherItem) -> Void)?
+    /// The pointer moved the highlight to another row (↑ ↓ don't call it).
+    var onHover: (() -> Void)?
 
     private(set) var items: [LauncherItem] = []
     /// The highlighted row, which Enter takes; nil when Enter runs what is
@@ -54,11 +56,6 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
     /// Where ↑ stops: 0 when the first row is what Enter would run anyway
     /// (the matching app), so it stays highlighted; nil otherwise.
     private var floorIndex: Int?
-    /// The row under the pointer, drawn with a light highlight. Only a mouse
-    /// movement (or a scroll while one is shown) sets it, so rows replaced
-    /// under a resting pointer while typing show none. It never changes
-    /// what Enter runs: that is the selection.
-    private var hoveredIndex: Int?
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     /// Row icons by app path or URL scheme; emptied with the list.
@@ -90,7 +87,6 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
     func show(_ items: [LauncherItem], highlightFirst: Bool = false) {
         self.items = items
         if items.isEmpty { iconCache.removeAll() }
-        hoveredIndex = nil
         floorIndex = highlightFirst && !items.isEmpty ? 0 : nil
         selectedIndex = floorIndex
         tableView.reloadData()
@@ -119,14 +115,16 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
         items.indices.contains(number - 1) ? items[number - 1] : nil
     }
 
-    private func syncSelection() {
+    /// `scroll` is false for a hover: the row is already under the pointer,
+    /// and scrolling a partly shown one would move another under it.
+    private func syncSelection(scroll: Bool = true) {
         // The ↩ / ⌘N marks follow the highlight.
         if !items.isEmpty {
             tableView.reloadData(forRowIndexes: IndexSet(integersIn: 0..<items.count), columnIndexes: [0])
         }
         if let selectedIndex {
             tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
-            tableView.scrollRowToVisible(selectedIndex)
+            if scroll { tableView.scrollRowToVisible(selectedIndex) }
         } else {
             tableView.deselectAll(nil)
             tableView.scrollRowToVisible(0)
@@ -135,37 +133,21 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
 
     // MARK: Hover
 
-    override func mouseEntered(with event: NSEvent) {
-        updateHover(at: event.locationInWindow)
-    }
-
+    /// Highlights the row under the pointer, so Enter takes it, like ↓
+    /// would. Only a mouse movement does: rows replaced under a resting
+    /// pointer while typing, or scrolled under it, keep the highlight where
+    /// it was. Leaving the list keeps the last hovered row highlighted.
     override func mouseMoved(with event: NSEvent) {
-        updateHover(at: event.locationInWindow)
+        hover(at: event.locationInWindow)
     }
 
-    override func mouseExited(with event: NSEvent) {
-        setHovered(nil)
-    }
-
-    /// Keeps the hover on the row under the pointer as the list scrolls.
-    @objc private func clipViewDidScroll() {
-        guard hoveredIndex != nil, let window else { return }
-        updateHover(at: window.mouseLocationOutsideOfEventStream)
-    }
-
-    private func updateHover(at windowPoint: NSPoint) {
+    private func hover(at windowPoint: NSPoint) {
         let point = tableView.convert(windowPoint, from: nil)
         let row = tableView.row(at: point)
-        setHovered(tableView.visibleRect.contains(point) && items.indices.contains(row) ? row : nil)
-    }
-
-    private func setHovered(_ index: Int?) {
-        guard index != hoveredIndex else { return }
-        let previous = hoveredIndex
-        hoveredIndex = index
-        for row in [previous, index].compactMap({ $0 }) where items.indices.contains(row) {
-            (tableView.rowView(atRow: row, makeIfNecessary: false) as? SuggestionRowView)?.isHovered = row == index
-        }
+        guard tableView.visibleRect.contains(point), items.indices.contains(row), row != selectedIndex else { return }
+        selectedIndex = row
+        syncSelection(scroll: false)
+        onHover?()
     }
 
     @objc private func rowClicked() {
@@ -196,9 +178,7 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        let view = SuggestionRowView()
-        view.isHovered = row == hoveredIndex
-        return view
+        SuggestionRowView()
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -256,15 +236,12 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
 
         // The panel is non-activating, so the area must track while the app
         // is inactive; .inVisibleRect follows the view's size by itself.
+        // Moves only, no enter / exit: a list growing under a resting
+        // pointer must not pick a row.
         addTrackingArea(NSTrackingArea(
-            rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect],
             owner: self, userInfo: nil
         ))
-        scrollView.contentView.postsBoundsChangedNotifications = true
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(clipViewDidScroll),
-            name: NSView.boundsDidChangeNotification, object: scrollView.contentView
-        )
 
         // Gives way while the list is hidden at height 0.
         let scrollBottom = scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.padding)
@@ -281,33 +258,17 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
 
 /// Draws the highlight as a rounded accent-colored rect inside the row, and
 /// always emphasized: the table never becomes first responder (the input
-/// keeps focus), which would otherwise leave it a faint gray. A hovered row
-/// that isn't the highlighted one gets a light gray rect of the same shape.
+/// keeps focus), which would otherwise leave it a faint gray.
 private final class SuggestionRowView: NSTableRowView {
-    var isHovered = false {
-        didSet { if isHovered != oldValue { needsDisplay = true } }
-    }
-
     override var isEmphasized: Bool {
         get { true }
         set {}
     }
 
-    private var highlightPath: NSBezierPath {
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 8, dy: 1), xRadius: 8, yRadius: 8)
-    }
-
-    override func drawBackground(in dirtyRect: NSRect) {
-        guard isHovered, !isSelected else { return }
-        // Dynamic color, resolved for the current appearance on each draw.
-        NSColor.labelColor.withAlphaComponent(0.08).setFill()
-        highlightPath.fill()
-    }
-
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
         NSColor.selectedContentBackgroundColor.setFill()
-        highlightPath.fill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 8, dy: 1), xRadius: 8, yRadius: 8).fill()
     }
 }
 
@@ -388,7 +349,7 @@ private final class SuggestionCellView: NSTableCellView {
 
 #if SELFTEST
 extension SuggestionListView {
-    var hoveredRowForSelfTest: Int? { hoveredIndex }
+    var selectedRowForSelfTest: Int? { selectedIndex }
 
     /// Moves the pointer, as far as the list knows, to the middle of `row`,
     /// or above the list for nil.
@@ -400,7 +361,7 @@ extension SuggestionListView {
         } else {
             point = convert(NSPoint(x: bounds.midX, y: isFlipped ? bounds.minY - 50 : bounds.maxY + 50), to: nil)
         }
-        updateHover(at: point)
+        hover(at: point)
     }
 }
 #endif
