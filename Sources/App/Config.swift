@@ -151,6 +151,17 @@ enum Config {
     /// The folders are scanned again when the launcher opens if the last
     /// scan is older than this, so new apps show up without a restart.
     static let appRescanInterval: TimeInterval = 60
+    /// Learns which app you open for what you type (`s` → Safari, `sl` →
+    /// Slack) and puts it first the next time you type exactly that, in
+    /// ~/Library/Application Support/Launcher/typed-picks.json (see
+    /// TypedAppPicks). It keeps what you typed, but only input that opened
+    /// an app (so it matches an app's name), lowercased and without accents.
+    /// Separate from usageTracking. false keeps nothing and reads nothing.
+    static let learnTypedAppPicks = true
+    /// Days an input is kept after it was last typed to open an app.
+    static let typedAppPicksRetentionDays = 90
+    /// Inputs kept at most; the least recently typed go first.
+    static let typedAppPicksMaxInputs = 500
 
     // MARK: Built-ins
 

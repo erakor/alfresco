@@ -27,7 +27,9 @@ Recorded:
   how often the fallback is used, how often a command card is clicked
   (not which one: that counts when it runs), and how often the weather above
   the input is clicked. The launcher list uses the app and keyword
-  counts to put what you use most first.
+  counts to put what you use most first. What you typed to open an app is
+  not part of these stats: it has its own file and switch
+  ([Learned app picks](../Launcher/README.md#learned-app-picks)).
 - The first word of multi-word fallback inputs, lowercased, only when it is a
   workflow keyword or a typo away from one (one letter added, missing, changed
   or swapped for a keyword of 4 letters, two for 5 letters or more; keywords
@@ -58,11 +60,14 @@ In `Sources/App/Config.swift` (rebuild after a change):
 ## Code
 
 - `UsageStats.swift`: the usage counters above.
+- `StoreFile.swift`: reading and saving a versioned, owner-only JSON data
+  file (usage.json and the launcher's typed-picks.json), and the day keys
+  both use.
 - `InternalURL.swift`: reads the feature (host) and action (path) of the
   `alfresco://` URLs workflows point at, for the pomodoro and system commands.
 - `DigitShortcuts.swift`: the `⌘1` to `⌘9` key codes both panels use.
-- `SetAsideFile.swift`: moves an unreadable clipboard history or usage file
-  out of the way (`*.unreadable.json`, `-2`, `-3`…) instead of overwriting it.
+- `SetAsideFile.swift`: moves an unreadable clipboard history, usage or
+  typed-picks file out of the way (`*.unreadable.json`, `-2`, `-3`…) instead of overwriting it.
 - `HTTPSession.swift`: the URL session for weather and preview requests (no
   cache, no cookies). At launch it also empties the cache earlier builds
   used, which could hold the WeatherAPI key.
