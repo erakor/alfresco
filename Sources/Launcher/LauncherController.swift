@@ -132,8 +132,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// Height of the strip above the input (the weather, the next meeting),
     /// 0 while both are hidden.
     private var stripHeight: CGFloat {
-        weatherStrip.isHidden && meetingStrip.isHidden ? 0 : StripButton.stripHeight
+        weatherStrip.isHidden && meetingStrip.isHidden && !holdsStripRow ? 0 : StripButton.stripHeight
     }
+    /// Set once the strip's line is up while the panel is shown: it then
+    /// keeps its room until the panel closes, so a meeting that starts
+    /// never moves the input up under the caret.
+    private var holdsStripRow = false
     /// Redraws the calendar and the next meeting while either is shown, so
     /// countdowns and "en cours" follow the clock.
     private var calendarTimer: Timer?
@@ -179,11 +183,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         textField.placeholderString = placeholder()
         textField.stringValue = pendingPrefill
         pendingPrefill = ""
-        // It doesn't depend on the input, so not on every keystroke; the
-        // 30 s timer and calendar updates refresh it. inputDidChange sizes
-        // the panel for it.
-        updateMeetingStrip()
         inputDidChange()
+        // It doesn't depend on the input, so not on every keystroke; the
+        // 30 s timer and calendar updates refresh it. After the input's
+        // areas, so a prefilled `/cal <text>` starts its own fetch first.
+        updateMeetingStrip()
+        updateHeight()
     }
 
     override func didFocus() {
@@ -209,6 +214,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         // Worked out again on the next opening; hidden meanwhile so a
         // calendar update doesn't restart the timer.
         meetingStrip.isHidden = true
+        holdsStripRow = false
         layoutStrips()
         stopCalendarTimer()
         suggestionList.show([])
@@ -656,16 +662,27 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// strip never asks), and a timed event starts within
     /// Config.calendarDays. Reads the same events as `/cal`, fetching them
     /// when missing or stale; the result comes back through
-    /// calendarDidUpdate. The caller sizes the panel.
+    /// calendarDidUpdate. Until the first events arrive it says so, like
+    /// the weather, so the line doesn't appear under the user's typing.
+    /// The caller sizes the panel.
     private func updateMeetingStrip() {
         let now = Date()
         var next: CalendarEvent?
-        if Config.calendarStrip, calendar.canReadWithoutAsking,
-           case .loaded(let events, _) = calendar.state(for: .upcoming) {
-            next = NextMeeting.find(in: events, now: now)
+        var isLoading = false
+        if Config.calendarStrip, calendar.canReadWithoutAsking {
+            switch calendar.state(for: .upcoming) {
+            case .loaded(let events, _): next = NextMeeting.find(in: events, now: now)
+            case .loading: isLoading = true
+            case .message: break
+            }
         }
-        if let next { meetingStrip.show(next, now: now) }
-        meetingStrip.isHidden = next == nil
+        if let next {
+            meetingStrip.show(next, now: now)
+        } else if isLoading {
+            meetingStrip.showLoading()
+        }
+        if isShown, stripHeight > 0 { holdsStripRow = true }
+        meetingStrip.isHidden = next == nil && !isLoading
         layoutStrips()
         updateCalendarTimer()
     }
@@ -730,6 +747,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     @objc private func calendarTimerFired() {
+        guard currentCalendarQuery != nil else {
+            // Only the next meeting is shown: the input needs no parsing.
+            updateMeetingStrip()
+            updateHeight()
+            return
+        }
         // `/cal demain` names another day after midnight.
         currentCalendarQuery = calendarQuery(for: textField.stringValue)
         calendarDidUpdate()
@@ -873,6 +896,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// Clicks the next meeting (hidden in the test build, which has no
     /// calendar access, but its click still goes through).
     func clickMeetingStripForSelfTest() { meetingStrip.clickForSelfTest() }
+
+    /// Works out the next meeting as opening the panel does.
+    func updateMeetingStripForSelfTest() { updateMeetingStrip() }
 
     /// What the next meeting reads while it is shown, else nil.
     var meetingStripForSelfTest: String? { meetingStrip.isHidden ? nil : meetingStrip.textForSelfTest }

@@ -119,6 +119,7 @@ enum WorkflowCardTests {
             SelfTest.check("next meeting: \(name)", condition, detail())
         }
         controller.typeForSelfTest("")
+        controller.updateMeetingStripForSelfTest()
         check("hidden without calendar access", controller.meetingStripForSelfTest == nil,
               controller.meetingStripForSelfTest ?? "")
         controller.typeForSelfTest("saf")

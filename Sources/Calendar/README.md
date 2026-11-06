@@ -33,8 +33,10 @@ then stays hidden.
   times; click it to type `/cal`, replacing what was there. All-day events
   and events already under way are skipped. It only shows once you have
   allowed calendar access through `/cal` (it never asks itself, since the
-  prompt would close the launcher), and with nothing coming up it is not
-  shown. Turn it off with `Config.calendarStrip = false`.
+  prompt would close the launcher). It reads "Agenda…" until the events are
+  first read, and with nothing coming up it is not shown; once the line is
+  up, it keeps its room until the launcher closes, so the input never jumps
+  while you type. Turn it off with `Config.calendarStrip = false`.
 - `/cal` puts the next event first:
   - a line for the event under way ("En cours : Standup, se termine dans
     10 min");

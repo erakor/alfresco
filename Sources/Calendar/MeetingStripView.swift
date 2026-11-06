@@ -53,18 +53,42 @@ final class MeetingStripView: StripView {
     private let dot = CalendarView.colorDot(.clear)
     private let titleLabel = NSTextField.areaLabel(size: 12, color: .secondaryLabelColor)
     private let whenLabel = NSTextField(labelWithString: "")
+    /// The event shown, so the 30 s redraw only touches the tool tip (which
+    /// setting dismisses) when it changes; nil while loading.
+    private var shownEventKey: String?
 
     func show(_ event: CalendarEvent, now: Date) {
-        dot.layer?.backgroundColor = event.color.cgColor
-        titleLabel.stringValue = event.title
         let when = NextMeeting.whenText(for: event, now: now)
         whenLabel.stringValue = when
         let soon = NextMeeting.isSoon(event, now: now)
         whenLabel.textColor = soon ? .systemOrange : .tertiaryLabelColor
         whenLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: soon ? .medium : .regular)
         button.setAccessibilityLabel("Prochain rendez-vous : \(event.title), \(when)")
+
+        let key = [
+            event.title, "\(event.start.timeIntervalSince1970)", "\(event.end.timeIntervalSince1970)",
+            event.location ?? "", event.calendarName,
+        ].joined(separator: "\u{1F}")
+        guard key != shownEventKey else { return }
+        shownEventKey = key
+        dot.isHidden = false
+        dot.layer?.backgroundColor = event.color.cgColor
+        titleLabel.stringValue = event.title
+        titleLabel.textColor = .secondaryLabelColor
         button.toolTip = CalendarView.tooltip(for: event) + "\n" + CalendarView.cardTimeText(for: event)
             + "\nCliquez ou tapez \(CommandInput.typed(Config.calendarKeyword)) pour l'agenda"
+    }
+
+    /// Before the first events arrive (first opening after launch, or after
+    /// midnight).
+    func showLoading() {
+        shownEventKey = nil
+        dot.isHidden = true
+        titleLabel.stringValue = "Agenda…"
+        titleLabel.textColor = .tertiaryLabelColor
+        whenLabel.stringValue = ""
+        button.toolTip = nil
+        button.setAccessibilityLabel("Prochain rendez-vous : lecture de l'agenda")
     }
 
     override func build() {
