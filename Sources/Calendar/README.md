@@ -25,6 +25,18 @@ then stays hidden.
 
 ## Use
 
+- Above the input, on the weather's line but on the left, the launcher
+  always shows the next meeting: the first timed event still to start in
+  today and the next two days, with its calendar's color, its title and
+  when ("dans 12 min" within the hour, in orange; else "14:30",
+  "demain 09:00" or "mer. 4, 09:00"). Hover it for its calendar, place and
+  times; click it to type `/cal`, replacing what was there. All-day events
+  and events already under way are skipped. It only shows once you have
+  allowed calendar access through `/cal` (it never asks itself, since the
+  prompt would close the launcher). It reads "Agenda…" until the events are
+  first read, and with nothing coming up it is not shown; once the line is
+  up, it keeps its room until the launcher closes, so the input never jumps
+  while you type. Turn it off with `Config.calendarStrip = false`.
 - `/cal` puts the next event first:
   - a line for the event under way ("En cours : Standup, se termine dans
     10 min");
@@ -80,6 +92,7 @@ In `Sources/App/Config.swift` (rebuild after a change):
   calendar, `/cal` says so and lists the account names it found.
 - `calendarExcluded` (empty): calendars left out by name, e.g. holidays.
 - `calendarHidesBirthdays`, `calendarHidesDeclined` (both `true`).
+- `calendarStrip` (`true`): the next meeting above the input.
 - `calendarCacheLifetime` (5 min): how long events are reused; a change in a
   calendar refreshes them at once anyway. `/cal` reads `calendarDays` of
   events, `/cal <text>` the wider `calendarSearchDays`, and `/cal <day>`
@@ -93,3 +106,5 @@ In `Sources/App/Config.swift` (rebuild after a change):
   EventKit.
 - `CalendarView.swift`: the "next up" layout for `/cal`, the day's list for
   `/cal <day>` and the result list for `/cal <text>`, under the input.
+- `MeetingStripView.swift`: the next meeting above the input
+  (`NextMeeting` picks the event and words when it starts).

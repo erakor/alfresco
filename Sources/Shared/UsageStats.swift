@@ -42,6 +42,8 @@ enum UsageCounter: String, Sendable {
     case launcherCardPicked = "launcher.cardPicked"
     /// The weather above the input was clicked (it types `/weather`).
     case launcherWeatherStripClicked = "launcher.weatherStripClicked"
+    /// The next meeting above the input was clicked (it types `/cal`).
+    case launcherMeetingStripClicked = "launcher.meetingStripClicked"
 
     case previewLoaded = "preview.loaded"
     case previewFailed = "preview.failed"
@@ -371,6 +373,7 @@ final class UsageStats {
             "  Enter on an unknown command: \(count(.launcherUnknownCommand))",
             "  command cards clicked: \(count(.launcherCardPicked))",
             "  weather strip clicked: \(count(.launcherWeatherStripClicked))",
+            "  next meeting clicked: \(count(.launcherMeetingStripClicked))",
             "Keywords:",
             top(total.keywords, 10),
             "Apps opened: \(count(.launcherOpenedApp))",

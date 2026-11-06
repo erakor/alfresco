@@ -41,7 +41,9 @@ the current weather where you are (e.g. "☀️ 14°  Ciel dégagé · Paris
 it types `/weather` in the input, replacing what was there, so Enter then
 opens the `weather` workflow's page as usual. It shares the 10-minute cache with `/weather`,
 so opening the launcher often costs at most one request every 10 minutes.
-Turn it off with `Config.weatherStrip = false`.
+Turn it off with `Config.weatherStrip = false`. The same line shows the
+[next meeting](../Calendar/README.md) on the left once calendar access is
+granted; when both don't fit, the meeting's title is shortened first.
 
 - `/weather paris`, `/weather lyon`, `/weather 75011`, `/weather cdg`: WeatherAPI
   accepts city names, postal codes, airport codes and `lat,lon`. The place is
