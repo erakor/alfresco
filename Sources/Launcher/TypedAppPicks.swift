@@ -10,6 +10,7 @@
 // and the day it was last typed. Nothing is sent anywhere.
 
 import Foundation
+import os
 
 /// The apps picked for one typed input.
 struct TypedInputPicks: Codable, Sendable {
