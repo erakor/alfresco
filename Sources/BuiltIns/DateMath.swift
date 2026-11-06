@@ -128,6 +128,27 @@ enum DateMath {
         }
     }
 
+    /// Words `namedDay` takes: the day words and whole weekday names, not
+    /// their abbreviations (`sam`, `jeu`, `mon`), which are words worth
+    /// searching the calendar for.
+    private static let calendarDayWords: Set<String> = [
+        "today", "aujourd'hui", "aujourd’hui", "tomorrow", "demain", "apres-demain", "apresdemain",
+        "yesterday", "hier", "avant-hier", "avanthier",
+        "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
+        "dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi",
+    ]
+
+    /// The start of the day `text` names for the calendar (`/cal demain`,
+    /// `/cal lundi`, `/cal 12/11`): the next one for a weekday or a date
+    /// without a year, as `days until` reads them. Stricter than parseDate:
+    /// a word alone must be a day word or a whole weekday name. nil for
+    /// anything else, which the calendar searches for.
+    static func namedDay(_ text: String, context: BuiltInContext) -> Date? {
+        let text = normalize(text)
+        if !text.contains(where: \.isNumber), !calendarDayWords.contains(text) { return nil }
+        return parseDate(text, yearless: .next, context: context)
+    }
+
     /// `25/12`, `25.12.2026`, `25/12/26`, `2026-12-25`, `25 dec`,
     /// `1er janvier 2027`, `dec 25`, `december 25th 2027`. Not checked
     /// against the calendar yet.

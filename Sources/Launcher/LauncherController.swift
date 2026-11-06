@@ -285,7 +285,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         // ⌘↩ on `/r/swift`: searched for as typed, which Enter never does.
         let parsed = searchOnly && CommandInput.isCommand(input)
             ? CommandParser.fallbackCommand(input, using: store.current)
-            : CommandParser.parse(input, using: store.current)
+            : enterCommand(for: input)
         guard let command = parsed else {
             if CommandInput.isCommand(input) {
                 // `/`, `/help` with no row chosen, or a command no workflow
@@ -472,7 +472,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             let help = workflow.help ?? "\(workflow.title): type a value after \"\(keyword)\""
             hintLabel.stringValue = help
             hintLabel.toolTip = help
-        } else if let command = CommandParser.parse(textField.stringValue, using: store.current) {
+        } else if let command = enterCommand(for: textField.stringValue) {
             hintLabel.stringValue = "↩ \(command.label)"
             hintLabel.toolTip = nil
             if let preview = command.preview, !showsWeather {
@@ -545,13 +545,24 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// The calendar query for `input`: only while it runs a workflow whose
     /// first keyword is Config.calendarKeyword (the `cal` workflows in
     /// workflows.json), so Enter does what the list is about. Without one,
-    /// `/cal` is an unknown command and beeps.
+    /// `/cal` is an unknown command and beeps. `/cal demain` is a `.day`
+    /// (CalendarQuery.make), which needs the `{query}` form too.
     private func calendarQuery(for input: String) -> CalendarQuery? {
         guard case .workflow(let keyword, let withArgument)? = CommandParser.parse(input, using: store.current)?.source,
               keyword == Config.calendarKeyword
         else { return nil }
-        guard withArgument, let text = KeywordInput(command: input)?.argument else { return .upcoming }
-        return .search(AppIndex.fold(text))
+        return CalendarQuery.make(argument: withArgument ? KeywordInput(command: input)?.argument : nil)
+    }
+
+    /// What Enter runs for `input`: CommandParser.parse, except that a day
+    /// in `/cal` (`/cal demain`) runs the bare `/cal` workflow, the calendar
+    /// itself, since searching it for "demain" is not what the list shows.
+    private func enterCommand(for input: String) -> Command? {
+        if case .day? = calendarQuery(for: input),
+           let calendarCommand = CommandParser.parse(CommandInput.typed(Config.calendarKeyword), using: store.current) {
+            return calendarCommand
+        }
+        return CommandParser.parse(input, using: store.current)
     }
 
     /// Fills the event list under the input while it reads `/cal [text]`,

@@ -45,9 +45,21 @@ struct CalendarEvent: Sendable {
 enum CalendarQuery: Equatable {
     /// `/cal`: what is left of today and the next days (Config.calendarDays).
     case upcoming
+    /// `/cal demain`, `/cal lundi`, `/cal 12/11`: the events of that day
+    /// (its start, in the current time zone), finished ones included.
+    case day(Date)
     /// `/cal <text>`: upcoming events whose title or location contains the
     /// folded text, over Config.calendarSearchDays.
     case search(String)
+
+    /// The query for what follows `/cal`: `.upcoming` for nothing, `.day`
+    /// for a day DateMath.namedDay reads (`demain`, `lundi`, `12/11`,
+    /// `25 dec`), else a search for the text.
+    static func make(argument: String?, context: BuiltInContext = .current) -> CalendarQuery {
+        guard let argument else { return .upcoming }
+        if let day = DateMath.namedDay(argument, context: context) { return .day(day) }
+        return .search(AppIndex.fold(argument))
+    }
 }
 
 enum CalendarState {
@@ -56,7 +68,8 @@ enum CalendarState {
     /// No access, no calendar, or not running as an app bundle.
     case message(String)
     /// Every upcoming event for `.upcoming` (the view picks what fits), at
-    /// most Config.calendarMaxEvents for `.search`; `hiddenCount` more matched.
+    /// most Config.calendarMaxEvents for `.search` and `.day`; `hiddenCount`
+    /// more matched.
     case loaded([CalendarEvent], hiddenCount: Int)
 }
 
@@ -73,6 +86,13 @@ private struct FilteredOut: Sendable {
     let settings: [String]
     /// Account names as Internet Accounts shows them, to fix calendarAccounts.
     let accounts: [String]
+}
+
+/// What a fetch reads: the window from the start of today that `/cal` and
+/// `/cal <text>` share, or one day outside it (`/cal 25/12`, `/cal hier`).
+private enum FetchRange: Sendable, Equatable {
+    case window(days: Int)
+    case day(Date)
 }
 
 private struct FetchResult: Sendable {
@@ -97,6 +117,8 @@ final class CalendarProvider {
     private var fetchedAt: Date?
     /// 0 until a fetch finishes.
     private var fetchedDays = 0
+    /// A day outside the window, read on its own; nil `fetchedAt` is stale.
+    private var dayEvents: (day: Date, events: [CalendarEvent], fetchedAt: Date?)?
     private var hasCalendars = true
     private var filteredOut: FilteredOut?
     private var fetchTask: Task<Void, Never>?
@@ -125,13 +147,40 @@ final class CalendarProvider {
     /// Whether the permission prompt is up.
     var isAwaitingAccess: Bool { isRequestingAccess }
 
-    /// Days of events a query needs: `.search` also covers `.upcoming`, so
-    /// going back to `/cal` after a search reuses the events.
-    private static func days(for query: CalendarQuery) -> Int {
+    /// What a query needs read: `.search` also covers `.upcoming`, so going
+    /// back to `/cal` after a search reuses the events, and a day inside
+    /// either window uses it; a day outside both is read on its own.
+    private static func fetchRange(for query: CalendarQuery, today: Date) -> FetchRange {
+        let searchWindow = max(Config.calendarDays, Config.calendarSearchDays)
         switch query {
-        case .upcoming: return Config.calendarDays
-        case .search: return max(Config.calendarDays, Config.calendarSearchDays)
+        case .upcoming:
+            return .window(days: Config.calendarDays)
+        case .search:
+            return .window(days: searchWindow)
+        case .day(let day):
+            let offset = Calendar.current.dateComponents([.day], from: today, to: day).day ?? -1
+            if offset < 0 { return .day(day) }
+            if offset < Config.calendarDays { return .window(days: Config.calendarDays) }
+            if offset < searchWindow { return .window(days: searchWindow) }
+            return .day(day)
         }
+    }
+
+    /// The events of `day` (any part of it), in order. Past `limit`, the
+    /// ones already over are left out first, so a busy today keeps what is
+    /// still to come; `hidden` counts what was left out.
+    nonisolated static func dayList(
+        _ events: [CalendarEvent], on day: Date, now: Date, limit: Int, calendar: Calendar = .current
+    ) -> (shown: [CalendarEvent], hidden: Int) {
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: day) else { return ([], 0) }
+        // An event of no length counts on the day it is at.
+        let matching = events.filter { $0.start < dayEnd && ($0.end > day || $0.start >= day) }
+        var kept = matching
+        while kept.count > limit, let finished = kept.firstIndex(where: { $0.end <= now }) {
+            kept.remove(at: finished)
+        }
+        let shown = Array(kept.prefix(max(0, limit)))
+        return (shown, matching.count - shown.count)
     }
 
     /// What to show for `query` right now. Asks for access the first time,
@@ -151,10 +200,21 @@ final class CalendarProvider {
             break
         }
 
-        let needed = Self.days(for: query)
-        if !isFresh || fetchedDays < needed { startFetch(days: needed) }
-        guard fetchedDays >= needed else {
-            return .loading(fetchedDays == 0 ? "Lecture de l'agenda…" : "Recherche dans l'agenda…")
+        let now = Date()
+        let today = Calendar.current.startOfDay(for: now)
+        let source: [CalendarEvent]
+        switch Self.fetchRange(for: query, today: today) {
+        case .window(let needed):
+            if !isFresh || fetchedDays < needed { startFetch(.window(days: needed)) }
+            guard fetchedDays >= needed else {
+                return .loading(fetchedDays == 0 ? "Lecture de l'agenda…" : "Recherche dans l'agenda…")
+            }
+            source = events
+        case .day(let day):
+            let cached = dayEvents?.day == day ? dayEvents : nil
+            if cached?.fetchedAt.map(Self.isRecent) != true { startFetch(.day(day)) }
+            guard let read = cached else { return .loading("Lecture de l'agenda…") }
+            source = read.events
         }
         guard hasCalendars else {
             return .message("Aucun calendrier : ajoutez votre compte Google dans Réglages Système › Comptes Internet")
@@ -166,16 +226,17 @@ final class CalendarProvider {
             }
             return .message(text)
         }
-        let now = Date()
-        let today = Calendar.current.startOfDay(for: now)
         let matching: [CalendarEvent]
         switch query {
         case .upcoming:
             let limit = Calendar.current.date(byAdding: .day, value: Config.calendarDays, to: today) ?? now
-            matching = events.filter { $0.end > now && $0.start < limit }
+            matching = source.filter { $0.end > now && $0.start < limit }
+        case .day(let day):
+            let found = Self.dayList(source, on: day, now: now, limit: Config.calendarMaxEvents)
+            return .loaded(found.shown, hiddenCount: found.hidden)
         case .search(let text):
             let limit = Calendar.current.date(byAdding: .day, value: Config.calendarSearchDays, to: today) ?? now
-            matching = events.filter { $0.end > now && $0.start < limit && $0.searchText.contains(text) }
+            matching = source.filter { $0.end > now && $0.start < limit && $0.searchText.contains(text) }
         }
         let shown = query == .upcoming ? matching : Array(matching.prefix(Config.calendarMaxEvents))
         return .loaded(shown, hiddenCount: matching.count - shown.count)
@@ -184,43 +245,57 @@ final class CalendarProvider {
     // MARK: Events
 
     private var isFresh: Bool {
-        guard let fetchedAt else { return false }
-        return Date().timeIntervalSince(fetchedAt) < Config.calendarCacheLifetime
+        fetchedAt.map(Self.isRecent) ?? false
     }
 
-    /// Reads `days` of events in a detached task (recurring events are
-    /// expanded there, which can take a while), one fetch at a time. A wider
-    /// one asked for meanwhile starts on the redraw that follows.
-    private func startFetch(days: Int) {
+    private static func isRecent(_ fetchedAt: Date) -> Bool {
+        Date().timeIntervalSince(fetchedAt) < Config.calendarCacheLifetime
+    }
+
+    /// Reads `range` in a detached task (recurring events are expanded
+    /// there, which can take a while), one fetch at a time. A wider window
+    /// or another day asked for meanwhile starts on the redraw that follows.
+    private func startFetch(_ range: FetchRange) {
         guard fetchTask == nil else { return }
         let box = EventStoreBox(eventStore())
         let startedGeneration = generation
         fetchTask = Task { [weak self] in
-            let result = await Task.detached(priority: .userInitiated) { Self.fetch(from: box, days: days) }.value
+            let result = await Task.detached(priority: .userInitiated) { Self.fetch(from: box, range: range) }.value
             guard let self else { return }
             self.fetchTask = nil
-            self.events = result.events
             self.hasCalendars = result.hasCalendars
             self.filteredOut = result.filteredOut
-            self.fetchedDays = days
             // A change during the fetch leaves it stale: the next state()
             // fetches again.
-            self.fetchedAt = startedGeneration == self.generation ? Date() : nil
+            let fetchedAt = startedGeneration == self.generation ? Date() : nil
+            switch range {
+            case .window(let days):
+                self.events = result.events
+                self.fetchedDays = days
+                self.fetchedAt = fetchedAt
+            case .day(let day):
+                self.dayEvents = (day: day, events: result.events, fetchedAt: fetchedAt)
+            }
             self.onUpdate?()
         }
     }
 
-    nonisolated private static func fetch(from box: EventStoreBox, days: Int) -> FetchResult {
+    nonisolated private static func fetch(from box: EventStoreBox, range: FetchRange) -> FetchResult {
+        let days: Int
+        switch range {
+        case .window(let count): days = count
+        case .day: days = 1
+        }
         let signposter = Signposts.signposter
         let signpost = signposter.beginInterval(
             "calendar.fetch", id: signposter.makeSignpostID(), "days=\(days, privacy: .public)"
         )
-        let result = fetchEvents(from: box, days: days)
+        let result = fetchEvents(from: box, range: range)
         signposter.endInterval("calendar.fetch", signpost, "events=\(result.events.count, privacy: .public)")
         return result
     }
 
-    nonisolated private static func fetchEvents(from box: EventStoreBox, days: Int) -> FetchResult {
+    nonisolated private static func fetchEvents(from box: EventStoreBox, range: FetchRange) -> FetchResult {
         let store = box.store
         let allCalendars = store.calendars(for: .event)
         guard !allCalendars.isEmpty else {
@@ -236,11 +311,20 @@ final class CalendarProvider {
                 events: [], hasCalendars: true, filteredOut: FilteredOut(settings: settings, accounts: accounts)
             )
         }
-        let today = Calendar.current.startOfDay(for: Date())
-        guard let end = Calendar.current.date(byAdding: .day, value: days, to: today) else {
+        let start: Date
+        let days: Int
+        switch range {
+        case .window(let count):
+            start = Calendar.current.startOfDay(for: Date())
+            days = count
+        case .day(let day):
+            start = day
+            days = 1
+        }
+        guard let end = Calendar.current.date(byAdding: .day, value: days, to: start) else {
             return FetchResult(events: [], hasCalendars: true, filteredOut: nil)
         }
-        let predicate = store.predicateForEvents(withStart: today, end: end, calendars: calendars)
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: calendars)
         let events = store.events(matching: predicate)
             .compactMap { makeEvent($0) }
             .sorted { lhs, rhs in
@@ -290,6 +374,7 @@ final class CalendarProvider {
     /// next fetch replaces them.
     private func invalidate() {
         fetchedAt = nil
+        dayEvents?.fetchedAt = nil
         generation += 1
     }
 

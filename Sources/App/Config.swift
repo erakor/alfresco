@@ -236,16 +236,18 @@ enum Config {
 
     /// `/cal` in the launcher lists upcoming events from the calendars macOS
     /// Calendar knows (add a Google account in System Settings > Internet
-    /// Accounts), `/cal <text>` searches them. Needs build/Launcher.app and the
+    /// Accounts), `/cal demain` (or `lundi`, `12/11`) lists one day's and
+    /// `/cal <text>` searches them. Needs build/Launcher.app and the
     /// Calendars permission. Enter still opens whatever workflows.json maps
-    /// the keyword to.
+    /// the keyword to (the bare form for a day).
     static let calendarKeyword = "cal"
     /// Days listed by the bare keyword, today included.
     static let calendarDays = 3
     /// Days searched by `/cal <text>`, today included.
     static let calendarSearchDays = 30
-    /// Events listed at most by `/cal <text>`; the rest are counted on a last
-    /// line. (`/cal` shows the next event, then up to 4 per column.)
+    /// Events listed at most by `/cal <text>` and `/cal <day>`; the rest are
+    /// counted on a last line. (`/cal` shows the next event, then up to 4
+    /// per column.)
     static let calendarMaxEvents = 8
     /// Account names (System Settings > Internet Accounts, e.g. a Gmail
     /// address) whose calendars are listed. Empty lists every account.
