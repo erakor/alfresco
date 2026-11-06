@@ -7,9 +7,15 @@
 import Cocoa
 import UserNotifications
 
+/// A clock the self-test moves by hand (also used by PomodoroViewTests).
 @MainActor
-private final class TestClock {
-    var date = Date(timeIntervalSince1970: 1_800_000_000)
+final class TestClock {
+    var date: Date
+
+    /// 2027-01-15 08:00 UTC by default.
+    init(_ date: Date = Date(timeIntervalSince1970: 1_800_000_000)) {
+        self.date = date
+    }
 
     func advance(_ seconds: TimeInterval) {
         date = date.addingTimeInterval(seconds)
@@ -70,10 +76,6 @@ enum PomodoroTests {
         " " + PomodoroTimer.format(seconds)
     }
 
-    private static func minutes(_ phase: PomodoroPhase) -> Int {
-        Int((phase.duration / 60).rounded())
-    }
-
     /// Picks a menu item the way a click does.
     private static func perform(_ item: PomodoroStatusItem, _ title: String) {
         let menu = item.menuForSelfTest
@@ -120,13 +122,13 @@ enum PomodoroTests {
                   "got \"\(message.title)\" / \"\(message.body)\"")
         }
         expect("focus, then a running break", .focus, .running(.shortBreak, endsAt: later),
-               "Focus session done", "Time for a \(minutes(.shortBreak)) min break.")
+               "Focus session done", "Time for a \(PomodoroPhase.shortBreak.minutes) min break.")
         expect("focus, then a paused break", .focus, .paused(.shortBreak, remaining: 60),
-               "Focus session done", "Your \(minutes(.shortBreak)) min break is waiting in the menu bar.")
+               "Focus session done", "Your \(PomodoroPhase.shortBreak.minutes) min break is waiting in the menu bar.")
         expect("focus, then a running long break", .focus, .running(.longBreak, endsAt: later),
-               "Focus session done", "Time for a \(minutes(.longBreak)) min long break.")
+               "Focus session done", "Time for a \(PomodoroPhase.longBreak.minutes) min long break.")
         expect("focus, then a paused long break", .focus, .paused(.longBreak, remaining: 60),
-               "Focus session done", "Your \(minutes(.longBreak)) min long break is waiting in the menu bar.")
+               "Focus session done", "Your \(PomodoroPhase.longBreak.minutes) min long break is waiting in the menu bar.")
         expect("short break", .shortBreak, .idle, "Break over", "Ready for the next focus session.")
         expect("long break", .longBreak, .idle, "Long break over", "Cycle complete. Start a new one when you're ready.")
     }

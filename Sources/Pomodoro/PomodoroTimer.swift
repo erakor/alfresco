@@ -23,6 +23,9 @@ enum PomodoroPhase: String, Codable, Sendable {
         }
     }
 
+    /// Its Config length in whole minutes.
+    var minutes: Int { Int((duration / 60).rounded()) }
+
     var name: String {
         switch self {
         case .focus: return "Focus"
@@ -30,6 +33,9 @@ enum PomodoroPhase: String, Codable, Sendable {
         case .longBreak: return "Long break"
         }
     }
+
+    /// Its SF Symbol, in the menu bar and the launcher.
+    var symbolName: String { isBreak ? "cup.and.saucer" : "timer" }
 }
 
 enum PomodoroState: Equatable, Sendable {
@@ -110,11 +116,31 @@ final class PomodoroTimer: NSObject {
     /// Starts a focus session, replacing whatever runs now. The cycle count
     /// is kept, unless a long break was due or under way.
     func startFocus(minutes: Int? = nil) {
-        if completedFocusSessions >= Config.pomodoroSessionsBeforeLongBreak {
-            completedFocusSessions = 0
-        }
+        completedFocusSessions = Self.cycleCountAtStart(completedFocusSessions)
         let duration = minutes.map { TimeInterval($0) * 60 } ?? PomodoroPhase.focus.duration
         transition(to: .running(.focus, endsAt: now().addingTimeInterval(duration)))
+    }
+
+    /// The cycle count a new focus session starts from: none once the long
+    /// break was due or under way.
+    nonisolated static func cycleCountAtStart(_ completed: Int) -> Int {
+        completed >= Config.pomodoroSessionsBeforeLongBreak ? 0 : completed
+    }
+
+    /// Runs an alfresco://pomodoro/... command. False when it doesn't apply
+    /// now (pausing a timer that isn't running), which the launcher beeps
+    /// at; PomodoroCommand.preview says the same before Enter.
+    @discardableResult
+    func run(_ command: PomodoroCommand) -> Bool {
+        switch command {
+        case .toggle: toggle()
+        case .start(let minutes): startFocus(minutes: minutes)
+        case .pause: return pause()
+        case .resume: return resume()
+        case .skip: return skip()
+        case .stop: return stop()
+        }
+        return true
     }
 
     /// Idle: starts a focus session. Running: pauses. Paused: resumes.
@@ -173,12 +199,6 @@ final class PomodoroTimer: NSObject {
     var focusSessionsToday: Int {
         guard let lastFocusEnd, calendar.isDate(lastFocusEnd, inSameDayAs: now()) else { return 0 }
         return focusSessionsOnLastDay
-    }
-
-    /// The end date while running, else nil.
-    var endsAt: Date? {
-        if case .running(_, let endsAt) = state { return endsAt }
-        return nil
     }
 
     /// Time left in the current phase; nil when idle.
@@ -324,7 +344,7 @@ final class PomodoroTimer: NSObject {
     private func save() {
         var stored = StoredPomodoro(
             phase: state.phase, completedFocusSessions: completedFocusSessions,
-            lastFocusEnd: lastFocusEnd, focusSessionsOnLastDay: lastFocusEnd == nil ? nil : focusSessionsOnLastDay)
+            lastFocusEnd: lastFocusEnd, focusSessionsOnLastDay: focusSessionsOnLastDay)
         switch state {
         case .idle: break
         case .running(_, let endsAt): stored.endsAt = endsAt

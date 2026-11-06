@@ -147,20 +147,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     private func handlePomodoroURL(_ url: URL) -> Bool {
         guard let pomodoro, let command = PomodoroCommand(url: url) else { return false }
+        // Asked once, before the first session's alert would need it.
         switch command {
-        case .toggle:
-            if pomodoro.state == .idle { PomodoroAlert.requestPermission() }
-            pomodoro.toggle()
-            return true
-        case .start(let minutes):
-            PomodoroAlert.requestPermission()
-            pomodoro.startFocus(minutes: minutes)
-            return true
-        case .pause: return pomodoro.pause()
-        case .resume: return pomodoro.resume()
-        case .skip: return pomodoro.skip()
-        case .stop: return pomodoro.stop()
+        case .start: PomodoroAlert.requestPermission()
+        case .toggle where pomodoro.state == .idle: PomodoroAlert.requestPermission()
+        default: break
         }
+        return pomodoro.run(command)
     }
 
     // MARK: NSMenuItemValidation

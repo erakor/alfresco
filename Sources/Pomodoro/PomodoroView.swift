@@ -13,7 +13,8 @@ import Cocoa
 /// check it.
 struct PomodoroViewContent: Equatable {
     enum Tint: Equatable {
-        case idle, focus, rest, paused
+        /// Idle or paused: grey, with the clock dimmed.
+        case neutral, focus, rest
     }
 
     var symbolName: String
@@ -24,7 +25,7 @@ struct PomodoroViewContent: Equatable {
     var tag: String
     /// "Ends at 14:32", "Paused", "Not started".
     var title: String
-    /// "Then a 5 min break", "Then focus 3 of 4", "Then a new cycle".
+    /// "Then a 5 min break", "Then focus 3 of 4", "Cycle complete, then a new one".
     var detail: String
     /// "●●○○": focus sessions done in this cycle.
     var cycle: String
@@ -39,48 +40,36 @@ struct PomodoroViewContent: Equatable {
         startMinutes: Int, endTime: String?
     ) {
         let total = Config.pomodoroSessionsBeforeLongBreak
-        let done = min(max(0, completedFocusSessions), total)
-        // startFocus starts a new cycle once the long break was due.
-        let nextFocus = completedFocusSessions >= total ? 1 : done + 1
+        // While idle, the count the next session starts from.
+        let counted = state == .idle ? PomodoroTimer.cycleCountAtStart(completedFocusSessions) : completedFocusSessions
+        let done = min(max(0, counted), total)
+        let session = min(done + 1, total)
 
+        symbolName = (state.phase ?? .focus).symbolName
+        clock = PomodoroTimer.format(state == .idle ? TimeInterval(startMinutes * 60) : remaining ?? 0)
         switch state.phase {
-        case nil:
-            symbolName = "timer"
-            tint = .idle
-            clock = PomodoroTimer.format(TimeInterval(startMinutes) * 60)
-            tag = "FOCUS \(nextFocus) OF \(total)"
-            title = "Not started"
-            detail = PomodoroViewContent.afterFocus(number: nextFocus, of: total)
-        case .focus?:
-            symbolName = "timer"
-            tint = .focus
-            clock = PomodoroTimer.format(remaining ?? 0)
-            tag = "FOCUS \(min(done + 1, total)) OF \(total)"
-            title = ""
-            detail = PomodoroViewContent.afterFocus(number: done + 1, of: total)
+        case nil, .focus?:
+            tag = "\(PomodoroPhase.focus.name) \(session) of \(total)".uppercased()
+            detail = session >= total
+                ? "Then a \(PomodoroPhase.longBreak.minutes) min long break"
+                : "Then a \(PomodoroPhase.shortBreak.minutes) min break"
         case .shortBreak?:
-            symbolName = "cup.and.saucer"
-            tint = .rest
-            clock = PomodoroTimer.format(remaining ?? 0)
-            tag = "SHORT BREAK"
-            title = ""
-            detail = "Then focus \(min(done + 1, total)) of \(total)"
+            tag = PomodoroPhase.shortBreak.name.uppercased()
+            detail = "Then focus \(session) of \(total)"
         case .longBreak?:
-            symbolName = "cup.and.saucer"
-            tint = .rest
-            clock = PomodoroTimer.format(remaining ?? 0)
-            tag = "LONG BREAK"
-            title = ""
+            tag = PomodoroPhase.longBreak.name.uppercased()
             detail = "Cycle complete, then a new one"
         }
         switch state {
         case .idle:
-            break
-        case .running:
+            tint = .neutral
+            title = "Not started"
+        case .running(let phase, _):
+            tint = phase.isBreak ? .rest : .focus
             title = endTime.map { "Ends at \($0)" } ?? ""
         case .paused:
+            tint = .neutral
             title = "Paused"
-            tint = .paused
         }
 
         cycle = String(repeating: "●", count: done) + String(repeating: "○", count: total - done)
@@ -90,18 +79,6 @@ struct PomodoroViewContent: Equatable {
         case 1: today = "1 focus session today"
         default: today = "\(sessionsToday) focus sessions today"
         }
-    }
-
-    /// What follows focus session `number`: the long break after the last
-    /// one of the cycle, else a short one.
-    private static func afterFocus(number: Int, of total: Int) -> String {
-        number >= total
-            ? "Then a \(minutes(Config.pomodoroLongBreak)) min long break"
-            : "Then a \(minutes(Config.pomodoroShortBreak)) min break"
-    }
-
-    private static func minutes(_ duration: TimeInterval) -> Int {
-        Int((duration / 60).rounded())
     }
 }
 
@@ -141,12 +118,13 @@ final class PomodoroView: NSView {
     /// Shows the timer as it is now. `startMinutes` is the length Enter
     /// would start while idle.
     func show(_ timer: PomodoroTimer, startMinutes: Int) {
+        var endTime: String?
+        if case .running(_, let endsAt) = timer.state { endTime = Self.endTimeFormatter.string(from: endsAt) }
         let content = PomodoroViewContent(
             state: timer.state, remaining: timer.remaining(),
             completedFocusSessions: timer.completedFocusSessions, sessionsToday: timer.focusSessionsToday,
-            startMinutes: startMinutes, endTime: timer.endsAt.map { Self.endTimeFormatter.string(from: $0) }
+            startMinutes: startMinutes, endTime: endTime
         )
-        // Every second while running; most ticks only change the clock.
         guard content != shown else { return }
         if content.symbolName != shown?.symbolName {
             icon.image = NSImage(systemSymbolName: content.symbolName, accessibilityDescription: nil)
@@ -155,13 +133,15 @@ final class PomodoroView: NSView {
             applyTint(content.tint)
         }
         shown = content
-        clockLabel.stringValue = content.clock
-        tagLabel.stringValue = content.tag
-        titleLabel.stringValue = content.title
-        detailLabel.stringValue = content.detail
-        cycleLabel.stringValue = content.cycle
+        // Every second while running, and most ticks only change the clock:
+        // setting a label's text lays it out again, even to the same text.
+        for (label, text) in [
+            (clockLabel, content.clock), (tagLabel, content.tag), (titleLabel, content.title),
+            (detailLabel, content.detail), (cycleLabel, content.cycle), (todayLabel, content.today),
+        ] where label.stringValue != text {
+            label.stringValue = text
+        }
         cycleLabel.toolTip = content.cycleToolTip
-        todayLabel.stringValue = content.today
     }
 
     /// The card's color: red for focus, green for a break, neutral while
@@ -169,13 +149,14 @@ final class PomodoroView: NSView {
     private func applyTint(_ tint: PomodoroViewContent.Tint) {
         let color: NSColor
         switch tint {
-        case .idle, .paused: color = .secondaryLabelColor
+        case .neutral: color = .secondaryLabelColor
         case .focus: color = .systemRed
         case .rest: color = .systemGreen
         }
-        card.layer?.backgroundColor = color.withAlphaComponent(tint == .idle || tint == .paused ? 0.1 : 0.16).cgColor
+        let muted = tint == .neutral
+        card.layer?.backgroundColor = color.withAlphaComponent(muted ? 0.1 : 0.16).cgColor
         icon.contentTintColor = color
-        clockLabel.textColor = tint == .idle || tint == .paused ? .secondaryLabelColor : .labelColor
+        clockLabel.textColor = muted ? .secondaryLabelColor : .labelColor
     }
 
     /// The layer color is resolved when set, so a switch between light and

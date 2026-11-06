@@ -9,19 +9,6 @@
 import Foundation
 
 @MainActor
-private final class ViewTestClock {
-    var date: Date
-
-    init(_ date: Date) {
-        self.date = date
-    }
-
-    func advance(_ seconds: TimeInterval) {
-        date = date.addingTimeInterval(seconds)
-    }
-}
-
-@MainActor
 enum PomodoroViewTests {
     private static func check(_ name: String, _ condition: Bool, _ detail: @autoclosure () -> String = "") {
         SelfTest.check("pomodoro view: \(name)", condition, detail())
@@ -34,10 +21,10 @@ enum PomodoroViewTests {
         return calendar
     }()
 
-    /// 2027-01-15 08:00 UTC.
+    /// 2027-01-15 08:00 UTC, TestClock's default.
     private static let morning = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private static func makeTimer(_ clock: ViewTestClock, file: URL? = nil) -> PomodoroTimer {
+    private static func makeTimer(_ clock: TestClock, file: URL? = nil) -> PomodoroTimer {
         PomodoroTimer(
             fileURL: file ?? SelfTest.scratchFile("pomodoro-view"), now: { clock.date },
             wakeNotifications: NotificationCenter(), calendar: utc)
@@ -53,7 +40,7 @@ enum PomodoroViewTests {
     // MARK: Today's sessions
 
     private static func sessionsToday() {
-        let clock = ViewTestClock(morning)
+        let clock = TestClock(morning)
         let file = SelfTest.scratchFile("pomodoro-today")
         let timer = makeTimer(clock, file: file)
         check("none finished yet", timer.focusSessionsToday == 0, "\(timer.focusSessionsToday)")
@@ -88,7 +75,7 @@ enum PomodoroViewTests {
         let restoredFile = SelfTest.scratchFile("pomodoro-today-restore")
         try? Data(#"{"phase":"focus","endsAt":"\#(iso.string(from: lateEnd))","completedFocusSessions":0}"#.utf8)
             .write(to: restoredFile)
-        let nextDay = ViewTestClock(lateEnd.addingTimeInterval(35 * 60))
+        let nextDay = TestClock(lateEnd.addingTimeInterval(35 * 60))
         let restored = makeTimer(nextDay, file: restoredFile)
         check("a session restored after midnight counts for the day it ended",
               restored.focusSessionsToday == 0 && restored.completedFocusSessions == 1,
@@ -111,7 +98,7 @@ enum PomodoroViewTests {
     private static func previews() {
         let running = PomodoroState.running(.focus, endsAt: morning)
         let paused = PomodoroState.paused(.shortBreak, remaining: 60)
-        let focus = PomodoroCommand.minutes(nil)
+        let focus = PomodoroPhase.focus.minutes
         func expect(_ name: String, _ command: PomodoroCommand?, _ state: PomodoroState, done: Int = 0,
                     _ text: String, runs: Bool) {
             let preview = PomodoroCommand.preview(of: command, state: state, completedFocusSessions: done)
@@ -139,14 +126,37 @@ enum PomodoroViewTests {
         check("Enter: the hint marks what runs with ↩",
               PomodoroCommand.Preview(text: "Pause", runs: true).hint == "↩ Pause"
                   && PomodoroCommand.Preview(text: "Nothing to pause", runs: false).hint == "Nothing to pause")
+
+        // What the hint promises is what the timer does, in every state.
+        let commands: [PomodoroCommand] = [.toggle, .start(minutes: nil), .start(minutes: 5), .pause, .resume, .skip, .stop]
+        let setups: [(String, @MainActor (PomodoroTimer) -> Void)] = [
+            ("idle", { _ in }),
+            ("idle mid-cycle", { timer in timer.startFocus(); timer.skip(); timer.skip() }),
+            ("running focus", { timer in timer.startFocus() }),
+            ("paused focus", { timer in timer.startFocus(); timer.pause() }),
+            ("running break", { timer in timer.startFocus(); timer.skip(); timer.resume() }),
+            ("paused break", { timer in timer.startFocus(); timer.skip(); timer.resume(); timer.pause() }),
+        ]
+        for (name, setUp) in setups {
+            for command in commands {
+                let timer = makeTimer(TestClock())
+                setUp(timer)
+                let preview = PomodoroCommand.preview(
+                    of: command, state: timer.state, completedFocusSessions: timer.completedFocusSessions)
+                let ran = timer.run(command)
+                check("Enter: \(command) while \(name) runs as the hint says", preview.runs == ran,
+                      "hint \"\(preview.hint)\", ran \(ran)")
+                timer.stop()
+            }
+        }
     }
 
     // MARK: What the view shows
 
     private static func content() {
         let total = Config.pomodoroSessionsBeforeLongBreak
-        let shortBreak = Int((Config.pomodoroShortBreak / 60).rounded())
-        let longBreak = Int((Config.pomodoroLongBreak / 60).rounded())
+        let shortBreak = PomodoroPhase.shortBreak.minutes
+        let longBreak = PomodoroPhase.longBreak.minutes
 
         let idle = PomodoroViewContent(
             state: .idle, remaining: nil, completedFocusSessions: 0, sessionsToday: 0,
@@ -154,7 +164,7 @@ enum PomodoroViewTests {
         check("idle shows the length Enter would start", idle.clock == "50:00", idle.clock)
         check("idle names the first session", idle.tag == "FOCUS 1 OF \(total)" && idle.title == "Not started",
               "\(idle.tag) / \(idle.title)")
-        check("idle is neutral", idle.tint == .idle && idle.symbolName == "timer")
+        check("idle is neutral", idle.tint == .neutral && idle.symbolName == "timer")
         check("no session today", idle.today == "No focus session finished today", idle.today)
         check("an empty cycle", idle.cycle == String(repeating: "○", count: total), idle.cycle)
 
@@ -182,7 +192,7 @@ enum PomodoroViewTests {
             sessionsToday: 1, startMinutes: 25, endTime: nil)
         check("a paused break", paused.tag == "SHORT BREAK" && paused.title == "Paused" && paused.clock == "2:05",
               "\(paused.tag) / \(paused.title) / \(paused.clock)")
-        check("paused is neutral, with the break's cup", paused.tint == .paused && paused.symbolName == "cup.and.saucer")
+        check("paused is neutral, with the break's cup", paused.tint == .neutral && paused.symbolName == "cup.and.saucer")
         check("what follows a break", paused.detail == "Then focus 2 of \(total)", paused.detail)
 
         let afterCycle = PomodoroViewContent(
@@ -214,11 +224,11 @@ enum PomodoroViewTests {
             check("the test workflows file is written", false, error.localizedDescription)
             return
         }
-        let clock = ViewTestClock(morning)
+        let clock = TestClock(morning)
         let timer = makeTimer(clock)
         let store = WorkflowStore(fileURL: url, createsMissingFile: false)
         let controller = LauncherController(store: store, pomodoro: timer, internalURLHandler: { _ in true })
-        let focus = PomodoroCommand.minutes(nil)
+        let focus = PomodoroPhase.focus.minutes
 
         controller.typeForSelfTest("/pomo")
         let idle = controller.pomodoroForSelfTest
