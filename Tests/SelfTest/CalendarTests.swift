@@ -18,11 +18,7 @@ enum CalendarTests {
         makeUUID: { UUID() }
     )
 
-    private static var paris: Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = context.timeZone
-        return calendar
-    }
+    private static let paris = DateMath.isoCalendar(context)
 
     private static func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 0, _ minute: Int = 0) -> Date {
         paris.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!

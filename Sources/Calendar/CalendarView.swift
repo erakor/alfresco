@@ -113,21 +113,13 @@ final class CalendarView: NSView {
             }
             let calendar = Calendar.current
             let today = calendar.startOfDay(for: now)
-            if case .day(let day) = query {
-                // One day: its name, then every event, finished ones dimmed.
-                add(Self.header(for: day, today: today), height: Self.headerHeight)
-                for event in events {
-                    add(EventRow(event: event, day: day, now: now), height: Self.rowHeight)
-                }
-                if hiddenCount > 0 {
-                    add(Self.moreLabel(hiddenCount), height: Self.moreHeight)
-                }
-                break
-            }
+            // An event that started before today (or, for `/cal <day>`, before
+            // that day) is listed under it, so a day's list has one header.
+            let firstDay: Date
+            if case .day(let day) = query { firstDay = day } else { firstDay = today }
             var lastDay: Date?
             for event in events {
-                // An event that started before today is listed under today.
-                let day = max(calendar.startOfDay(for: event.start), today)
+                let day = max(calendar.startOfDay(for: event.start), firstDay)
                 if day != lastDay {
                     add(Self.header(for: day, today: today), height: Self.headerHeight)
                     lastDay = day
@@ -196,21 +188,23 @@ final class CalendarView: NSView {
     /// "Aujourd'hui", "Demain", "Hier", else "Mercredi 4 novembre" (with
     /// the year when it isn't this one).
     static func dayTitle(_ day: Date, today: Date) -> String {
-        let name = dayName(day, today: today)
+        let name = relativeWord(day, today: today) ?? longDate(day, today: today)
         return name.prefix(1).uppercased() + name.dropFirst()
     }
 
-    /// "aujourd'hui", "demain", "hier", else "mercredi 4 novembre" (with the
-    /// year when it isn't this one).
-    static func dayName(_ day: Date, today: Date) -> String {
+    /// "aujourd'hui", "demain" or "hier" for those days, else nil.
+    static func relativeWord(_ day: Date, today: Date) -> String? {
+        switch DateMath.days(from: today, to: day, calendar: .current) {
+        case 0: return "aujourd'hui"
+        case 1: return "demain"
+        case -1: return "hier"
+        default: return nil
+        }
+    }
+
+    /// "mercredi 4 novembre", with the year when it isn't this one.
+    private static func longDate(_ day: Date, today: Date) -> String {
         let calendar = Calendar.current
-        if day == today { return "aujourd'hui" }
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: today), day == tomorrow {
-            return "demain"
-        }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: today), day == yesterday {
-            return "hier"
-        }
         let sameYear = calendar.component(.year, from: day) == calendar.component(.year, from: today)
         return (sameYear ? dayFormatter : dayYearFormatter).string(from: day)
     }
@@ -380,10 +374,8 @@ final class CalendarView: NSView {
                 : "Rien de prévu dans les \(Config.calendarDays) prochains jours"
         case .day(let day):
             let today = Calendar.current.startOfDay(for: Date())
-            let name = dayName(day, today: today)
             // "Aucun événement demain", "Aucun événement le lundi 9 novembre".
-            let isWord = ["aujourd'hui", "demain", "hier"].contains(name)
-            return "Aucun événement \(isWord ? name : "le \(name)")"
+            return "Aucun événement " + (relativeWord(day, today: today) ?? "le \(longDate(day, today: today))")
         case .search:
             return "Aucun événement trouvé dans les \(Config.calendarSearchDays) prochains jours"
         }
@@ -521,14 +513,8 @@ private final class NextCard: NSView {
             unit = "min"
         } else {
             big = CalendarView.clock(event.start)
-            let day = calendar.startOfDay(for: event.start)
-            if day == today {
-                unit = "aujourd'hui"
-            } else if let tomorrow = calendar.date(byAdding: .day, value: 1, to: today), day == tomorrow {
-                unit = "demain"
-            } else {
-                unit = CalendarView.shortDay(event.start)
-            }
+            unit = CalendarView.relativeWord(calendar.startOfDay(for: event.start), today: today)
+                ?? CalendarView.shortDay(event.start)
         }
         let bigLabel = NSTextField(labelWithString: big)
         bigLabel.font = .monospacedDigitSystemFont(ofSize: minutes < 60 ? 26 : 20, weight: .semibold)

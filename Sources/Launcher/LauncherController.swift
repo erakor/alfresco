@@ -548,7 +548,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// `/cal` is an unknown command and beeps. `/cal demain` is a `.day`
     /// (CalendarQuery.make), which needs the `{query}` form too.
     private func calendarQuery(for input: String) -> CalendarQuery? {
-        guard case .workflow(let keyword, let withArgument)? = CommandParser.parse(input, using: store.current)?.source,
+        calendarQuery(for: input, command: CommandParser.parse(input, using: store.current))
+    }
+
+    /// The same, for `input` already parsed into `command`.
+    private func calendarQuery(for input: String, command: Command?) -> CalendarQuery? {
+        guard case .workflow(let keyword, let withArgument)? = command?.source,
               keyword == Config.calendarKeyword
         else { return nil }
         return CalendarQuery.make(argument: withArgument ? KeywordInput(command: input)?.argument : nil)
@@ -558,11 +563,12 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// in `/cal` (`/cal demain`) runs the bare `/cal` workflow, the calendar
     /// itself, since searching it for "demain" is not what the list shows.
     private func enterCommand(for input: String) -> Command? {
-        if case .day? = calendarQuery(for: input),
+        let command = CommandParser.parse(input, using: store.current)
+        if case .day? = calendarQuery(for: input, command: command),
            let calendarCommand = CommandParser.parse(CommandInput.typed(Config.calendarKeyword), using: store.current) {
             return calendarCommand
         }
-        return CommandParser.parse(input, using: store.current)
+        return command
     }
 
     /// Fills the event list under the input while it reads `/cal [text]`,

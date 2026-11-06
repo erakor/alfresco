@@ -93,6 +93,29 @@ private struct FilteredOut: Sendable {
 private enum FetchRange: Sendable, Equatable {
     case window(days: Int)
     case day(Date)
+
+    var days: Int {
+        switch self {
+        case .window(let days): return days
+        case .day: return 1
+        }
+    }
+
+    /// The first day read; the window starts today.
+    func start(today: Date) -> Date {
+        switch self {
+        case .window: return today
+        case .day(let day): return day
+        }
+    }
+}
+
+/// A day outside the window, read on its own.
+private struct DayEvents {
+    let day: Date
+    let events: [CalendarEvent]
+    /// nil once stale.
+    var fetchedAt: Date?
 }
 
 private struct FetchResult: Sendable {
@@ -117,8 +140,7 @@ final class CalendarProvider {
     private var fetchedAt: Date?
     /// 0 until a fetch finishes.
     private var fetchedDays = 0
-    /// A day outside the window, read on its own; nil `fetchedAt` is stale.
-    private var dayEvents: (day: Date, events: [CalendarEvent], fetchedAt: Date?)?
+    private var dayEvents: DayEvents?
     private var hasCalendars = true
     private var filteredOut: FilteredOut?
     private var fetchTask: Task<Void, Never>?
@@ -158,11 +180,9 @@ final class CalendarProvider {
         case .search:
             return .window(days: searchWindow)
         case .day(let day):
-            let offset = Calendar.current.dateComponents([.day], from: today, to: day).day ?? -1
-            if offset < 0 { return .day(day) }
-            if offset < Config.calendarDays { return .window(days: Config.calendarDays) }
-            if offset < searchWindow { return .window(days: searchWindow) }
-            return .day(day)
+            let offset = DateMath.days(from: today, to: day, calendar: .current)
+            guard (0..<searchWindow).contains(offset) else { return .day(day) }
+            return .window(days: offset < Config.calendarDays ? Config.calendarDays : searchWindow)
         }
     }
 
@@ -205,14 +225,14 @@ final class CalendarProvider {
         let source: [CalendarEvent]
         switch Self.fetchRange(for: query, today: today) {
         case .window(let needed):
-            if !isFresh || fetchedDays < needed { startFetch(.window(days: needed)) }
+            if !Self.isFresh(fetchedAt) || fetchedDays < needed { startFetch(.window(days: needed)) }
             guard fetchedDays >= needed else {
                 return .loading(fetchedDays == 0 ? "Lecture de l'agenda…" : "Recherche dans l'agenda…")
             }
             source = events
         case .day(let day):
             let cached = dayEvents?.day == day ? dayEvents : nil
-            if cached?.fetchedAt.map(Self.isRecent) != true { startFetch(.day(day)) }
+            if !Self.isFresh(cached?.fetchedAt) { startFetch(.day(day)) }
             guard let read = cached else { return .loading("Lecture de l'agenda…") }
             source = read.events
         }
@@ -244,12 +264,9 @@ final class CalendarProvider {
 
     // MARK: Events
 
-    private var isFresh: Bool {
-        fetchedAt.map(Self.isRecent) ?? false
-    }
-
-    private static func isRecent(_ fetchedAt: Date) -> Bool {
-        Date().timeIntervalSince(fetchedAt) < Config.calendarCacheLifetime
+    private static func isFresh(_ fetchedAt: Date?) -> Bool {
+        guard let fetchedAt else { return false }
+        return Date().timeIntervalSince(fetchedAt) < Config.calendarCacheLifetime
     }
 
     /// Reads `range` in a detached task (recurring events are expanded
@@ -274,21 +291,16 @@ final class CalendarProvider {
                 self.fetchedDays = days
                 self.fetchedAt = fetchedAt
             case .day(let day):
-                self.dayEvents = (day: day, events: result.events, fetchedAt: fetchedAt)
+                self.dayEvents = DayEvents(day: day, events: result.events, fetchedAt: fetchedAt)
             }
             self.onUpdate?()
         }
     }
 
     nonisolated private static func fetch(from box: EventStoreBox, range: FetchRange) -> FetchResult {
-        let days: Int
-        switch range {
-        case .window(let count): days = count
-        case .day: days = 1
-        }
         let signposter = Signposts.signposter
         let signpost = signposter.beginInterval(
-            "calendar.fetch", id: signposter.makeSignpostID(), "days=\(days, privacy: .public)"
+            "calendar.fetch", id: signposter.makeSignpostID(), "days=\(range.days, privacy: .public)"
         )
         let result = fetchEvents(from: box, range: range)
         signposter.endInterval("calendar.fetch", signpost, "events=\(result.events.count, privacy: .public)")
@@ -311,17 +323,8 @@ final class CalendarProvider {
                 events: [], hasCalendars: true, filteredOut: FilteredOut(settings: settings, accounts: accounts)
             )
         }
-        let start: Date
-        let days: Int
-        switch range {
-        case .window(let count):
-            start = Calendar.current.startOfDay(for: Date())
-            days = count
-        case .day(let day):
-            start = day
-            days = 1
-        }
-        guard let end = Calendar.current.date(byAdding: .day, value: days, to: start) else {
+        let start = range.start(today: Calendar.current.startOfDay(for: Date()))
+        guard let end = Calendar.current.date(byAdding: .day, value: range.days, to: start) else {
             return FetchResult(events: [], hasCalendars: true, filteredOut: nil)
         }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: calendars)

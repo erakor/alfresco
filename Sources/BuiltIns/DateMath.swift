@@ -129,14 +129,12 @@ enum DateMath {
     }
 
     /// Words `namedDay` takes: the day words and whole weekday names, not
-    /// their abbreviations (`sam`, `jeu`, `mon`), which are words worth
+    /// abbreviations (`auj`, `sam`, `jeu`, `mon`), which are words worth
     /// searching the calendar for.
-    private static let calendarDayWords: Set<String> = [
-        "today", "aujourd'hui", "aujourd’hui", "tomorrow", "demain", "apres-demain", "apresdemain",
-        "yesterday", "hier", "avant-hier", "avanthier",
+    private static let calendarDayWords = Set(dayWords.keys).subtracting(["auj"]).union([
         "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
         "dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi",
-    ]
+    ])
 
     /// The start of the day `text` names for the calendar (`/cal demain`,
     /// `/cal lundi`, `/cal 12/11`): the next one for a weekday or a date
