@@ -75,6 +75,12 @@
       "title": "Display Sleep",
       "description": "Turn the display off",
       "url": "alfresco://system/displaysleep"
+    },
+    {
+      "keywords": ["stats"],
+      "title": "Usage",
+      "description": "This week's commands, apps, clips and focus sessions, and the commands nobody runs",
+      "url": "alfresco://stats"
     }
   ],
   "fallback": {

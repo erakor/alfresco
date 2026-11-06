@@ -1,7 +1,7 @@
 // LauncherController.swift
 //
 // The launcher panel: input field, hint line, keyword suggestions, the
-// weather, calendar and pomodoro areas, and Enter handling, which opens a workflow's
+// weather, calendar, pomodoro and usage areas, and Enter handling, which opens a workflow's
 // URL or an installed app, or copies a built-in's answer.
 
 import Carbon.HIToolbox
@@ -66,10 +66,20 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// don't pass one.
     private let pomodoro: PomodoroTimer?
     private let pomodoroView = PomodoroView(frame: .zero)
+    /// What the input runs (CommandParser.parse), worked out once per change
+    /// of it (inputDidChange) for the areas that follow a command: the
+    /// calendar, the pomodoro and the usage report. Enter parses again.
+    private var currentCommand: Command?
     /// The alfresco://pomodoro/... URL the input runs, worked out once per
     /// change of it (inputDidChange), so neither the list nor a tick parses
     /// it again; nil while it is no pomodoro command.
     private var currentPomodoroURL: URL?
+    /// The usage report (`/stats`), filled when it appears: the counts
+    /// don't change while it is shown, except by what the panel itself does.
+    private let statsView = StatsView(frame: .zero)
+    /// Whether the input runs alfresco://stats, worked out once per change
+    /// of it (inputDidChange).
+    private var showsStats = false
     private let suggestionList = SuggestionListView(frame: .zero)
     private let cardsView = WorkflowCardsView(frame: .zero)
     /// The input row (icon, field, hint); moves down when the strip is shown.
@@ -101,6 +111,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             height: { PomodoroView.height },
             claims: { [unowned self] in self.currentPomodoroURL != nil },
             hint: { [unowned self] in self.pomodoroHint() }
+        ),
+        InputArea(
+            view: statsView,
+            height: { StatsView.height },
+            claims: { [unowned self] in self.showsStats },
+            // What Enter does there: the menu bar's Usage… alert.
+            hint: { "↩ Last \(UsageStats.summaryDays) days in detail" }
         ),
     ]
     /// Height of the input row, which is the whole panel without the weather.
@@ -206,8 +223,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         }
         textField.stringValue = ""
         currentBuiltIn = nil
+        currentCommand = nil
         currentCalendarQuery = nil
         currentPomodoroURL = nil
+        showsStats = false
         previews.cancel()
         weather.cancel()
         for area in inputAreas { area.view.isHidden = true }
@@ -229,15 +248,19 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         let signpost = signposter.beginInterval(
             "launcher.input", "length=\(self.textField.stringValue.count, privacy: .public)"
         )
-        currentBuiltIn = builtInAnswer(for: textField.stringValue)
-        currentCalendarQuery = calendarQuery(for: textField.stringValue)
-        currentPomodoroURL = pomodoroURL(for: textField.stringValue)
+        let input = textField.stringValue
+        currentBuiltIn = builtInAnswer(for: input)
+        currentCommand = CommandParser.parse(input, using: store.current)
+        currentCalendarQuery = CalendarQuery.make(input: input, command: currentCommand)
+        currentPomodoroURL = pomodoroURL(for: currentCommand)
+        showsStats = runsStats(currentCommand)
         updateSuggestions()
         updateHint()
         // Each changes what is under the input: resize once, after all.
         updateCards()
         updateCalendar(resize: false)
         updatePomodoro()
+        updateStats()
         updateWeather(resize: false)
         updateHeight()
         signposter.endInterval("launcher.input", signpost, "rows=\(self.suggestionList.items.count, privacy: .public)")
@@ -495,7 +518,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         func runs(_ suggestion: Suggestion) -> Int {
             // Counted under the workflow's first keyword (Command.source).
             guard let keyword = suggestion.workflow.keywords.first else { return 0 }
-            return usage.keywords[suggestion.workflow.takesArgument ? "\(keyword) …" : keyword] ?? 0
+            return usage.keywords[UsageStats.keywordKey(keyword, withArgument: suggestion.workflow.takesArgument)] ?? 0
         }
         return suggestions.enumerated().sorted { lhs, rhs in
             let lhsExact = lhs.element.keyword == typed
@@ -766,14 +789,14 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             return
         }
         // `/cal demain` names another day after midnight.
-        currentCalendarQuery = calendarQuery(for: textField.stringValue)
+        currentCalendarQuery = CalendarQuery.make(input: textField.stringValue, command: currentCommand)
         calendarDidUpdate()
     }
 
-    /// The alfresco://pomodoro/... URL `input` runs (`/pomo`, `/pomo 50`,
+    /// The alfresco://pomodoro/... URL `command` opens (`/pomo`, `/pomo 50`,
     /// or any workflow pointing there), while there is a timer to show.
-    private func pomodoroURL(for input: String) -> URL? {
-        guard pomodoro != nil, let url = CommandParser.parse(input, using: store.current)?.url,
+    private func pomodoroURL(for command: Command?) -> URL? {
+        guard pomodoro != nil, let url = command?.url,
               InternalURL.feature(of: url) == PomodoroCommand.feature
         else { return nil }
         return url
@@ -806,6 +829,29 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         if let hint = pomodoroHint(), hintLabel.stringValue != hint {
             hintLabel.stringValue = hint
         }
+    }
+
+    /// Whether `command` opens alfresco://stats (the `/stats` workflow),
+    /// while the usage stats are on.
+    private func runsStats(_ command: Command?) -> Bool {
+        Config.usageTracking && command.map { StatsCommand.isSummary($0.url) } == true
+    }
+
+    /// Fills the usage report as it appears (not on every keystroke after:
+    /// nothing typed changes the counts). Its height is fixed, so
+    /// inputDidChange's updateHeight covers it.
+    private func updateStats() {
+        if showsStats, statsView.isHidden {
+            let signposter = Signposts.signposter
+            let signpost = signposter.beginInterval("stats.report")
+            let report = UsageReport.make(from: UsageStats.shared, workflows: store.current)
+            statsView.show(report, workflows: store.current)
+            signposter.endInterval(
+                "stats.report", signpost,
+                "commands=\(report.topCommands.count, privacy: .public) apps=\(report.topApps.count, privacy: .public)"
+            )
+        }
+        statsView.isHidden = !showsStats
     }
 
     /// Sizes the panel for the strip, the input row, and the InputArea
@@ -920,6 +966,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     /// The hint line, right of the input.
     var hintForSelfTest: String { hintLabel.stringValue }
+
+    /// The usage report while it is shown, else nil.
+    var statsForSelfTest: UsageReport? { statsView.isHidden ? nil : statsView.reportForSelfTest }
 
     /// What the pomodoro view shows while it is shown, else nil.
     var pomodoroForSelfTest: PomodoroViewContent? {

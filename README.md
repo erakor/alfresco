@@ -29,6 +29,7 @@ launcher, and can sleep or lock the Mac.
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | `/pomo`        | Starts a 25 min [pomodoro](Sources/Pomodoro/README.md), or pauses / resumes it (nothing opens); the launcher shows the timer and the hint says what Enter will do |
 | `/zz`, `/lockscreen`, `/displaysleep` | Puts the Mac to sleep, locks the screen, or turns the display off ([System](Sources/System/README.md)) |
+| `/stats`       | Nothing: the launcher shows this week's [usage](Sources/Stats/README.md) (top commands and apps, clips restored, focus sessions, commands never run); Enter opens the 30-day summary |
 | `= 3*14`, `= 10 km in mi` | Nothing: the hint shows the [answer](Sources/BuiltIns/README.md) (`42`) and Enter copies it |
 | `time tokyo`, `time 15:00 in tokyo` | Nothing: the time there, copied with Enter |
 | `uuid`, `now`  | Nothing: Enter copies a new UUID, or the current time in ISO 8601 |
@@ -46,6 +47,7 @@ Each feature has its own README, next to its code in `Sources/`:
 | [Built-ins](Sources/BuiltIns/README.md) | Answers in the launcher's hint, copied with Enter: a calculator and unit converter (`= 3*14`, `= 10 km in mi`), time zones (`time tokyo`), a new UUID (`uuid`), the current time (`now`) and dates (`days until 25/12`, `= today + 30 days`, `week`). |
 | [Pomodoro](Sources/Pomodoro/README.md) | A focus / break timer started with `/pomo`, counting down in the menu bar. |
 | [System](Sources/System/README.md) | `/zz` (sleep), `/lockscreen` and `/displaysleep` from the launcher, with no permission prompt. |
+| [Stats](Sources/Stats/README.md) | `/stats`: your last 7 days under the input (top commands and apps, clips restored, focus sessions) and the commands nobody runs. |
 | [Clipboard history](Sources/Clipboard/README.md) | 24 hours of copied text, images and files on `⌘⌥C`, pasted back into the app you were using. Pinned items stay on top and never expire. |
 | [Shared](Sources/Shared/README.md) | Local usage stats (menu bar **Usage…**), plus the hotkeys and the panel the features share. |
 | [App](Sources/App/README.md) | The wiring: menu bar, hotkey registration, `alfresco://` URLs, single instance, and `Config`. |
@@ -108,6 +110,7 @@ copied (a search field's text is reduced to its length).
 | `launcher.input`, `apps.match`, `apps.scan` | Each keystroke in the launcher, app ranking, the app scan (background) |
 | `store.load`, `store.save` | Reading and writing `usage.json` and `typed-picks.json` (`kind=usage` or `typedAppPicks`, `bytes=`) |
 | `calendar.fetch`, `calendar.storeChanged` | Reading events (background); each change macOS reports |
+| `stats.report` | Adding up the usage stats as `/stats` appears |
 | `weather.load`, `preview.load` | Network requests (`kind=ok`, `failed` or `cancelled`) |
 
 **Without Xcode**, watch them live while you use the app, one line per

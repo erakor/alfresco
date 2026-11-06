@@ -10,7 +10,8 @@ place and what is missing. Everything stays on your Mac, in
 `~/Library/Application Support/Launcher/usage.json` (readable only by your
 user), one bucket per calendar day, keeping the last 90 days (today
 included). The menu bar's **Usage…** shows the last 30 days and can reveal the
-file. If it was written by a newer build of alfresco, it is left as it is and
+file; [`/stats`](../Stats/README.md) in the launcher shows the last 7 days
+and the commands nobody runs. If it was written by a newer build of alfresco, it is left as it is and
 nothing is saved until the next launch, so that build keeps its counts. If it
 can't be read, it is moved aside as `usage.unreadable.json` (then
 `usage.unreadable-2.json` and so on, never replacing an earlier one, up to 100)
@@ -44,6 +45,8 @@ Recorded:
   or copied.
 - Clipboard: copies by kind, copies and restores per app (by bundle ID), and
   skipped copies by reason. Never any content or file path.
+- Pomodoro: focus sessions that ran their full length (not skipped ones), on
+  the day they ended.
 
 ### Settings
 
@@ -52,6 +55,7 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `usageTracking = false` turns it off (and hides **Usage…**).
 - `usageTrackFallbackWords = false` keeps the counts but drops the fallback words.
 - `usageRetentionDays` (90): how many days of buckets are kept, today included.
+- `usageReportDays` (7): the days [`/stats`](../Stats/README.md) adds up.
 
 ## Code
 

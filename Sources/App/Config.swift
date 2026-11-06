@@ -197,6 +197,9 @@ enum Config {
     static let usageTrackFallbackWords = true
     /// Days of counters kept.
     static let usageRetentionDays = 90
+    /// Days `/stats` sums up under the launcher input, today included
+    /// (Sources/Stats). Its list of commands never run looks at every kept day.
+    static let usageReportDays = 7
 
     // MARK: Weather
 

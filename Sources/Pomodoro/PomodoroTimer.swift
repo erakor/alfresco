@@ -80,6 +80,10 @@ final class PomodoroTimer: NSObject {
     /// Says which day a session ended on, for focusSessionsToday. The app's
     /// follows time zone changes (autoupdatingCurrent).
     private let calendar: Calendar
+    /// Told the end date of every focus session that ran its full length,
+    /// including one noticed at launch: the app's counts it in the usage
+    /// stats (`/stats`).
+    private let focusSessionFinished: @MainActor (Date) -> Void
 
     /// Saved in ~/Library/Application Support/Launcher, next to the
     /// clipboard history.
@@ -87,18 +91,20 @@ final class PomodoroTimer: NSObject {
         self.init(
             fileURL: ClipboardStore.directory.appendingPathComponent("pomodoro.json"),
             now: { Date() },
-            wakeNotifications: NSWorkspace.shared.notificationCenter)
+            wakeNotifications: NSWorkspace.shared.notificationCenter,
+            focusSessionFinished: { UsageStats.shared.record(.pomodoroFocusCompleted, on: $0) })
     }
 
     /// `wakeNotifications` posts NSWorkspace.didWakeNotification. The self-test
     /// gives each timer its own center, so a wake reaches only that timer.
     init(
         fileURL: URL, now: @escaping @MainActor () -> Date, wakeNotifications: NotificationCenter,
-        calendar: Calendar = .autoupdatingCurrent
+        calendar: Calendar = .autoupdatingCurrent, focusSessionFinished: @escaping @MainActor (Date) -> Void = { _ in }
     ) {
         self.fileURL = fileURL
         self.now = now
         self.calendar = calendar
+        self.focusSessionFinished = focusSessionFinished
         super.init()
         restore()
         // A Timer doesn't fire while the Mac sleeps; catch up as soon as it
@@ -250,7 +256,10 @@ final class PomodoroTimer: NSObject {
         switch phase {
         case .focus:
             completedFocusSessions += 1
-            if let ranOutAt { countFocusSession(endedAt: ranOutAt) }
+            if let ranOutAt {
+                countFocusSession(endedAt: ranOutAt)
+                focusSessionFinished(ranOutAt)
+            }
             let next: PomodoroPhase =
                 completedFocusSessions >= Config.pomodoroSessionsBeforeLongBreak ? .longBreak : .shortBreak
             transition(to: autoStart

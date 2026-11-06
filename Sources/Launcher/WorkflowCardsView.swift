@@ -44,8 +44,10 @@ struct WorkflowCard: Sendable {
             let bare = set.workflow(for: keyword, withArgument: false)
             let withArgument = set.workflow(for: keyword, withArgument: true)
             guard let shown = bare ?? withArgument else { continue }
-            let bareRuns = bare?.keywords.first.map { usage.keywords[$0] ?? 0 } ?? 0
-            let argumentRuns = withArgument?.keywords.first.map { usage.keywords["\($0) …"] ?? 0 } ?? 0
+            let bareRuns = bare?.keywords.first.map { usage.keywords[UsageStats.keywordKey($0, withArgument: false)] ?? 0 } ?? 0
+            let argumentRuns = withArgument?.keywords.first.map {
+                usage.keywords[UsageStats.keywordKey($0, withArgument: true)] ?? 0
+            } ?? 0
             cards.append(WorkflowCard(
                 keyword: keyword, title: shown.title, help: shown.help, workflow: shown,
                 takesArgument: withArgument != nil, runs: bareRuns + argumentRuns
