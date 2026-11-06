@@ -149,7 +149,10 @@ click, or `⌘N`) on a workflow row completes it and opens it if it needs
 nothing more; on an app row it opens the app. With no row highlighted,
 `Enter` runs what is typed, as before (so `/p` alone beeps: no command is
 `p`). The workflow rows go away once the word is a whole keyword or you type
-a space.
+a space. Moving the mouse over the list highlights the row under it, as `↓`
+would, so `Enter` then takes that row; the highlight stays there when the
+mouse leaves the list. Only a mouse movement does this: rows that change
+under a resting pointer while you type leave the highlight alone.
 
 ### Command cards
 

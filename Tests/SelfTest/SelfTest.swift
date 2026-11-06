@@ -89,6 +89,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
             WorkflowCheckTests.run()
             CommandPrefixTests.run()
             WorkflowCardTests.run()
+            SuggestionListTests.run()
             ClipboardTests.run()
             ClipboardSpeedTests.run()
             // These wait for decodes in the background, so the suite
