@@ -1,9 +1,10 @@
 // CalendarTests.swift
 //
 // The `/cal` argument read as a day (`demain`, `lundi`, `12/11`) or a
-// search, with a pinned clock and time zone, and the events a day's list
-// keeps: any part of that day, finished ones left out first past the limit.
-// EventKit itself is never touched.
+// search, with a pinned clock and time zone; what Enter runs for it; which
+// events a day is read from (the shared window or that day alone); and the
+// events a day's list keeps: any part of that day, finished ones left out
+// first past the limit. EventKit itself is never touched.
 
 import Foundation
 
@@ -26,6 +27,8 @@ enum CalendarTests {
 
     static func run() {
         queries()
+        enterCommand()
+        fetchRange()
         dayList()
     }
 
@@ -53,6 +56,7 @@ enum CalendarTests {
             ("25 déc", date(2026, 12, 25)),
             ("1er janvier", date(2027, 1, 1)),
             ("2027-02-14", date(2027, 2, 14)),
+            ("25.12.2026", date(2026, 12, 25)),
         ]
         for (argument, day) in days {
             let got = query(argument)
@@ -68,12 +72,87 @@ enum CalendarTests {
             ("mon", "mon"),
             ("sprint 12", "sprint 12"),
             ("31/2", "31/2"),
+            // Dotted numbers are versions more often than days.
+            ("1.2", "1.2"),
+            ("2.10", "2.10"),
+            ("25.12", "25.12"),
             ("demain matin", "demain matin"),
         ]
         for (argument, text) in searches {
             let got = query(argument)
             check("/cal \(argument) is a search", got == .search(text), "got \(got)")
         }
+    }
+
+    // MARK: Enter
+
+    private static func enterCommand() {
+        guard Config.commandPrefix == "/", Config.calendarKeyword == "cal" else {
+            check("calendar: Config changes /cal, Enter not tested", true)
+            return
+        }
+        func workflows(_ json: String) -> WorkflowSet? {
+            try? JSONDecoder().decode(WorkflowSet.self, from: Data(json.utf8))
+        }
+        let bare = #"{"keywords": ["cal"], "title": "Calendar", "url": "https://example.com/cal"}"#
+        let search = #"{"keywords": ["cal"], "title": "Search", "url": "https://example.com/cal?q={query}"}"#
+        guard let both = workflows(#"{"workflows": [\#(bare), \#(search)]}"#),
+              let searchOnly = workflows(#"{"workflows": [\#(search)]}"#),
+              let none = workflows(#"{"workflows": []}"#)
+        else {
+            check("calendar: the test workflows decode", false)
+            return
+        }
+        func enter(_ input: String, _ set: WorkflowSet) -> Command? {
+            let command = CommandParser.parse(input, using: set)
+            let query = CalendarQuery.make(input: input, command: command, context: context)
+            return CalendarQuery.enterCommand(command, query: query, using: set)
+        }
+        let day = enter("/cal demain", both)
+        check(
+            "Enter on /cal demain opens the bare /cal workflow, counted as /cal …",
+            day?.url.absoluteString == "https://example.com/cal"
+                && day?.source == CommandSource.workflow(keyword: "cal", withArgument: true),
+            "got \(day.map { "\($0.url) \($0.source)" } ?? "nil")"
+        )
+        let found = enter("/cal standup", both)?.url.absoluteString
+        check("Enter on /cal standup searches", found == "https://example.com/cal?q=standup", "got \(found ?? "nil")")
+        let plain = enter("/cal", both)?.url.absoluteString
+        check("Enter on /cal opens the calendar", plain == "https://example.com/cal", "got \(plain ?? "nil")")
+        let noBare = enter("/cal demain", searchOnly)?.url.absoluteString
+        check(
+            "without a bare /cal workflow, Enter on /cal demain searches",
+            noBare == "https://example.com/cal?q=demain", "got \(noBare ?? "nil")"
+        )
+        let input = "/cal demain"
+        check(
+            "without cal workflows, /cal demain shows no list",
+            CalendarQuery.make(input: input, command: CommandParser.parse(input, using: none), context: context) == nil
+        )
+    }
+
+    // MARK: Which events a day is read from
+
+    private static func fetchRange() {
+        guard Config.calendarDays == 3, Config.calendarSearchDays == 30 else {
+            check("calendar: Config changes the windows, fetch ranges not tested", true)
+            return
+        }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        func range(_ offset: Int) -> String {
+            let day = calendar.date(byAdding: .day, value: offset, to: today)!
+            return CalendarProvider.fetchRangeForSelfTest(.day(day), today: today)
+        }
+        let cases: [(Int, String)] = [
+            (-1, "day"), (0, "window 3"), (2, "window 3"), (3, "window 30"), (29, "window 30"), (30, "day"),
+        ]
+        for (offset, expected) in cases {
+            let got = range(offset)
+            check("a day \(offset) days away is read from \(expected)", got == expected, "got \(got)")
+        }
+        check("/cal reads 3 days", CalendarProvider.fetchRangeForSelfTest(.upcoming, today: today) == "window 3")
+        check("/cal <text> reads 30 days", CalendarProvider.fetchRangeForSelfTest(.search("x"), today: today) == "window 30")
     }
 
     // MARK: A day's events

@@ -38,11 +38,14 @@ then stays hidden.
   `today`, `yesterday`), a weekday written in full (`lundi`, `friday`: the
   coming one, so `/cal mardi` on a Tuesday is next week's), or a date as the
   [`days` built-in](../BuiltIns/README.md) reads it (`12/11`, `25 dec`,
-  `1er janvier`, `2027-02-14`; without a year, the next one, today included).
+  `1er janvier`, `2027-02-14`; without a year, the next one, today included;
+  with dots only with its year, `25.12.2026`, so `/cal 1.2` looks for a
+  version).
   Up to 8 events; past that, the ones already over are left out first and a
   last line counts the rest. A day further than the 30 days the search reads,
-  or before today, is read on its own. Enter opens Google Calendar (the bare
-  `/cal` workflow) rather than searching for the word. Weekday abbreviations
+  or before today, is read on its own, once you stop typing for a moment. Enter opens Google Calendar (the bare
+  `/cal` workflow) rather than searching for the word; the usage stats still
+  count it as a `/cal …`. Weekday abbreviations
   (`sam`, `jeu`, `mon`) and anything else are searched for, so
   `/cal demain matin` looks for "demain matin".
 - `/cal <text>` lists up to 8 events of the next 30 days whose title or place
@@ -85,7 +88,8 @@ In `Sources/App/Config.swift` (rebuild after a change):
 ## Code
 
 - `CalendarProvider.swift`: turns launcher input into a query (a day through
-  `DateMath.namedDay`, in `Sources/BuiltIns/`), asks for access, reads and
-  caches the events through EventKit.
+  `DateMath.namedDay`, in `Sources/Shared/DateReading.swift`) and says what
+  Enter runs for a day, asks for access, reads and caches the events through
+  EventKit.
 - `CalendarView.swift`: the "next up" layout for `/cal`, the day's list for
   `/cal <day>` and the result list for `/cal <text>`, under the input.

@@ -74,7 +74,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         InputArea(
             view: calendarView,
             height: { [unowned self] in self.calendarView.preferredHeight },
-            claims: { [unowned self] in self.calendarQuery(for: $0) != nil }
+            claims: { [unowned self] _ in self.currentCalendarQuery != nil }
         ),
     ]
     /// Height of the input row, which is the whole panel without the weather.
@@ -90,6 +90,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// (inputDidChange) and read by the list and the hint. Enter works it
     /// out again, so `now` and `uuid` copy fresh values.
     private var currentBuiltIn: BuiltInAnswer?
+    /// The calendar query for the input, worked out once per change of it
+    /// (inputDidChange) and by updateCalendar, read by the InputArea test
+    /// and the hint. Enter works it out again.
+    private var currentCalendarQuery: CalendarQuery?
     /// Whether the calendar list was shown since the panel was (usage stats).
     private var didShowCalendar = false
     /// The input that brought up the calendar permission prompt (which
@@ -159,6 +163,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         }
         textField.stringValue = ""
         currentBuiltIn = nil
+        currentCalendarQuery = nil
         previews.cancel()
         weather.cancel()
         for area in inputAreas { area.view.isHidden = true }
@@ -175,6 +180,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             "launcher.input", "length=\(self.textField.stringValue.count, privacy: .public)"
         )
         currentBuiltIn = builtInAnswer(for: textField.stringValue)
+        currentCalendarQuery = calendarQuery(for: textField.stringValue)
         updateSuggestions()
         updateHint()
         // Each changes what is under the input: resize once, after all.
@@ -285,7 +291,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         // ⌘↩ on `/r/swift`: searched for as typed, which Enter never does.
         let parsed = searchOnly && CommandInput.isCommand(input)
             ? CommandParser.fallbackCommand(input, using: store.current)
-            : enterCommand(for: input)
+            : enterCommand(for: input, query: calendarQuery(for: input))
         guard let command = parsed else {
             if CommandInput.isCommand(input) {
                 // `/`, `/help` with no row chosen, or a command no workflow
@@ -472,7 +478,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             let help = workflow.help ?? "\(workflow.title): type a value after \"\(keyword)\""
             hintLabel.stringValue = help
             hintLabel.toolTip = help
-        } else if let command = enterCommand(for: textField.stringValue) {
+        } else if let command = enterCommand(for: textField.stringValue, query: currentCalendarQuery) {
             hintLabel.stringValue = "↩ \(command.label)"
             hintLabel.toolTip = nil
             if let preview = command.preview, !showsWeather {
@@ -548,34 +554,21 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// `/cal` is an unknown command and beeps. `/cal demain` is a `.day`
     /// (CalendarQuery.make), which needs the `{query}` form too.
     private func calendarQuery(for input: String) -> CalendarQuery? {
-        calendarQuery(for: input, command: CommandParser.parse(input, using: store.current))
+        CalendarQuery.make(input: input, command: CommandParser.parse(input, using: store.current))
     }
 
-    /// The same, for `input` already parsed into `command`.
-    private func calendarQuery(for input: String, command: Command?) -> CalendarQuery? {
-        guard case .workflow(let keyword, let withArgument)? = command?.source,
-              keyword == Config.calendarKeyword
-        else { return nil }
-        return CalendarQuery.make(argument: withArgument ? KeywordInput(command: input)?.argument : nil)
-    }
-
-    /// What Enter runs for `input`: CommandParser.parse, except that a day
-    /// in `/cal` (`/cal demain`) runs the bare `/cal` workflow, the calendar
-    /// itself, since searching it for "demain" is not what the list shows.
-    private func enterCommand(for input: String) -> Command? {
-        let command = CommandParser.parse(input, using: store.current)
-        if case .day? = calendarQuery(for: input, command: command),
-           let calendarCommand = CommandParser.parse(CommandInput.typed(Config.calendarKeyword), using: store.current) {
-            return calendarCommand
-        }
-        return command
+    /// What Enter runs for `input`, which reads `query`: CommandParser.parse,
+    /// except that a day in `/cal` (`/cal demain`) runs the bare `/cal`
+    /// workflow (CalendarQuery.enterCommand).
+    private func enterCommand(for input: String, query: CalendarQuery?) -> Command? {
+        CalendarQuery.enterCommand(CommandParser.parse(input, using: store.current), query: query, using: store.current)
     }
 
     /// Fills the event list under the input while it reads `/cal [text]`,
     /// then resizes the panel unless the caller does (`resize: false`).
     private func updateCalendar(resize: Bool = true) {
         let input = textField.stringValue
-        let query = calendarQuery(for: input)
+        let query = currentCalendarQuery
         if let query {
             if !didShowCalendar {
                 didShowCalendar = true
@@ -626,6 +619,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     @objc private func calendarTimerFired() {
+        // `/cal demain` names another day after midnight.
+        currentCalendarQuery = calendarQuery(for: textField.stringValue)
         updateCalendar()
     }
 

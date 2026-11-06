@@ -169,10 +169,11 @@ built-in's answer is copied, never what was typed or copied.
 
 - `BuiltIns.swift`: which built-in takes the input (after workflows), the
   answers for `=`, `uuid` and `now`, the separators (`in`, `to`…) both
-  conversions split on, and `BuiltInContext` (the clock, time zone and
-  locale, pinned by the self-test).
+  conversions split on. `BuiltInContext` (the clock, time zone and locale,
+  pinned by the self-test) is in `Sources/Shared/DateReading.swift`.
 - `Calculator.swift`: the expression evaluator and the number format.
 - `UnitConverter.swift`: the unit table and `<amount> <unit> in <unit>`.
 - `WorldClock.swift`: places, times and the `time` answers.
-- `DateMath.swift`: reading dates, `days`, `week` and date arithmetic after
-  `=`.
+- `DateMath.swift`: `days`, `week` and date arithmetic after `=`. Reading
+  the dates is shared with the calendar, in
+  [`Sources/Shared/DateReading.swift`](../Shared/README.md).

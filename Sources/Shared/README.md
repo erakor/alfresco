@@ -73,6 +73,11 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `StatusRow.swift`: the loading / error line (spinner or icon, then text)
   that the [weather](../Weather/README.md) and
   [calendar](../Calendar/README.md) areas show under the input.
+- `DateReading.swift`: reads typed dates (`25/12`, `2026-12-25`, `25 dec`,
+  `demain`, `friday`) for the [built-ins](../BuiltIns/README.md) (`days`,
+  `week`, `= today + 30 days`) and the [calendar](../Calendar/README.md)
+  (`/cal demain`), plus `BuiltInContext` (the clock, time zone and locale,
+  pinned by the self-test).
 - `KeywordInput.swift`: reads input as `<keyword> [argument]`, bare for the
   built-ins (`time tokyo`) and after the `/` for the features that own a
   workflow keyword (`/weather paris`).

@@ -60,6 +60,29 @@ enum CalendarQuery: Equatable {
         if let day = DateMath.namedDay(argument, context: context) { return .day(day) }
         return .search(AppIndex.fold(argument))
     }
+
+    /// The query for launcher input already parsed into `command`: only
+    /// while it runs a workflow whose first keyword is
+    /// Config.calendarKeyword (the `cal` workflows in workflows.json), so
+    /// Enter does what the list is about. nil otherwise; without such a
+    /// workflow `/cal` is an unknown command and beeps.
+    static func make(input: String, command: Command?, context: BuiltInContext = .current) -> CalendarQuery? {
+        guard case .workflow(let keyword, let withArgument)? = command?.source,
+              keyword == Config.calendarKeyword
+        else { return nil }
+        return make(argument: withArgument ? KeywordInput(command: input)?.argument : nil, context: context)
+    }
+
+    /// What Enter runs for input parsed into `command` that reads `query`:
+    /// for a `.day`, the bare `/cal` workflow (the calendar itself, not a
+    /// search for "demain"), keeping the typed form's source so the usage
+    /// stats still count `cal …`; else `command` itself.
+    static func enterCommand(_ command: Command?, query: CalendarQuery?, using workflows: WorkflowSet) -> Command? {
+        guard case .day? = query, let typed = command,
+              let calendar = CommandParser.parse(CommandInput.typed(Config.calendarKeyword), using: workflows)
+        else { return command }
+        return Command(url: calendar.url, label: calendar.label, source: typed.source, preview: nil)
+    }
 }
 
 enum CalendarState {
@@ -91,21 +114,21 @@ private struct FilteredOut: Sendable {
 /// What a fetch reads: the window from the start of today that `/cal` and
 /// `/cal <text>` share, or one day outside it (`/cal 25/12`, `/cal hier`).
 private enum FetchRange: Sendable, Equatable {
-    case window(days: Int)
+    /// `days` from `start`, the start of today when it was asked for.
+    case window(start: Date, days: Int)
     case day(Date)
 
-    var days: Int {
+    var start: Date {
         switch self {
-        case .window(let days): return days
-        case .day: return 1
+        case .window(let start, _): return start
+        case .day(let day): return day
         }
     }
 
-    /// The first day read; the window starts today.
-    func start(today: Date) -> Date {
+    var days: Int {
         switch self {
-        case .window: return today
-        case .day(let day): return day
+        case .window(_, let days): return days
+        case .day: return 1
         }
     }
 }
@@ -134,13 +157,18 @@ final class CalendarProvider {
 
     private var store: EKEventStore?
     private var storeObserver: NSObjectProtocol?
-    /// Every included event from the start of today over `fetchedDays`,
-    /// from the last fetch; still shown while a newer one runs.
+    /// Every included event over `fetchedWindow`, from the last window
+    /// fetch; still shown while a newer one runs.
     private var events: [CalendarEvent] = []
     private var fetchedAt: Date?
-    /// 0 until a fetch finishes.
-    private var fetchedDays = 0
+    /// The days `events` cover; nil until a window fetch finishes. Its start
+    /// is the day it was read, so after midnight it no longer serves.
+    private var fetchedWindow: (start: Date, days: Int)?
     private var dayEvents: DayEvents?
+    /// A day fetch waiting for typing to pause (`/cal 2027-02-1` on the way
+    /// to `/cal 2027-02-14` is never read).
+    private var pendingDay: (day: Date, task: Task<Void, Never>)?
+    private static let dayFetchDelay: UInt64 = 400_000_000
     private var hasCalendars = true
     private var filteredOut: FilteredOut?
     private var fetchTask: Task<Void, Never>?
@@ -176,15 +204,25 @@ final class CalendarProvider {
         let searchWindow = max(Config.calendarDays, Config.calendarSearchDays)
         switch query {
         case .upcoming:
-            return .window(days: Config.calendarDays)
+            return .window(start: today, days: Config.calendarDays)
         case .search:
-            return .window(days: searchWindow)
+            return .window(start: today, days: searchWindow)
         case .day(let day):
             let offset = DateMath.days(from: today, to: day, calendar: .current)
             guard (0..<searchWindow).contains(offset) else { return .day(day) }
-            return .window(days: offset < Config.calendarDays ? Config.calendarDays : searchWindow)
+            return .window(start: today, days: offset < Config.calendarDays ? Config.calendarDays : searchWindow)
         }
     }
+
+    #if SELFTEST
+    /// `fetchRange` for the self-test: "window <days>" or "day".
+    static func fetchRangeForSelfTest(_ query: CalendarQuery, today: Date) -> String {
+        switch fetchRange(for: query, today: today) {
+        case .window(_, let days): return "window \(days)"
+        case .day: return "day"
+        }
+    }
+    #endif
 
     /// The events of `day` (any part of it), in order. Past `limit`, the
     /// ones already over are left out first, so a busy today keeps what is
@@ -193,13 +231,17 @@ final class CalendarProvider {
         _ events: [CalendarEvent], on day: Date, now: Date, limit: Int, calendar: Calendar = .current
     ) -> (shown: [CalendarEvent], hidden: Int) {
         guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: day) else { return ([], 0) }
+        let limit = max(0, limit)
         // An event of no length counts on the day it is at.
         let matching = events.filter { $0.start < dayEnd && ($0.end > day || $0.start >= day) }
-        var kept = matching
-        while kept.count > limit, let finished = kept.firstIndex(where: { $0.end <= now }) {
-            kept.remove(at: finished)
+        // The first `excess` finished events make room for the rest.
+        var excess = matching.count - limit
+        let kept = matching.filter { event in
+            guard excess > 0, event.end <= now else { return true }
+            excess -= 1
+            return false
         }
-        let shown = Array(kept.prefix(max(0, limit)))
+        let shown = Array(kept.prefix(limit))
         return (shown, matching.count - shown.count)
     }
 
@@ -224,15 +266,18 @@ final class CalendarProvider {
         let today = Calendar.current.startOfDay(for: now)
         let source: [CalendarEvent]
         switch Self.fetchRange(for: query, today: today) {
-        case .window(let needed):
-            if !Self.isFresh(fetchedAt) || fetchedDays < needed { startFetch(.window(days: needed)) }
-            guard fetchedDays >= needed else {
-                return .loading(fetchedDays == 0 ? "Lecture de l'agenda…" : "Recherche dans l'agenda…")
+        case .window(let start, let needed):
+            let fetched = fetchedWindow?.start == start ? fetchedWindow : nil
+            if !Self.isFresh(fetchedAt) || (fetched?.days ?? 0) < needed {
+                startFetch(.window(start: start, days: needed))
+            }
+            guard let window = fetched, window.days >= needed else {
+                return .loading(fetched == nil ? "Lecture de l'agenda…" : "Recherche dans l'agenda…")
             }
             source = events
         case .day(let day):
             let cached = dayEvents?.day == day ? dayEvents : nil
-            if !Self.isFresh(cached?.fetchedAt) { startFetch(.day(day)) }
+            if !Self.isFresh(cached?.fetchedAt) { fetchDay(day) }
             guard let read = cached else { return .loading("Lecture de l'agenda…") }
             source = read.events
         }
@@ -269,6 +314,20 @@ final class CalendarProvider {
         return Date().timeIntervalSince(fetchedAt) < Config.calendarCacheLifetime
     }
 
+    /// Starts a fetch for `day` once typing has paused on it.
+    private func fetchDay(_ day: Date) {
+        guard pendingDay?.day != day else { return }
+        pendingDay?.task.cancel()
+        let task = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.dayFetchDelay)
+            guard let self, !Task.isCancelled else { return }
+            self.pendingDay = nil
+            // Busy with another fetch: the redraw after it asks again.
+            self.startFetch(.day(day))
+        }
+        pendingDay = (day, task)
+    }
+
     /// Reads `range` in a detached task (recurring events are expanded
     /// there, which can take a while), one fetch at a time. A wider window
     /// or another day asked for meanwhile starts on the redraw that follows.
@@ -286,9 +345,9 @@ final class CalendarProvider {
             // fetches again.
             let fetchedAt = startedGeneration == self.generation ? Date() : nil
             switch range {
-            case .window(let days):
+            case .window(let start, let days):
                 self.events = result.events
-                self.fetchedDays = days
+                self.fetchedWindow = (start, days)
                 self.fetchedAt = fetchedAt
             case .day(let day):
                 self.dayEvents = DayEvents(day: day, events: result.events, fetchedAt: fetchedAt)
@@ -323,7 +382,7 @@ final class CalendarProvider {
                 events: [], hasCalendars: true, filteredOut: FilteredOut(settings: settings, accounts: accounts)
             )
         }
-        let start = range.start(today: Calendar.current.startOfDay(for: Date()))
+        let start = range.start
         guard let end = Calendar.current.date(byAdding: .day, value: range.days, to: start) else {
             return FetchResult(events: [], hasCalendars: true, filteredOut: nil)
         }

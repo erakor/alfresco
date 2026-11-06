@@ -75,18 +75,6 @@ enum BuiltInAnswer: Equatable, Sendable {
     }
 }
 
-/// What the answers depend on besides the input, so the self-test can pin it.
-struct BuiltInContext: Sendable {
-    var now: Date
-    var timeZone: TimeZone
-    var locale: Locale
-    var makeUUID: @Sendable () -> UUID
-
-    static var current: BuiltInContext {
-        BuiltInContext(now: Date(), timeZone: .current, locale: .current, makeUUID: { UUID() })
-    }
-}
-
 enum BuiltIns {
     /// What separates an amount or a time from the unit or place to convert
     /// it to, in `= 10 km in mi` and `time 15:00 tokyo in paris`.
