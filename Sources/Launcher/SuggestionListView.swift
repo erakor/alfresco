@@ -54,6 +54,11 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
     /// Where ↑ stops: 0 when the first row is what Enter would run anyway
     /// (the matching app), so it stays highlighted; nil otherwise.
     private var floorIndex: Int?
+    /// The row under the pointer, drawn with a light highlight. Only a mouse
+    /// movement (or a scroll while one is shown) sets it, so rows replaced
+    /// under a resting pointer while typing show none. It never changes
+    /// what Enter runs: that is the selection.
+    private var hoveredIndex: Int?
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     /// Row icons by app path or URL scheme; emptied with the list.
@@ -85,6 +90,7 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
     func show(_ items: [LauncherItem], highlightFirst: Bool = false) {
         self.items = items
         if items.isEmpty { iconCache.removeAll() }
+        hoveredIndex = nil
         floorIndex = highlightFirst && !items.isEmpty ? 0 : nil
         selectedIndex = floorIndex
         tableView.reloadData()
@@ -127,6 +133,41 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
         }
     }
 
+    // MARK: Hover
+
+    override func mouseEntered(with event: NSEvent) {
+        updateHover(at: event.locationInWindow)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        updateHover(at: event.locationInWindow)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        setHovered(nil)
+    }
+
+    /// Keeps the hover on the row under the pointer as the list scrolls.
+    @objc private func clipViewDidScroll() {
+        guard hoveredIndex != nil, let window else { return }
+        updateHover(at: window.mouseLocationOutsideOfEventStream)
+    }
+
+    private func updateHover(at windowPoint: NSPoint) {
+        let point = tableView.convert(windowPoint, from: nil)
+        let row = tableView.row(at: point)
+        setHovered(tableView.visibleRect.contains(point) && items.indices.contains(row) ? row : nil)
+    }
+
+    private func setHovered(_ index: Int?) {
+        guard index != hoveredIndex else { return }
+        let previous = hoveredIndex
+        hoveredIndex = index
+        for row in [previous, index].compactMap({ $0 }) where items.indices.contains(row) {
+            (tableView.rowView(atRow: row, makeIfNecessary: false) as? SuggestionRowView)?.isHovered = row == index
+        }
+    }
+
     @objc private func rowClicked() {
         let row = tableView.clickedRow
         guard items.indices.contains(row) else { return }
@@ -155,7 +196,9 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        SuggestionRowView()
+        let view = SuggestionRowView()
+        view.isHovered = row == hoveredIndex
+        return view
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -211,6 +254,18 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
 
+        // The panel is non-activating, so the area must track while the app
+        // is inactive; .inVisibleRect follows the view's size by itself.
+        addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil
+        ))
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(clipViewDidScroll),
+            name: NSView.boundsDidChangeNotification, object: scrollView.contentView
+        )
+
         // Gives way while the list is hidden at height 0.
         let scrollBottom = scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.padding)
         scrollBottom.priority = .defaultHigh
@@ -226,17 +281,33 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
 
 /// Draws the highlight as a rounded accent-colored rect inside the row, and
 /// always emphasized: the table never becomes first responder (the input
-/// keeps focus), which would otherwise leave it a faint gray.
+/// keeps focus), which would otherwise leave it a faint gray. A hovered row
+/// that isn't the highlighted one gets a light gray rect of the same shape.
 private final class SuggestionRowView: NSTableRowView {
+    var isHovered = false {
+        didSet { if isHovered != oldValue { needsDisplay = true } }
+    }
+
     override var isEmphasized: Bool {
         get { true }
         set {}
     }
 
+    private var highlightPath: NSBezierPath {
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 8, dy: 1), xRadius: 8, yRadius: 8)
+    }
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        guard isHovered, !isSelected else { return }
+        // Dynamic color, resolved for the current appearance on each draw.
+        NSColor.labelColor.withAlphaComponent(0.08).setFill()
+        highlightPath.fill()
+    }
+
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
         NSColor.selectedContentBackgroundColor.setFill()
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 8, dy: 1), xRadius: 8, yRadius: 8).fill()
+        highlightPath.fill()
     }
 }
 
@@ -314,3 +385,22 @@ private final class SuggestionCellView: NSTableCellView {
         key.textColor = selected ? onAccent : .controlAccentColor
     }
 }
+
+#if SELFTEST
+extension SuggestionListView {
+    var hoveredRowForSelfTest: Int? { hoveredIndex }
+
+    /// Moves the pointer, as far as the list knows, to the middle of `row`,
+    /// or above the list for nil.
+    func moveMouseForSelfTest(toRow row: Int?) {
+        let point: NSPoint
+        if let row {
+            let rect = tableView.rect(ofRow: row)
+            point = tableView.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        } else {
+            point = convert(NSPoint(x: bounds.midX, y: isFlipped ? bounds.minY - 50 : bounds.maxY + 50), to: nil)
+        }
+        updateHover(at: point)
+    }
+}
+#endif
