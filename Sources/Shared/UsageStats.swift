@@ -15,10 +15,13 @@
 //   the answer);
 // - clipboard: copies and restores per source app (bundle ID), copies by
 //   kind, skipped copies by reason, pins and unpins. Never any content or
-//   file path.
+//   file path;
+// - pomodoro: focus sessions that ran their full length, on the day they
+//   ended.
 // Turn it off with Config.usageTracking; the menu bar's "Usage…" shows a
-// summary. The launcher also ranks its list with the totals (`totals()`):
-// apps you open more often, and keywords you run more often, come first.
+// summary, and `/stats` in the launcher the last few days (Sources/Stats).
+// The launcher also ranks its list with the totals (`totals()`): apps you
+// open more often, and keywords you run more often, come first.
 
 import Cocoa
 
@@ -78,6 +81,10 @@ enum UsageCounter: String, Sendable {
     case clipboardRestoreFailed = "clipboard.restoreFailed"
     case clipboardPinned = "clipboard.pinned"
     case clipboardUnpinned = "clipboard.unpinned"
+
+    /// A focus session ran its full length (skipped ones don't count),
+    /// counted on the day it ended (record(_:on:)).
+    case pomodoroFocusCompleted = "pomodoro.focusCompleted"
 }
 
 /// One day of counters. Every field is a plain name → count map, so a field
@@ -104,6 +111,16 @@ struct UsageDay: Codable {
         clipboardCopies = try container.decodeIfPresent([String: Int].self, forKey: .clipboardCopies) ?? [:]
         clipboardRestores = try container.decodeIfPresent([String: Int].self, forKey: .clipboardRestores) ?? [:]
         appsOpened = try container.decodeIfPresent([String: Int].self, forKey: .appsOpened) ?? [:]
+    }
+
+    /// Adds every count of `other` to this one.
+    mutating func add(_ other: UsageDay) {
+        counts.merge(other.counts, uniquingKeysWith: +)
+        keywords.merge(other.keywords, uniquingKeysWith: +)
+        fallbackWords.merge(other.fallbackWords, uniquingKeysWith: +)
+        clipboardCopies.merge(other.clipboardCopies, uniquingKeysWith: +)
+        clipboardRestores.merge(other.clipboardRestores, uniquingKeysWith: +)
+        appsOpened.merge(other.appsOpened, uniquingKeysWith: +)
     }
 }
 
@@ -190,6 +207,14 @@ final class UsageStats: NSObject {
         record(named: counter.rawValue)
     }
 
+    /// Counts `counter` on the local day of `date` rather than today, for
+    /// something noticed later than it happened (a pomodoro session that
+    /// ended while the Mac slept or the app was closed). Dropped when that
+    /// day is older than the days kept.
+    func record(_ counter: UsageCounter, on date: Date) {
+        update(on: date) { $0.counts[counter.rawValue, default: 0] += 1 }
+    }
+
     func recordWeatherFailure(_ error: WeatherError) {
         record(named: "weather.failed.\(error.usageName)")
     }
@@ -257,12 +282,16 @@ final class UsageStats: NSObject {
         update { $0.counts[name, default: 0] += 1 }
     }
 
-    private func update(_ change: (inout UsageDay) -> Void) {
+    /// Applies `change` to today's bucket, or to `date`'s day when given.
+    private func update(on date: Date? = nil, _ change: (inout UsageDay) -> Void) {
         guard Config.usageTracking else { return }
-        let key = dayKey(for: now())
-        if key != lastDayKey { prune() }
+        let today = dayKey(for: now())
+        if today != lastDayKey { prune() }
+        lastDayKey = today
+        // Later than today counts as today; before the days kept, nowhere.
+        let key = min(date.map { self.dayKey(for: $0) } ?? today, today)
+        guard key >= firstDayKey(keeping: Config.usageRetentionDays) else { return }
         change(&stored.days[key, default: UsageDay()])
-        lastDayKey = key
         scheduleSave()
     }
 
@@ -333,20 +362,38 @@ final class UsageStats: NSObject {
         return totals
     }
 
+    // MARK: Reading
+
+    /// Every counter of the last `days` days, today included, added up.
+    func merged(days: Int) -> UsageDay {
+        let cutoff = firstDayKey(keeping: days)
+        var total = UsageDay()
+        for (key, day) in stored.days where key >= cutoff {
+            total.add(day)
+        }
+        return total
+    }
+
+    /// The day counting started, when that is later than the first of the
+    /// last `days` days: what "never run in that time" is worth. Today when
+    /// nothing was recorded yet; nil when the counters reach back over all
+    /// of them.
+    func countingSince(withinLast days: Int) -> Date? {
+        let today = calendar.startOfDay(for: now())
+        guard let oldest = stored.days.keys.min() else { return today }
+        guard oldest > firstDayKey(keeping: days) else { return nil }
+        let parts = oldest.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        else { return today }
+        return date
+    }
+
     // MARK: Summary
 
     /// A plain-text summary of the last `days` days, for the "Usage…" alert.
     func summary(days: Int = 30) -> String {
-        let cutoff = firstDayKey(keeping: days)
-        var total = UsageDay()
-        for (key, day) in stored.days where key >= cutoff {
-            total.counts.merge(day.counts, uniquingKeysWith: +)
-            total.keywords.merge(day.keywords, uniquingKeysWith: +)
-            total.fallbackWords.merge(day.fallbackWords, uniquingKeysWith: +)
-            total.clipboardCopies.merge(day.clipboardCopies, uniquingKeysWith: +)
-            total.clipboardRestores.merge(day.clipboardRestores, uniquingKeysWith: +)
-            total.appsOpened.merge(day.appsOpened, uniquingKeysWith: +)
-        }
+        let total = merged(days: days)
         func count(_ counter: UsageCounter) -> Int { total.counts[counter.rawValue] ?? 0 }
         func top(_ map: [String: Int], _ limit: Int) -> String {
             let sorted = map.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
@@ -410,6 +457,7 @@ final class UsageStats: NSObject {
         ]
         if !weatherFailures.isEmpty { lines.append(top(weatherFailures, 10)) }
         lines.append("Calendar: shown \(count(.calendarShown))")
+        lines.append("Pomodoro: \(count(.pomodoroFocusCompleted)) focus sessions finished")
         let copied = "\(count(.clipboardCopiedText)) text, \(count(.clipboardCopiedImage)) images, "
             + "\(count(.clipboardCopiedFiles)) files"
         lines += [
@@ -421,7 +469,8 @@ final class UsageStats: NSObject {
         return lines.joined(separator: "\n")
     }
 
-    private static func appName(for bundleID: String) -> String {
+    /// The app's name as Finder shows it, else the bundle ID itself.
+    static func appName(for bundleID: String) -> String {
         guard bundleID != "unknown",
               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
         else { return bundleID }

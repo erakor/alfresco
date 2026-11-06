@@ -267,7 +267,8 @@ final class PomodoroTimer: NSObject {
 
     /// Counts a finished focus session on the day it ended (not the day it
     /// was noticed, after sleep or a relaunch). One ending on an earlier
-    /// day than the last counted one is left out.
+    /// day than the last counted one is left out. The usage stats count it
+    /// on that day too, for `/stats`.
     private func countFocusSession(endedAt end: Date) {
         if let last = lastFocusEnd, calendar.isDate(last, inSameDayAs: end) {
             focusSessionsOnLastDay += 1
@@ -275,7 +276,10 @@ final class PomodoroTimer: NSObject {
         } else if lastFocusEnd.map({ end > $0 }) ?? true {
             lastFocusEnd = end
             focusSessionsOnLastDay = 1
+        } else {
+            return
         }
+        UsageStats.shared.record(.pomodoroFocusCompleted, on: end)
     }
 
     private func transition(to newState: PomodoroState) {

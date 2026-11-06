@@ -86,6 +86,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
             LoginItemTests.run()
             MenuBarIconTests.run()
             UsageStatsTests.run()
+            StatsTests.run()
             BuiltInTests.run()
             CalendarTests.run()
             WorkflowCheckTests.run()

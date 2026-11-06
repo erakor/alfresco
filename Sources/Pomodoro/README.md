@@ -28,7 +28,9 @@ the launcher shows the timer under the input instead of the suggestion list:
   finished today. Only sessions that ran their full length count, including
   one that ended while the Mac slept or the app was closed (on the day it
   ended); skipped ones don't, and Stop doesn't reset the count. It is saved
-  in `pomodoro.json` with the timer.
+  in `pomodoro.json` with the timer. The [usage stats](../Shared/README.md#usage-stats)
+  count them on the same day, for this week's total in
+  [`/stats`](../Stats/README.md).
 - The hint says what Enter will do with the timer as it is now: "↩ Start a
   25 min focus session", "↩ Pause the focus session", "↩ Resume the short
   break", "↩ Replace the focus session with a 50 min focus session". When

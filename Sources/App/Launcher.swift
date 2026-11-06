@@ -12,7 +12,7 @@
 //   automatically, so adding one needs no rebuild.
 // - alfresco:// workflow URLs run inside the app instead of being opened;
 //   alfresco://pomodoro/... drives the pomodoro timer, alfresco://system/...
-//   sleeps or locks the Mac.
+//   sleeps or locks the Mac, alfresco://stats shows the usage summary.
 //
 // Build:  ./build.sh   (or see README.md for a plain swiftc command)
 
@@ -141,8 +141,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         switch InternalURL.feature(of: url) {
         case SystemCommand.feature: return SystemCommand(url: url)?.run() ?? false
         case PomodoroCommand.feature: return handlePomodoroURL(url)
+        case StatsCommand.feature: return handleStatsURL(url)
         default: return false
         }
+    }
+
+    /// `/stats`: the launcher showed the last days; Enter opens the 30-day
+    /// summary, once the launcher has closed (the alert is modal).
+    private func handleStatsURL(_ url: URL) -> Bool {
+        guard Config.usageTracking, StatsCommand.isSummary(url) else { return false }
+        Task { @MainActor in self.showUsage() }
+        return true
     }
 
     private func handlePomodoroURL(_ url: URL) -> Bool {

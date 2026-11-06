@@ -18,8 +18,9 @@ The wiring that ties the features together.
 - Registers both hotkeys: the [launcher](../Launcher/README.md) and the
   [clipboard history](../Clipboard/README.md).
 - Runs the `alfresco://` URLs that workflows point at (today
-  `alfresco://pomodoro/...`, see [Pomodoro](../Pomodoro/README.md), and
-  `alfresco://system/...`, see [System](../System/README.md)).
+  `alfresco://pomodoro/...`, see [Pomodoro](../Pomodoro/README.md),
+  `alfresco://system/...`, see [System](../System/README.md), and
+  `alfresco://stats`, see [Stats](../Stats/README.md)).
 - Only one copy runs at a time: a second one (plain binary, `build/`, or the
   installed app) exits at once instead of fighting over the hotkeys and the
   clipboard history.
