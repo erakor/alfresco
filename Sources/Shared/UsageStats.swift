@@ -40,6 +40,8 @@ enum UsageCounter: String, Sendable {
     /// A command card under the empty input was clicked (which one is
     /// counted if it is then run, under keywords).
     case launcherCardPicked = "launcher.cardPicked"
+    /// The weather above the input was clicked (it types `/weather`).
+    case launcherWeatherStripClicked = "launcher.weatherStripClicked"
 
     case previewLoaded = "preview.loaded"
     case previewFailed = "preview.failed"
@@ -392,6 +394,7 @@ final class UsageStats: NSObject {
             "  Enter on a keyword missing its argument: \(count(.launcherEnterNeedsArgument))",
             "  Enter on an unknown command: \(count(.launcherUnknownCommand))",
             "  command cards clicked: \(count(.launcherCardPicked))",
+            "  weather strip clicked: \(count(.launcherWeatherStripClicked))",
             "Keywords:",
             top(total.keywords, 10),
             "Apps opened: \(count(.launcherOpenedApp))",

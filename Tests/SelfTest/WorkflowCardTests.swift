@@ -94,5 +94,16 @@ enum WorkflowCardTests {
         controller.clickCardForSelfTest(index)
         check("a click types the command", controller.inputForSelfTest == "/weather ", controller.inputForSelfTest)
         check("and hides the cards", controller.cardKeywordsForSelfTest == nil)
+
+        // The weather strip above the input: a click types the bare keyword,
+        // whatever was typed, which opens the forecast for the strip's place.
+        let forecast = CommandInput.typed(Config.weatherKeyword)
+        for typed in ["", "/weather lyon", "saf"] {
+            controller.typeForSelfTest(typed)
+            controller.clickWeatherStripForSelfTest()
+            SelfTest.check("weather strip: a click on \"\(typed)\" types \(forecast)",
+                           controller.inputForSelfTest == forecast, controller.inputForSelfTest)
+        }
+        SelfTest.check("weather strip: and hides the cards", controller.cardKeywordsForSelfTest == nil)
     }
 }

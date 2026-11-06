@@ -23,8 +23,9 @@ Recorded:
   (and whether something was typed), Enter on a keyword still missing its
   argument, each workflow run (by its first keyword: `pr` or `pr …`, never what
   you typed after it), which installed apps were opened (by bundle ID), and
-  how often the fallback is used, and how often a command card is clicked
-  (not which one: that counts when it runs). The launcher list uses the app and keyword
+  how often the fallback is used, how often a command card is clicked
+  (not which one: that counts when it runs), and how often the weather above
+  the input is clicked. The launcher list uses the app and keyword
   counts to put what you use most first.
 - The first word of multi-word fallback inputs, lowercased, only when it is a
   workflow keyword or a typo away from one (one letter added, missing, changed

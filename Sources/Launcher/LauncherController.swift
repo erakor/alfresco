@@ -119,6 +119,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         apps.onUpdate = { [weak self] in self?.appsDidChange() }
         suggestionList.onPick = { [weak self] in self?.activate($0) }
         cardsView.onPick = { [weak self] in self?.pick($0) }
+        weatherStrip.onClick = { [weak self] in self?.showForecast() }
     }
 
     override var initialFirstResponder: NSResponder? { textField }
@@ -161,6 +162,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         previews.cancel()
         weather.cancel()
         for area in inputAreas { area.view.isHidden = true }
+        weatherStrip.clearHover()
         stopCalendarTimer()
         suggestionList.show([])
         suggestionList.isHidden = true
@@ -395,6 +397,14 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private func pick(_ card: WorkflowCard) {
         UsageStats.shared.record(.launcherCardPicked)
         complete(with: card.completion)
+    }
+
+    /// The weather strip was clicked: `/weather` goes in the input, which
+    /// opens the forecast for the same place as the strip. Enter then runs
+    /// the `weather` workflow, as when it is typed.
+    private func showForecast() {
+        UsageStats.shared.record(.launcherWeatherStripClicked)
+        complete(with: CommandInput.typed(Config.weatherKeyword))
     }
 
     /// Keyword suggestions with the one typed in full first (as before),
@@ -695,6 +705,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// Clicks the card at `index`.
     func clickCardForSelfTest(_ index: Int) { cardsView.clickForSelfTest(index) }
 
+    /// Clicks the weather strip (hidden in the test build, which has no
+    /// WeatherAPI key, but its click still goes through).
+    func clickWeatherStripForSelfTest() { weatherStrip.clickForSelfTest() }
+
     /// What the input reads.
     var inputForSelfTest: String { textField.stringValue }
 
@@ -727,7 +741,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         NSLayoutConstraint.activate([
             weatherStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
             weatherStrip.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            weatherStrip.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            // Its text ends where the input row's does; its click highlight
+            // reaches a little past.
+            weatherStrip.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor, constant: -20 + WeatherStripView.highlightInset
+            ),
             weatherStrip.heightAnchor.constraint(equalToConstant: WeatherStripView.height),
 
             rowTop,
