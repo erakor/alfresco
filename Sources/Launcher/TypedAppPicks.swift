@@ -76,7 +76,7 @@ final class TypedAppPicks {
     }
 
     /// Bundle ID → weight of the apps opened for exactly this input, for
-    /// AppIndex.matches. Empty when nothing was, or when learning is off.
+    /// AppIndex.results. Empty when nothing was, or when learning is off.
     /// An input past the retention window counts as forgotten even before
     /// prune drops it (a long-running app prunes only when it records).
     func picks(for input: String) -> [String: Double] {

@@ -2,13 +2,14 @@
 
 The Spotlight-style bar on `⌘Space`. Type a command (`/pr 12`), hit Enter,
 and the URL opens in your default browser. Type an app's name instead and it
-opens the app; anything else is searched for. Type `/` (or `/help`) to list
+opens the app, or a System Settings pane's (`wifi`) and it opens that pane;
+anything else is searched for. Type `/` (or `/help`) to list
 every command.
 
 - Frosted panel, auto-focused input, fade/slide animation.
 - `Esc`, clicking outside, or pressing the hotkey again dismisses it.
 - `⌘X/C/V/A/Z` work in the input even though the app has no menu bar.
-- Suggestions as you type, with icons: matching apps, and commands once you type `/` (`/p` lists `/pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
+- Suggestions as you type, with icons: matching apps and System Settings panes, and commands once you type `/` (`/p` lists `/pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
 - With nothing typed, your commands show as [cards](#command-cards), the most used first; click one to type it.
 
 | Input          | Opens                                                             |
@@ -27,6 +28,7 @@ every command.
 | `/snip sig`    | Nothing opens: pastes the pinned clip named `sig` into the app you were in ([snippets](../Clipboard/README.md#snippets)); `/snip` lists them |
 | `/zz`, `/lockscreen`, `/displaysleep` | Sleep, lock the screen, display off ([System](../System/README.md)) |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
+| `wifi`, `bluetooth`, `display`, `clavier` | That [System Settings pane](#system-settings-panes) |
 | `= 3*14`, `= 10 km in mi`, `time tokyo`, `uuid`, `now`, `days until 25/12`, `week` | Nothing: a [built-in](../BuiltIns/README.md) shows the answer in the hint and Enter copies it |
 | anything else  | `https://www.google.com/search?q=...`                             |
 
@@ -136,8 +138,9 @@ picking one opens the launcher with its command already typed (`/pr `).
 A list under the input shows what you could mean, one row each with an icon,
 a title and a subtitle:
 
-- The installed apps whose name matches (with their path), best match first
-  (see [Apps](#apps)). That first app is highlighted because `Enter` opens it;
+- The installed apps whose name matches (with their path) and the
+  [System Settings panes](#system-settings-panes), best match first (see
+  [Apps](#apps)). That first row is highlighted because `Enter` opens it;
   `⌘↩` searches instead.
 - While you type `/` and a single word, the workflows whose keyword starts
   with it (`/p` shows `/pr`), with their command and description, the ones
@@ -228,6 +231,32 @@ nothing is kept or read. A file from a newer build is left as it is, and an
 unreadable one is moved aside as `typed-picks.unreadable.json`, like the
 [usage stats](../Shared/README.md#usage-stats).
 
+## System Settings panes
+
+Type a pane's name, as you would an app's, and System Settings opens on it:
+`wifi`, `bluetooth`, `display`, `son`, `clavier`, `dock`, `dark mode`. The
+row shows System Settings' icon, the hint reads `↩ Open Bluetooth`, and
+`⌘↩` searches instead.
+
+- Panes are matched like apps (exact name, start of the name, a word,
+  initials), on their English and French names and a few other words
+  (`wifi`, `écrans`, `mode sombre`, `printer`). The row shows the name in
+  French when your first language is French, else in English.
+- They rank together with apps: an exact pane name comes first (`bluetooth`
+  opens the Bluetooth pane, not Bluetooth File Exchange); otherwise an app
+  matched as well as a pane comes before it, and apps you open often move up
+  as before.
+- The table of panes is in `SettingsPanes.swift`. Each pane is opened through
+  its `x-apple.systempreferences:` URL, which names the pane's extension in
+  `/System/Library/ExtensionKit/Extensions`. Apple renames those between
+  macOS versions, so the launcher reads that folder once at launch and only
+  offers the panes this Mac has; a renamed one just stops showing up. The
+  self-test checks the whole table against the CI runner's macOS and names
+  any pane missing there.
+- macOS 13 and later only (macOS 12's System Preferences named its panes
+  differently).
+- The usage stats count the panes opened, not which ones.
+
 ## Settings
 
 In `Sources/App/Config.swift` (rebuild after a change):
@@ -249,6 +278,8 @@ In `Sources/App/Config.swift` (rebuild after a change):
   what you type ([Learned app picks](#learned-app-picks)).
   `typedAppPicksRetentionDays` (90) and `typedAppPicksMaxInputs` (500) bound
   what is kept.
+- `settingsPaneSearch`: set to `false` to stop offering System Settings
+  panes.
 
 ## Code
 
@@ -263,7 +294,10 @@ In `Sources/App/Config.swift` (rebuild after a change):
   with icons and `⌘1` to `⌘9`).
 - `WorkflowCardsView.swift`: the command cards under the empty input, how
   they are grouped and sorted, and the workflow icons both use.
-- `AppIndex.swift`: installed apps, name matching and ranking by use.
+- `AppIndex.swift`: installed apps, name matching and ranking by use (apps
+  and panes together).
+- `SettingsPanes.swift`: the System Settings panes, their names and URLs, and
+  which ones this Mac has.
 - `TypedAppPicks.swift`: which app was opened for what was typed
   (`typed-picks.json`), read into the app ranking.
 - `PreviewFetcher.swift`: fetches a workflow's `preview` URL for the hint

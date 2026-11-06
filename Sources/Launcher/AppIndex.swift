@@ -1,7 +1,8 @@
 // AppIndex.swift
 //
 // The installed applications the launcher can open: AppIndex scans the
-// usual Applications folders and matches launcher input against app names.
+// usual Applications folders and matches launcher input against app names,
+// and against the System Settings panes this Mac has (SettingsPanes).
 
 import Cocoa
 
@@ -25,6 +26,9 @@ struct AppEntry: Sendable {
 @MainActor
 final class AppIndex {
     private(set) var apps: [AppEntry] = []
+    /// The System Settings panes this Mac has (Config.settingsPaneSearch),
+    /// read once with the first scan: they only change with macOS.
+    private(set) var panes: [SettingsPane] = []
     /// Called on the main actor after a scan replaced `apps`.
     var onUpdate: (() -> Void)?
     private var lastScan: Date?
@@ -35,26 +39,31 @@ final class AppIndex {
     }
 
     func refreshIfStale() {
-        guard Config.appSearch, !scanning else { return }
+        guard Config.appSearch || Config.settingsPaneSearch, !scanning else { return }
         if let lastScan, Date().timeIntervalSince(lastScan) < Config.appRescanInterval { return }
         scanning = true
-        let folders = Config.appFolders
+        let folders = Config.appSearch ? Config.appFolders : []
+        let readPanes = Config.settingsPaneSearch && lastScan == nil
         Task {
-            let found = await Task.detached(priority: .utility) { AppIndex.scan(folders) }.value
+            let (found, panes) = await Task.detached(priority: .utility) {
+                (AppIndex.scan(folders), readPanes ? SettingsPanes.installed() : nil)
+            }.value
             self.apps = found
+            if let panes { self.panes = panes }
             self.lastScan = Date()
             self.scanning = false
             self.onUpdate?()
         }
     }
 
-    /// The apps whose name matches the whole input, best first, at most
-    /// `limit` (see `ranked(_:for:limit:openCounts:picks:)`), with an
+    /// The apps and System Settings panes whose name matches the whole
+    /// input, best first, at most `limit`: `.app` and `.settingsPane` rows
+    /// (see `rankedResults(_:panes:for:limit:openCounts:picks:)`), with an
     /// "apps.match" signpost.
-    func matches(
+    func results(
         for raw: String, limit: Int, openCounts: [String: Int] = [:], picks: [String: Double] = [:]
-    ) -> [AppEntry] {
-        guard Config.appSearch, limit > 0 else { return [] }
+    ) -> [LauncherItem] {
+        guard limit > 0, !apps.isEmpty || !panes.isEmpty else { return [] }
         let input = Self.normalize(raw)
         guard !input.isEmpty else { return [] }
         #if SELFTEST
@@ -64,40 +73,72 @@ final class AppIndex {
         let signposter = Signposts.signposter
         let signpost = signposter.beginInterval(
             "apps.match",
-            "apps=\(self.apps.count, privacy: .public) limit=\(limit, privacy: .public) inputLength=\(input.count, privacy: .public)"
+            "apps=\(self.apps.count, privacy: .public) panes=\(self.panes.count, privacy: .public) limit=\(limit, privacy: .public) inputLength=\(input.count, privacy: .public)"
         )
-        let best = Self.ranked(apps, for: input, limit: limit, openCounts: openCounts, picks: picks)
-        signposter.endInterval("apps.match", signpost, "matches=\(best.count, privacy: .public)")
+        let (best, matched) = Self.rankedResults(
+            apps, panes: panes, for: input, limit: limit, openCounts: openCounts, picks: picks
+        )
+        signposter.endInterval("apps.match", signpost, "matches=\(matched, privacy: .public)")
         return best
     }
 
     /// `apps` whose name matches `input` (already normalized), best first,
-    /// at most `limit`. Each match has a tier: the exact name, a name
-    /// starting with the input, a word of the name starting with the input
-    /// ("code" for "Visual Studio Code"), then the initials ("vsc").
-    /// `openCounts` (bundle ID → times opened) lifts an app by up to
-    /// `maxUsageBoost` tiers, one tier per `opensPerTier`-ish opens
-    /// (logarithmic), so a much-used app can beat a closer-matching one.
-    /// `picks` (bundle ID → weight, from TypedAppPicks: the apps opened for
-    /// exactly this input) come before every tier but the exact name, the
-    /// heaviest first. An exact name always comes first. Ties go to the
-    /// shorter name, then alphabetical order.
+    /// at most `limit`: `rankedResults` without panes.
     nonisolated static func ranked(
         _ apps: [AppEntry], for input: String, limit: Int,
         openCounts: [String: Int] = [:], picks: [String: Double] = [:]
     ) -> [AppEntry] {
-        guard limit > 0, !input.isEmpty else { return [] }
-        let ranked = apps.compactMap { app -> (exact: Int, weight: Double, score: Double, length: Int, name: String, app: AppEntry)? in
+        rankedResults(apps, panes: [], for: input, limit: limit, openCounts: openCounts, picks: picks)
+            .best.compactMap { item -> AppEntry? in
+                if case .app(let app) = item { return app }
+                return nil
+            }
+    }
+
+    /// `apps` and `panes` whose name matches `input` (already normalized),
+    /// best first, at most `limit`, and how many matched in all. Each match
+    /// has a tier: the exact name, a name starting with the input, a word of
+    /// the name starting with the input ("code" for "Visual Studio Code"),
+    /// then the initials ("vsc"). `openCounts` (bundle ID → times opened)
+    /// lifts an app by up to `maxUsageBoost` tiers, one tier per
+    /// `opensPerTier`-ish opens (logarithmic), so a much-used app can beat a
+    /// closer-matching one. `picks` (bundle ID → weight, from TypedAppPicks:
+    /// the apps opened for exactly this input) come before every tier but
+    /// the exact name, the heaviest first. An exact name always comes
+    /// first. Panes get no lift and are never picks, and an app comes before
+    /// a pane of the same score, so `bluetooth` gives the Bluetooth pane (an
+    /// exact name) before Bluetooth File Exchange, but `s` keeps apps first.
+    /// Ties go to the shorter name, then alphabetical order.
+    nonisolated static func rankedResults(
+        _ apps: [AppEntry], panes: [SettingsPane], for input: String, limit: Int,
+        openCounts: [String: Int] = [:], picks: [String: Double] = [:]
+    ) -> (best: [LauncherItem], matched: Int) {
+        guard limit > 0, !input.isEmpty else { return ([], 0) }
+        typealias Ranked = (
+            exact: Int, weight: Double, score: Double, isPane: Int, length: Int, name: String, item: LauncherItem
+        )
+        let rankedApps = apps.compactMap { app -> Ranked? in
             guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
             let opens = app.bundleID.flatMap { openCounts[$0] } ?? 0
             let weight = app.bundleID.flatMap { picks[$0] } ?? 0
             // Picked apps (weight > 0) sort before the rest: -weight < 0.
-            return (rank == 0 ? 0 : 1, -weight, Self.score(rank: rank, opens: opens), app.name.count, app.name, app)
+            return (rank == 0 ? 0 : 1, -weight, Self.score(rank: rank, opens: opens), 0,
+                    app.name.count, app.name, .app(app))
         }
-        return ranked
-            .sorted { ($0.exact, $0.weight, $0.score, $0.length, $0.name) < ($1.exact, $1.weight, $1.score, $1.length, $1.name) }
+        let rankedPanes = panes.compactMap { pane -> Ranked? in
+            guard let rank = pane.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
+            let title = pane.title
+            return (rank == 0 ? 0 : 1, 0, Self.score(rank: rank, opens: 0), 1, title.count, title, .settingsPane(pane))
+        }
+        let ranked = rankedApps + rankedPanes
+        let best = ranked
+            .sorted {
+                ($0.exact, $0.weight, $0.score, $0.isPane, $0.length, $0.name)
+                    < ($1.exact, $1.weight, $1.score, $1.isPane, $1.length, $1.name)
+            }
             .prefix(limit)
-            .map(\.app)
+            .map(\.item)
+        return (Array(best), ranked.count)
     }
 
     /// Trimmed and folded: how input is matched against app names, and how
@@ -107,7 +148,7 @@ final class AppIndex {
     }
 
     #if SELFTEST
-    /// How many times `matches` ranked the apps, for the perf suite.
+    /// How many times `results` ranked the apps, for the perf suite.
     static var matchCallsForSelfTest = 0
     #endif
 
