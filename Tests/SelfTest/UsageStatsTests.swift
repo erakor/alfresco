@@ -1,34 +1,19 @@
 // UsageStatsTests.swift
 //
 // usage.json: a newer build's file is left alone, a damaged one is set
-// aside rather than overwritten, and the day cutoffs count calendar days, so
+// aside rather than overwritten (StoreFile, which typed-picks.json shares,
+// so these checks cover both), and the day cutoffs count calendar days, so
 // daylight saving changes don't move them and exactly
 // Config.usageRetentionDays days are kept.
 
 import Foundation
 
 @MainActor
-private final class UsageClock {
-    var date: Date
-
-    init(_ date: Date) {
-        self.date = date
-    }
-}
-
-@MainActor
 enum UsageStatsTests {
-    private static var paris: Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Europe/Paris")!
-        return calendar
-    }
+    private static var paris: Calendar { SelfTest.paris }
+    private static func date(_ iso: String) -> Date { SelfTest.date(iso) }
 
-    private static func date(_ iso: String) -> Date {
-        ISO8601DateFormatter().date(from: iso)!
-    }
-
-    private static func makeStats(_ clock: UsageClock, file: URL? = nil) -> UsageStats {
+    private static func makeStats(_ clock: TestClock, file: URL? = nil) -> UsageStats {
         UsageStats.makeForSelfTest(fileURL: file ?? SelfTest.scratchFile("usage"), now: { clock.date }, calendar: paris)
     }
 
@@ -43,7 +28,7 @@ enum UsageStatsTests {
     }
 
     private static func fileVersions() {
-        let clock = UsageClock(date("2026-01-01T12:00:00Z"))
+        let clock = TestClock(date("2026-01-01T12:00:00Z"))
 
         let current = SelfTest.scratchFile("usage-v1")
         try? Data(#"{"version":1,"days":{"2026-01-01":{"counts":{"launcher.opened":3}}}}"#.utf8).write(to: current)
@@ -103,7 +88,7 @@ enum UsageStatsTests {
     private static func daylightSaving() {
         // Clocks go forward on 29 March 2026 in Paris: a 23 hour day.
         // 00:30 on 30 March (CEST) is only 23.5 hours after midnight on the 29th.
-        let clock = UsageClock(date("2026-03-29T22:30:00Z"))
+        let clock = TestClock(date("2026-03-29T22:30:00Z"))
         let stats = makeStats(clock)
         check("usage: last 2 days after spring forward start on 29 March",
               stats.firstDayKeyForSelfTest(keeping: 2) == "2026-03-29", "got \(stats.firstDayKeyForSelfTest(keeping: 2))")
@@ -122,7 +107,7 @@ enum UsageStatsTests {
     private static func retention() {
         // One event a day at 23:30 for longer than the retention window,
         // across the spring forward change.
-        let clock = UsageClock(date("2026-01-01T22:30:00Z"))
+        let clock = TestClock(date("2026-01-01T22:30:00Z"))
         let stats = makeStats(clock)
         let days = Config.usageRetentionDays + 30
         for _ in 0..<days {

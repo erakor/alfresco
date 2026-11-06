@@ -55,7 +55,7 @@ final class AppIndex {
         for raw: String, limit: Int, openCounts: [String: Int] = [:], picks: [String: Double] = [:]
     ) -> [AppEntry] {
         guard Config.appSearch, limit > 0 else { return [] }
-        let input = Self.fold(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        let input = Self.normalize(raw)
         guard !input.isEmpty else { return [] }
         #if SELFTEST
         Self.matchCallsForSelfTest += 1
@@ -71,8 +71,8 @@ final class AppIndex {
         return best
     }
 
-    /// `apps` whose name matches `input` (already folded and trimmed), best
-    /// first, at most `limit`. Each match has a tier: the exact name, a name
+    /// `apps` whose name matches `input` (already normalized), best first,
+    /// at most `limit`. Each match has a tier: the exact name, a name
     /// starting with the input, a word of the name starting with the input
     /// ("code" for "Visual Studio Code"), then the initials ("vsc").
     /// `openCounts` (bundle ID → times opened) lifts an app by up to
@@ -86,36 +86,24 @@ final class AppIndex {
         _ apps: [AppEntry], for input: String, limit: Int,
         openCounts: [String: Int] = [:], picks: [String: Double] = [:]
     ) -> [AppEntry] {
-        guard limit > 0, !input.isEmpty else { return [] }
-        struct Ranked {
-            /// 0: exact name, 1: picked for this input, 2: the rest.
-            let group: Int
-            let pickWeight: Double
-            let score: Double
-            let app: AppEntry
-        }
-        let ranked = apps.compactMap { app -> Ranked? in
+        guard !input.isEmpty else { return [] }
+        let ranked = apps.compactMap { app -> (exact: Int, weight: Double, score: Double, length: Int, name: String, app: AppEntry)? in
             guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
             let opens = app.bundleID.flatMap { openCounts[$0] } ?? 0
             let weight = app.bundleID.flatMap { picks[$0] } ?? 0
-            let group = rank == 0 ? 0 : weight > 0 ? 1 : 2
-            return Ranked(group: group, pickWeight: weight, score: Self.score(rank: rank, opens: opens), app: app)
+            // Picked apps (weight > 0) sort before the rest: -weight < 0.
+            return (rank == 0 ? 0 : 1, -weight, Self.score(rank: rank, opens: opens), app.name.count, app.name, app)
         }
         return ranked
-            .sorted { lhs, rhs in
-                if lhs.group != rhs.group { return lhs.group < rhs.group }
-                if lhs.pickWeight != rhs.pickWeight { return lhs.pickWeight > rhs.pickWeight }
-                if lhs.score != rhs.score { return lhs.score < rhs.score }
-                if lhs.app.name.count != rhs.app.name.count { return lhs.app.name.count < rhs.app.name.count }
-                return lhs.app.name < rhs.app.name
-            }
+            .sorted { ($0.exact, $0.weight, $0.score, $0.length, $0.name) < ($1.exact, $1.weight, $1.score, $1.length, $1.name) }
             .prefix(limit)
             .map(\.app)
     }
 
-    /// The best of `matches(for:limit:openCounts:picks:)`, or nil.
-    func bestMatch(for raw: String, openCounts: [String: Int] = [:], picks: [String: Double] = [:]) -> AppEntry? {
-        matches(for: raw, limit: 1, openCounts: openCounts, picks: picks).first
+    /// Trimmed and folded: how input is matched against app names, and how
+    /// TypedAppPicks keys what was typed.
+    nonisolated static func normalize(_ raw: String) -> String {
+        fold(raw.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     #if SELFTEST
@@ -128,10 +116,8 @@ final class AppIndex {
     private nonisolated static let opensPerTier = 5.0
     private nonisolated static let maxUsageBoost = 2.0
 
-    /// Lower is better.
+    /// Lower is better. An exact name comes first anyway (see ranked).
     private nonisolated static func score(rank: Int, opens: Int) -> Double {
-        // An exact name stays first whatever the counts.
-        if rank == 0 { return -maxUsageBoost - 1 }
         let boost = min(maxUsageBoost, log2(1 + Double(opens)) / opensPerTier)
         return Double(rank) - boost
     }

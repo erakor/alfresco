@@ -133,7 +133,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// name and total opens.
     @objc private func forgetTypedAppPicks() {
         TypedAppPicks.shared.forgetAll()
-        TypedAppPicks.shared.saveNow()
     }
 
     @objc private func toggleLaunchAtLogin() {

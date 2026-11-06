@@ -166,6 +166,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         didLaunch = false
         didShowCalendar = false
         usage = UsageStats.shared.totals()
+        // Read typed-picks.json while the panel opens, not on the first keystroke.
+        _ = TypedAppPicks.shared
         store.reloadIfNeeded()
         weather.reloadKey()
         apps.refreshIfStale()
@@ -237,10 +239,17 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// built-in claims the input (it would otherwise go to the fallback
     /// search).
     private func matchedApp() -> AppEntry? {
-        let input = textField.stringValue
-        return inputCanNameApp(input)
-            ? apps.bestMatch(for: input, openCounts: usage.apps, picks: TypedAppPicks.shared.picks(for: input))
-            : nil
+        appMatches(for: textField.stringValue, limit: 1).first
+    }
+
+    /// The installed apps `input` names, best first, ranked with every
+    /// signal (opens over the kept days, the apps picked for this input), so
+    /// Enter and the list's first row always agree.
+    private func appMatches(for input: String, limit: Int) -> [AppEntry] {
+        guard inputCanNameApp(input) else { return [] }
+        return apps.matches(
+            for: input, limit: limit, openCounts: usage.apps, picks: TypedAppPicks.shared.picks(for: input)
+        )
     }
 
     /// Whether the input would go to the fallback search (or nowhere, when
@@ -397,17 +406,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         if !inputAreas.contains(where: { $0.claims() }) {
             let workflows = sortedByUse(store.current.suggestions(for: input), input: input)
             let appLimit = max(1, SuggestionListView.maxVisibleRows - workflows.count)
-            let appMatches = inputCanNameApp(input)
-                ? apps.matches(
-                    for: input, limit: appLimit, openCounts: usage.apps,
-                    picks: TypedAppPicks.shared.picks(for: input)
-                ) : []
-            if let best = appMatches.first {
+            let matchedApps = appMatches(for: input, limit: appLimit)
+            if let best = matchedApps.first {
                 items.append(.app(best))
                 highlightFirst = true
             }
             items += workflows.map(LauncherItem.workflow)
-            items += appMatches.dropFirst().map(LauncherItem.app)
+            items += matchedApps.dropFirst().map(LauncherItem.app)
         }
         suggestionList.show(items, highlightFirst: highlightFirst)
         suggestionList.isHidden = items.isEmpty

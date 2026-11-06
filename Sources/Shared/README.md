@@ -56,11 +56,14 @@ In `Sources/App/Config.swift` (rebuild after a change):
 ## Code
 
 - `UsageStats.swift`: the usage counters above.
+- `StoreFile.swift`: reading and saving a versioned, owner-only JSON data
+  file (usage.json and the launcher's typed-picks.json), and the day keys
+  both use.
 - `InternalURL.swift`: reads the feature (host) and action (path) of the
   `alfresco://` URLs workflows point at, for the pomodoro and system commands.
 - `DigitShortcuts.swift`: the `⌘1` to `⌘9` key codes both panels use.
-- `SetAsideFile.swift`: moves an unreadable clipboard history or usage file
-  out of the way (`*.unreadable.json`, `-2`, `-3`…) instead of overwriting it.
+- `SetAsideFile.swift`: moves an unreadable clipboard history, usage or
+  typed-picks file out of the way (`*.unreadable.json`, `-2`, `-3`…) instead of overwriting it.
 - `HTTPSession.swift`: the URL session for weather and preview requests (no
   cache, no cookies). At launch it also empties the cache earlier builds
   used, which could hold the WeatherAPI key.
