@@ -37,7 +37,9 @@ the hint.
 
 With a key, the launcher's top-right corner, above the input, always shows
 the current weather where you are (e.g. "☀️ 14°  Ciel dégagé · Paris
-↑ 16°  ↓ 8°"; hover it for the full place). It shares the 10-minute cache with `/weather`,
+↑ 16°  ↓ 8°"; hover it for the full place). Click it to open the forecast:
+it types `/weather` in the input, replacing what was there, so Enter then
+opens the `weather` workflow's page as usual. It shares the 10-minute cache with `/weather`,
 so opening the launcher often costs at most one request every 10 minutes.
 Turn it off with `Config.weatherStrip = false`.
 
