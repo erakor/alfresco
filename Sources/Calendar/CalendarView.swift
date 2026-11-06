@@ -158,6 +158,14 @@ final class CalendarView: NSView {
 
     // MARK: Formatting
 
+    /// Countdowns ("dans 12 min") are shown for events starting within this.
+    static let soonInterval: TimeInterval = 60 * 60
+
+    /// Whole minutes until `date`, rounded up, at least 1.
+    static func minutesUntil(_ date: Date, now: Date) -> Int {
+        max(1, Int((date.timeIntervalSince(now) / 60).rounded(.up)))
+    }
+
     static func clock(_ date: Date) -> String {
         clockFormatter.string(from: date)
     }
@@ -237,7 +245,7 @@ final class CalendarView: NSView {
         func day(of event: CalendarEvent) -> Date { max(calendar.startOfDay(for: event.start), today) }
 
         let ongoing = events.indices.filter { !events[$0].isAllDay && events[$0].start <= now && now < events[$0].end }
-        let next = events.indices.first { !events[$0].isAllDay && events[$0].start > now }
+        let next = NextMeeting.index(in: events, now: now)
         var used = Set(ongoing)
         if let next { used.insert(next) }
         let rest = events.indices.filter { !used.contains($0) }
@@ -432,9 +440,6 @@ final class CalendarView: NSView {
 /// One event on one line: color dot, time, title, then "en cours",
 /// "dans 12 min" or the place on the right.
 private final class EventRow: NSView {
-    /// "dans N min" is shown for events starting within this many seconds.
-    private static let soonInterval: TimeInterval = 60 * 60
-
     init(event: CalendarEvent, day: Date, now: Date) {
         super.init(frame: .zero)
 
@@ -452,8 +457,8 @@ private final class EventRow: NSView {
         let detail: NSTextField
         if !event.isAllDay, event.start <= now, now < event.end {
             detail = CalendarView.label("en cours", size: 11, color: .systemGreen, weight: .medium)
-        } else if !event.isAllDay, event.start > now, event.start.timeIntervalSince(now) < Self.soonInterval {
-            let minutes = max(1, Int((event.start.timeIntervalSince(now) / 60).rounded(.up)))
+        } else if !event.isAllDay, event.start > now, event.start.timeIntervalSince(now) < CalendarView.soonInterval {
+            let minutes = CalendarView.minutesUntil(event.start, now: now)
             detail = CalendarView.label("dans \(minutes) min", size: 11, color: .systemOrange, weight: .medium)
         } else {
             detail = CalendarView.label(event.location ?? "", size: 11, color: .tertiaryLabelColor)
@@ -500,11 +505,12 @@ private final class NextCard: NSView {
         layer?.cornerRadius = 10
 
         let calendar = Calendar.current
-        let minutes = Int((event.start.timeIntervalSince(now) / 60).rounded(.up))
+        // The card's event is still to start, so this is the true count.
+        let minutes = CalendarView.minutesUntil(event.start, now: now)
         let big: String
         let unit: String
         if minutes < 60 {
-            big = "\(max(1, minutes))"
+            big = "\(minutes)"
             unit = "min"
         } else {
             big = CalendarView.clock(event.start)

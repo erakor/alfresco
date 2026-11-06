@@ -1,12 +1,55 @@
 // StripButton.swift
 //
-// The clickable part of a line in the strip above the launcher input (the
-// weather on the right, the next meeting on the left): highlighted on
-// hover, darker while pressed, and clicked when the button is released over
-// it, like the command cards. It never becomes first responder, so the input
-// keeps focus.
+// A line in the strip above the launcher input (the weather on the right,
+// the next meeting on the left): StripView, whose whole content is one
+// StripButton, highlighted on hover, darker while pressed, and clicked when
+// the button is released over it, like the command cards. It never becomes
+// first responder, so the input keeps focus.
 
 import Cocoa
+
+/// Base of the strips above the input: the view is as wide as its content,
+/// all of it clickable. A subclass builds its content in `build()` and
+/// passes it to `install(_:help:)`.
+class StripView: NSView {
+    /// The content was clicked (on mouse up, inside it).
+    var onClick: (() -> Void)? {
+        get { button.onClick }
+        set { button.onClick = newValue }
+    }
+
+    /// The whole view; subclasses set its tool tip and accessibility label.
+    let button = StripButton()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        build()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    /// Builds the content and calls install with it.
+    func build() {}
+
+    /// Makes `content` the strip's clickable content.
+    func install(_ content: NSView, help: String) {
+        button.install(content, in: self)
+        button.setAccessibilityElement(true)
+        button.setAccessibilityRole(.button)
+        button.setAccessibilityHelp(help)
+    }
+
+    /// Forgets a hover or press, for when the panel closes: no exit event
+    /// comes with it.
+    func clearHover() { button.clearHover() }
+
+    #if SELFTEST
+    /// Clicks the content as the mouse would.
+    func clickForSelfTest() { _ = button.accessibilityPerformPress() }
+    #endif
+}
 
 final class StripButton: NSView {
     /// Height the strip adds above the launcher's input row.

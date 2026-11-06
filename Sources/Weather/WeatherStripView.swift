@@ -9,27 +9,10 @@
 
 import Cocoa
 
-final class WeatherStripView: NSView {
-    /// The weather was clicked (on mouse up, inside it).
-    var onClick: (() -> Void)? {
-        get { button.onClick }
-        set { button.onClick = newValue }
-    }
-
-    /// The whole view is the button: it is as wide as the weather.
-    private let button = StripButton()
+final class WeatherStripView: StripView {
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private let rangeLabel = NSTextField(labelWithString: "")
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        build()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not used")
-    }
 
     func show(_ state: WeatherState) {
         switch state {
@@ -62,7 +45,7 @@ final class WeatherStripView: NSView {
         }
     }
 
-    private func build() {
+    override func build() {
         icon.imageScaling = .scaleProportionallyDown
         icon.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -82,20 +65,7 @@ final class WeatherStripView: NSView {
         group.alignment = .centerY
         group.spacing = 6
         group.setCustomSpacing(10, after: label)
-        button.install(group, in: self)
-
-        button.setAccessibilityElement(true)
-        button.setAccessibilityRole(.button)
+        install(group, help: "Affiche les prévisions")
         button.setAccessibilityLabel("Météo")
-        button.setAccessibilityHelp("Affiche les prévisions")
     }
-
-    /// Forgets a hover or press, for when the panel closes: no exit event
-    /// comes with it.
-    func clearHover() { button.clearHover() }
-
-    #if SELFTEST
-    /// Clicks the weather as the mouse would.
-    func clickForSelfTest() { _ = button.accessibilityPerformPress() }
-    #endif
 }

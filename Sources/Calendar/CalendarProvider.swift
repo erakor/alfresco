@@ -199,9 +199,10 @@ final class CalendarProvider {
 
     /// Whether events can be read without bringing up the permission
     /// prompt (which closes the launcher): access was already granted, in
-    /// an app bundle. The next meeting above the input only shows then.
+    /// an app bundle (never while the prompt is up: access is undetermined
+    /// then). The next meeting above the input only shows then.
     var canReadWithoutAsking: Bool {
-        Self.isAvailable && !isRequestingAccess && Self.access() == .granted
+        Self.isAvailable && Self.access() == .granted
     }
 
     /// What a query needs read: `.search` also covers `.upcoming`, so going

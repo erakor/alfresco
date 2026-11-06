@@ -130,8 +130,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// not an opening to count.
     private var isReopeningForAccess = false
     /// Height of the strip above the input (the weather, the next meeting),
-    /// 0 while both are hidden; set by layoutStrips, read by updateHeight.
-    private var stripHeight: CGFloat = 0
+    /// 0 while both are hidden.
+    private var stripHeight: CGFloat {
+        weatherStrip.isHidden && meetingStrip.isHidden ? 0 : StripButton.stripHeight
+    }
     /// Redraws the calendar and the next meeting while either is shown, so
     /// countdowns and "en cours" follow the clock.
     private var calendarTimer: Timer?
@@ -177,6 +179,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         textField.placeholderString = placeholder()
         textField.stringValue = pendingPrefill
         pendingPrefill = ""
+        // It doesn't depend on the input, so not on every keystroke; the
+        // 30 s timer and calendar updates refresh it. inputDidChange sizes
+        // the panel for it.
+        updateMeetingStrip()
         inputDidChange()
     }
 
@@ -224,7 +230,6 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateCards()
         updateCalendar(resize: false)
         updatePomodoro()
-        updateMeetingStrip(resize: false)
         updateWeather(resize: false)
         updateHeight()
         signposter.endInterval("launcher.input", signpost, "rows=\(self.suggestionList.items.count, privacy: .public)")
@@ -651,8 +656,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// strip never asks), and a timed event starts within
     /// Config.calendarDays. Reads the same events as `/cal`, fetching them
     /// when missing or stale; the result comes back through
-    /// calendarDidUpdate.
-    private func updateMeetingStrip(resize: Bool = true) {
+    /// calendarDidUpdate. The caller sizes the panel.
+    private func updateMeetingStrip() {
         let now = Date()
         var next: CalendarEvent?
         if Config.calendarStrip, calendar.canReadWithoutAsking,
@@ -663,7 +668,6 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         meetingStrip.isHidden = next == nil
         layoutStrips()
         updateCalendarTimer()
-        if resize { updateHeight() }
     }
 
     /// New events, or the calendars changed: the list and the next meeting
@@ -671,17 +675,15 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// calendar never starts a fetch for a closed launcher).
     private func calendarDidUpdate() {
         updateCalendar(resize: false)
-        if isShown { updateMeetingStrip(resize: false) }
+        if isShown { updateMeetingStrip() }
         updateHeight()
     }
 
     /// Room for the strip above the input while the weather or the next
     /// meeting is shown, and the gap between them when both are.
     private func layoutStrips() {
-        let bothShown = !weatherStrip.isHidden && !meetingStrip.isHidden
-        stripHeight = weatherStrip.isHidden && meetingStrip.isHidden ? 0 : StripButton.stripHeight
         rowTop?.constant = stripHeight
-        stripGap?.isActive = bothShown
+        stripGap?.isActive = !weatherStrip.isHidden && !meetingStrip.isHidden
     }
 
     /// Clicking the permission prompt closes the launcher. If access was
@@ -918,18 +920,16 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
         // The strips' content lines up with the input row's edges (20 pt
         // in); their click highlight reaches a little past.
-        let stripLeading = contentView.leadingAnchor
-        let stripTrailing = contentView.trailingAnchor
         let stripInset = 20 - StripButton.inset
         NSLayoutConstraint.activate([
             meetingStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
-            meetingStrip.leadingAnchor.constraint(equalTo: stripLeading, constant: stripInset),
-            meetingStrip.trailingAnchor.constraint(lessThanOrEqualTo: stripTrailing, constant: -stripInset),
+            meetingStrip.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: stripInset),
+            meetingStrip.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -stripInset),
             meetingStrip.heightAnchor.constraint(equalToConstant: StripButton.stripHeight),
 
             weatherStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
-            weatherStrip.leadingAnchor.constraint(greaterThanOrEqualTo: stripLeading, constant: stripInset),
-            weatherStrip.trailingAnchor.constraint(equalTo: stripTrailing, constant: -stripInset),
+            weatherStrip.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: stripInset),
+            weatherStrip.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -stripInset),
             weatherStrip.heightAnchor.constraint(equalToConstant: StripButton.stripHeight),
 
             rowTop,
