@@ -188,6 +188,15 @@ forward if it's already running). Press `⌘↩` to search for the text instead.
   An app whose name you type in full always comes first. This uses the
   [usage stats](../Shared/README.md#usage-stats) of the last 90 days, so it
   stops (and matching goes back to names only) if you turn those off.
+- It also learns which app goes with what you type, as Alfred does. Open
+  Safari by typing `s` and Slack by typing `sl`, and next time `s` puts
+  Safari first and `sl` Slack, whatever their names or how often each is
+  opened overall. Only exactly the same input counts (`sa` is not `s`), and
+  an app whose name you type in full still comes first. The latest habit
+  wins after a pick or two (one stray pick of something else doesn't undo
+  it), and several apps picked for one input are ordered by how much they
+  were picked lately.
+  See [Learned app picks](#learned-app-picks) for what is stored.
 - Both the name Finder shows and the file name count, so system apps match
   in English and in your language (`calculator` and `calculatrice`).
 - Commands never take an app's place: `weather` opens the Weather app,
@@ -199,6 +208,23 @@ forward if it's already running). Press `⌘↩` to search for the text instead.
   one level of subfolders (`Utilities`), plus Finder. The list is refreshed
   when the launcher opens, at most once a minute, so new apps show up
   without a restart.
+
+### Learned app picks
+
+What you typed before opening an app is kept in
+`~/Library/Application Support/Launcher/typed-picks.json` (readable only by
+your user), separate from the usage stats and on its own switch,
+`Config.learnTypedAppPicks`. Each entry is the input, lowercased and without
+accents (`s`, `vsc`), the bundle IDs of the apps opened with it, and the day
+it was last typed. Only input that opened an app is kept, so it always
+matches an installed app's name: never a search, a command or a built-in's
+input. Inputs over 40 characters are not kept. An input not typed for 90
+days (`typedAppPicksRetentionDays`) is dropped, and past 500 inputs
+(`typedAppPicksMaxInputs`) the least recently typed go first. The menu
+bar's **Forget Learned App Picks** empties the file; with the switch off,
+nothing is kept or read. A file from a newer build is left as it is, and an
+unreadable one is moved aside as `typed-picks.unreadable.json`, like the
+[usage stats](../Shared/README.md#usage-stats).
 
 ## Settings
 
@@ -217,6 +243,10 @@ In `Sources/App/Config.swift` (rebuild after a change):
   workflow uses that keyword.
 - `appSearch`: set to `false` to turn app launching off. `appFolders` lists
   where apps are looked for, `appRescanInterval` (60 s) how often.
+- `learnTypedAppPicks`: set to `false` to stop learning which app goes with
+  what you type ([Learned app picks](#learned-app-picks)).
+  `typedAppPicksRetentionDays` (90) and `typedAppPicksMaxInputs` (500) bound
+  what is kept.
 
 ## Code
 
@@ -232,4 +262,6 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `WorkflowCardsView.swift`: the command cards under the empty input, how
   they are grouped and sorted, and the workflow icons both use.
 - `AppIndex.swift`: installed apps, name matching and ranking by use.
+- `TypedAppPicks.swift`: which app was opened for what was typed
+  (`typed-picks.json`), read into the app ranking.
 - `PreviewFetcher.swift`: fetches a workflow's `preview` URL for the hint.

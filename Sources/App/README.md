@@ -5,7 +5,7 @@ The wiring that ties the features together.
 - Runs as an accessory app: no Dock icon, and an optional menu bar icon with
   Open Launcher, Clipboard History, Clear Clipboard History, Start Pomodoro,
   the Workflows submenu, Edit Workflows, Show Workflows in Finder, Usage,
-  Launch at Login and Quit. The menu bar icon (`MenuBarIcon.swift`) is a
+  Forget Learned App Picks, Launch at Login and Quit. The menu bar icon (`MenuBarIcon.swift`) is a
   line drawing of the app icon, the sun behind the search bar, drawn in
   code as a template image so it follows light and dark menu bars.
 - Launch at Login (macOS 13+, `LoginItem.swift`) registers the running app

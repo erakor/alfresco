@@ -75,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     func applicationWillTerminate(_ notification: Notification) {
         clipboardStore?.saveNow()
         UsageStats.shared.saveNow()
+        TypedAppPicks.shared.saveNow()
     }
 
     private func setUpStatusItem() {
@@ -96,6 +97,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         menu.addItem(menuItem("Show Workflows in Finder", #selector(revealWorkflows)))
         if Config.usageTracking {
             menu.addItem(menuItem("Usage…", #selector(showUsage)))
+        }
+        if Config.learnTypedAppPicks {
+            menu.addItem(menuItem("Forget Learned App Picks", #selector(forgetTypedAppPicks)))
         }
         menu.addItem(.separator())
         if LoginItem.isSupported {
@@ -123,6 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     @objc private func clearClipboardHistory() {
         clipboardStore?.clear()
+    }
+
+    /// Empties typed-picks.json: the launcher goes back to ranking apps by
+    /// name and total opens.
+    @objc private func forgetTypedAppPicks() {
+        TypedAppPicks.shared.forgetAll()
     }
 
     @objc private func toggleLaunchAtLogin() {
@@ -165,6 +175,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(startPomodoro) {
             return pomodoro?.state == .idle
+        }
+        if menuItem.action == #selector(forgetTypedAppPicks) {
+            return !TypedAppPicks.shared.isEmpty
         }
         if menuItem.action == #selector(toggleLaunchAtLogin) {
             let state = LoginItem.state

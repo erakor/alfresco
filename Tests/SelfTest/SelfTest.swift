@@ -58,6 +58,19 @@ enum SelfTest {
         exit(failed == 0 && passed > 0 ? 0 : 1)
     }
 
+    /// A date from an ISO 8601 string ("2026-01-01T12:00:00Z").
+    static func date(_ iso: String) -> Date {
+        ISO8601DateFormatter().date(from: iso)!
+    }
+
+    /// The Gregorian calendar in Paris, where daylight saving changes on
+    /// known days (29 March and 25 October 2026).
+    static var paris: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Paris")!
+        return calendar
+    }
+
     /// A file in the scratch folder no other check uses.
     static func scratchFile(_ name: String) -> URL {
         let directory = ClipboardStore.directory.appendingPathComponent("unit", isDirectory: true)
@@ -86,6 +99,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
             LoginItemTests.run()
             MenuBarIconTests.run()
             UsageStatsTests.run()
+            TypedAppPicksTests.run()
             BuiltInTests.run()
             CalendarTests.run()
             WorkflowCheckTests.run()

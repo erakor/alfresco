@@ -43,6 +43,8 @@ enum Signposts {
         /// Nothing to record or show.
         case none
         case ok, failed, cancelled
+        /// Which data file a StoreFile interval is about.
+        case usage, typedAppPicks
     }
 
     /// Ends `state` with "kind=<kind>".
