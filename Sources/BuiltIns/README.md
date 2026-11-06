@@ -17,6 +17,11 @@ the hint for details.
 | `time 9am new york in paris` | `09:00 New York = 15:00 Paris` | `15:00` |
 | `uuid` | `↩ Copy a new UUID` | a new random UUID, lowercase |
 | `now` | `2026-11-03T14:05:09+01:00` | the time when you press `Enter` |
+| `days until 25/12` | `52 days until Fri 25 Dec 2026` | `52` |
+| `days since 1/1` | `306 days since Thu 1 Jan 2026` | `306` |
+| `= today + 30 days` | `Thu 3 Dec 2026` | `2026-12-03` |
+| `week` | `Week 45: Mon 2 Nov 2026 – Sun 8 Nov 2026` | `45` |
+| `week 12` | `Week 12: Mon 16 Mar 2026 – Sun 22 Mar 2026` | `2026-03-16` |
 
 Built-ins use bare words, and [workflow](../Launcher/README.md#workflows)
 keywords are typed after `/`, so they don't collide: with a `time` workflow in
@@ -105,12 +110,57 @@ left to apps and the search.
   (`2026-11-03`) give other forms. The value is taken again when you press
   `Enter`.
 
+## Dates
+
+Dates are read day first, whatever the Mac's language: `25/12`, `25.12`,
+`25/12/2026` (or `/26`), ISO `2026-12-25`, with a month name in English or
+French (`25 dec`, `25 décembre`, `1er janvier 2027`, `dec 25`), or as a word:
+`today`, `tomorrow`, `yesterday`, `aujourd'hui`, `demain`, `hier`,
+`après-demain`, `avant-hier`, and weekdays (`friday`, `fri`, `vendredi`,
+`ven`), which mean the coming one (a week away on that very day).
+
+- `days until <date>` (also `to`, `till`, `before`, `jusqu'au`, `avant`):
+  the days left. A date without a year is the next one, today included, so
+  `days until 1/1` counts to New Year's Day.
+- `days since <date>` (also `depuis`): the days gone by; a date without a
+  year is the last one, today included.
+- `days <date>`: either way, with this year's date when no year is given
+  (`days 1/11` on 3 November is `2 days since`).
+- `days from <date> to <date>` (also `between … and …`, `du … au …`): the days
+  between two dates, this year's when no year is given.
+
+Enter copies the number of days; the tooltip gives it in weeks too. `days`
+alone, or followed by words that aren't a date (`days of thunder`), is left
+to apps and the search; after `until` or `since`, a date that can't be read
+(`days until 31/2`) says so and `Enter` beeps.
+
+After `=`, a date can be moved by days (`d`, `day`, `j`, `jours`), weeks
+(`w`, `week`, `sem`, `semaines`), months (`mo`, `month`, `mois`) or years
+(`y`, `year`, `an`, `ans`): `= today + 30 days`, `= today+30d`,
+`= 31/1 + 1 month` (the 28th, months never overflow), `= friday + 1 week`.
+`Enter` copies the date as `2026-12-03`; the tooltip gives its week number and
+how far away it is. One date minus another gives the days between them
+(`= 25/12 - today` is `52`). A date written in digits alone is still a
+division, so `= 25/12` is `2.08333333333` and `= 25/12 - 1/1` too: add a
+duration or a word to make it a date.
+
+`week` gives this ISO week's number (weeks start on Monday, and week 1 holds
+the year's first Thursday) and its dates; `week <date>` the week that day is
+in (`week 1/1/2027` is week 53 of 2026). Both copy the number. `week 12`, or
+`week 12 2027`, shows that week's dates and copies its Monday; a week the
+year doesn't have (`week 53 2027`) says so.
+
+Days are counted in your Mac's time zone, a day at a time, so a daylight
+saving change never shifts a count.
+
 ## Settings
 
 In `Sources/App/Config.swift` (rebuild after a change); `nil` turns one off:
 
 - `calculatorPrefix` (`=`): what starts a calculation or conversion.
-- `timeKeyword` (`time`), `uuidKeyword` (`uuid`), `timestampKeyword` (`now`).
+- `timeKeyword` (`time`), `uuidKeyword` (`uuid`), `timestampKeyword` (`now`),
+  `daysKeyword` (`days`), `weekKeyword` (`week`). Date arithmetic goes with
+  `calculatorPrefix`.
 
 The [usage stats](../Shared/README.md#usage-stats) count how often each
 built-in's answer is copied, never what was typed or copied.
@@ -124,3 +174,5 @@ built-in's answer is copied, never what was typed or copied.
 - `Calculator.swift`: the expression evaluator and the number format.
 - `UnitConverter.swift`: the unit table and `<amount> <unit> in <unit>`.
 - `WorldClock.swift`: places, times and the `time` answers.
+- `DateMath.swift`: reading dates, `days`, `week` and date arithmetic after
+  `=`.

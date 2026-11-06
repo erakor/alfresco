@@ -2,7 +2,8 @@
 //
 // The launcher's built-ins: the calculator's arithmetic and errors, unit
 // conversions, world clocks (with a pinned clock, zone and locale), `uuid`
-// and `now`, and that a workflows.json keyword always wins over them.
+// and `now`, dates (`days`, `= today + 30 days`, `week`), and that a
+// workflows.json keyword always wins over them.
 
 import Foundation
 
@@ -28,6 +29,11 @@ enum BuiltInTests {
         conversions()
         worldClock()
         uuidAndNow()
+        if Config.daysKeyword == "days", Config.weekKeyword == "week" {
+            dates()
+        } else {
+            check("built-ins: Config changes the date keywords, dates not tested", true)
+        }
         precedence()
     }
 
@@ -271,6 +277,140 @@ enum BuiltInTests {
             check("built-ins: \(input) counts as a timestamp", answer?.kind == .timestamp)
         }
         check("built-ins: now playing is not the built-in", ask("now playing") == nil)
+    }
+
+    // MARK: Dates
+
+    private static func dates() {
+        // From Tuesday 3 November 2026 in Paris.
+        let days: [(String, String)] = [
+            ("days until 25/12", "52"),
+            ("days until 25/12/2026", "52"),
+            ("days to 2026-12-25", "52"),
+            ("days until 25 décembre", "52"),
+            ("days until Dec 25", "52"),
+            ("days jusqu'au 25.12", "52"),
+            ("days 25/12", "52"),
+            ("days until 1/1", "59"),
+            ("days until 1er janvier", "59"),
+            ("days since 1/1", "306"),
+            ("days depuis 1/1/26", "306"),
+            // Across both daylight saving changes.
+            ("days since 1/3", "247"),
+            ("days 1/11", "2"),
+            ("days until friday", "3"),
+            ("days until vendredi", "3"),
+            ("days until tuesday", "7"),
+            ("days since tuesday", "7"),
+            ("days since monday", "1"),
+            ("days until demain", "1"),
+            ("days until 3/11", "0"),
+            ("days since 3/11", "0"),
+            ("days until 29/2", "483"),
+            ("days until 2020-01-01", "2498"),
+            ("days from 1/1 to 25/12", "358"),
+            ("days between 25/12 and 1/1", "358"),
+            ("days du 1/1 au 25/12", "358"),
+        ]
+        for (input, expected) in days {
+            let answer = ask(input)
+            check("built-ins: \(input) is \(expected)", answer?.value == expected, "got \(String(describing: answer))")
+            check("built-ins: \(input) counts as a date", answer?.kind == .date)
+        }
+        check("built-ins: days 25/12 says until", ask("days 25/12")?.hint.contains("52 days until") == true,
+              "got \(String(describing: ask("days 25/12")))")
+        check("built-ins: days 1/11 says since", ask("days 1/11")?.hint.contains("2 days since") == true,
+              "got \(String(describing: ask("days 1/11")))")
+        check("built-ins: a past date after until says since",
+              ask("days until 2020-01-01")?.hint.contains("since") == true)
+        for input in ["days until", "days until soon", "days until 31/2", "days from 1/1", "days from 1/1 to never"] {
+            let answer = ask(input)
+            check("built-ins: \(input) is an incomplete date (Enter beeps)",
+                  answer != nil && answer?.value == nil && answer?.kind == .date, "got \(String(describing: answer))")
+        }
+        for input in ["days", "days gone by", "days of thunder", "days 1/13"] {
+            check("built-ins: \(input) is not a date", ask(input) == nil, "got \(String(describing: ask(input)))")
+        }
+
+        let arithmetic: [(String, String)] = [
+            ("= today", "2026-11-03"),
+            ("= today + 30 days", "2026-12-03"),
+            ("= today+30d", "2026-12-03"),
+            ("= aujourd'hui + 2 semaines", "2026-11-17"),
+            ("= demain + 1 j", "2026-11-05"),
+            ("= après-demain", "2026-11-05"),
+            ("= today - 1 year", "2025-11-03"),
+            ("= today + 1 month - 1 day", "2026-12-02"),
+            ("= 31/1 + 1 month", "2026-02-28"),
+            ("= 25/12 + 1 week", "2027-01-01"),
+            ("= friday + 1 week", "2026-11-13"),
+            ("= 2026-12-25 - 10 days", "2026-12-15"),
+            ("= 25/12 - today", "52"),
+            ("= today - 1/1", "306"),
+        ]
+        for (input, expected) in arithmetic {
+            let answer = ask(input)
+            check("built-ins: \(input) is \(expected)", answer?.value == expected, "got \(String(describing: answer))")
+            check("built-ins: \(input) counts as a date", answer?.kind == .date)
+        }
+        // Digits alone are a division, and units still convert.
+        let stillCalculations: [(String, String, BuiltInKind)] = [
+            ("= 25/12", "2.08333333333", .calculation),
+            ("= 25/12 - 1/1", "1.08333333333", .calculation),
+            ("= 1.5 + 1", "2.5", .calculation),
+            ("= 2.5E-1", "0.25", .calculation),
+            ("= 30 d in h", "720", .conversion),
+        ]
+        for (input, expected, kind) in stillCalculations {
+            let answer = ask(input)
+            check("built-ins: \(input) is still \(expected), not a date",
+                  answer?.value == expected && answer?.kind == kind, "got \(String(describing: answer))")
+        }
+        for input in ["= today +", "= today + 30", "= today + soon"] {
+            let answer = ask(input)
+            check("built-ins: \(input) is an incomplete date (Enter beeps)",
+                  answer != nil && answer?.value == nil && answer?.kind == .date, "got \(String(describing: answer))")
+        }
+
+        let weeks: [(String, String)] = [
+            ("week", "45"),
+            ("week 25/12", "52"),
+            ("week 25 dec", "52"),
+            ("week 1/1/2027", "53"),
+            ("week 1", "2025-12-29"),
+            ("week 53", "2026-12-28"),
+            ("week 12 2027", "2027-03-22"),
+        ]
+        for (input, expected) in weeks {
+            let answer = ask(input)
+            check("built-ins: \(input) is \(expected)", answer?.value == expected, "got \(String(describing: answer))")
+            check("built-ins: \(input) counts as a week", answer?.kind == .week)
+        }
+        check("built-ins: 1 Jan 2027 is in week 53 of 2026",
+              ask("week 1/1/2027")?.hint.contains("Week 53 of 2026") == true,
+              "got \(String(describing: ask("week 1/1/2027")))")
+        for input in ["week 53 2027", "week 60"] {
+            let answer = ask(input)
+            check("built-ins: \(input) has no such week (Enter beeps)",
+                  answer != nil && answer?.value == nil && answer?.kind == .week, "got \(String(describing: answer))")
+        }
+        for input in ["week end", "week planning", "weekly"] {
+            check("built-ins: \(input) is not a week", ask(input) == nil, "got \(String(describing: ask(input)))")
+        }
+
+        // Dates are day first whatever the Mac's language, and today is the
+        // context's: 03:05 on 4 November in Kiritimati (UTC+14).
+        var american = context
+        american.locale = Locale(identifier: "en_US")
+        check("built-ins: a US Mac still reads 25/12 day first",
+              BuiltIns.answer(for: "days until 25/12", context: american)?.value == "52")
+        var kiritimati = context
+        kiritimati.timeZone = TimeZone(identifier: "Pacific/Kiritimati")!
+        check("built-ins: days count from today in the context's time zone",
+              BuiltIns.answer(for: "days until 25/12", context: kiritimati)?.value == "51")
+        check("built-ins: a date is counted under builtin.date",
+              BuiltInKind.date.usageCounter.rawValue == "builtin.date"
+                  && BuiltInKind.week.usageCounter.rawValue == "builtin.week")
     }
 
     // MARK: Precedence
