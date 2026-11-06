@@ -73,6 +73,9 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `StatusRow.swift`: the loading / error line (spinner or icon, then text)
   that the [weather](../Weather/README.md) and
   [calendar](../Calendar/README.md) areas show under the input.
+- `AreaLabel.swift`: the text label style of the
+  [calendar](../Calendar/README.md) and [pomodoro](../Pomodoro/README.md)
+  areas under the input.
 - `DateReading.swift`: reads typed dates (`25/12`, `2026-12-25`, `25 dec`,
   `demain`, `friday`) for the [built-ins](../BuiltIns/README.md) (`days`,
   `week`, `= today + 30 days`) and the [calendar](../Calendar/README.md)

@@ -1,7 +1,7 @@
 // LauncherController.swift
 //
 // The launcher panel: input field, hint line, keyword suggestions, the
-// weather and calendar areas, and Enter handling, which opens a workflow's
+// weather, calendar and pomodoro areas, and Enter handling, which opens a workflow's
 // URL or an installed app, or copies a built-in's answer.
 
 import Carbon.HIToolbox
@@ -10,7 +10,7 @@ import Cocoa
 // MARK: - Area under the input
 
 /// A view that takes the area under the input row in place of the
-/// suggestion list: the forecast, the event list. Each one is an entry in
+/// suggestion list: the forecast, the event list, the pomodoro. Each one is an entry in
 /// `LauncherController.inputAreas`, which lays them out, hides them with the
 /// panel, empties the suggestion list while one claims the input, and sizes
 /// the panel for the one shown. Its feature still fills it and sets
@@ -20,15 +20,23 @@ private final class InputArea {
     let view: NSView
     /// Its height while shown.
     let height: () -> CGFloat
-    /// Whether `input` shows it, and so hides the suggestion list.
-    let claims: (String) -> Bool
+    /// Whether the input as it reads now shows it, and so hides the
+    /// suggestion list.
+    let claims: () -> Bool
+    /// Its own hint line while it claims the input (what Enter does there),
+    /// in place of the command's title; nil to keep the launcher's.
+    let hint: (() -> String?)?
     /// Kept at `height()` by updateHeight.
     var heightConstraint: NSLayoutConstraint?
 
-    init(view: NSView, height: @escaping () -> CGFloat, claims: @escaping (String) -> Bool) {
+    init(
+        view: NSView, height: @escaping () -> CGFloat, claims: @escaping () -> Bool,
+        hint: (() -> String?)? = nil
+    ) {
         self.view = view
         self.height = height
         self.claims = claims
+        self.hint = hint
     }
 }
 
@@ -52,6 +60,14 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private let weatherStrip = WeatherStripView(frame: .zero)
     private let calendar = CalendarProvider()
     private let calendarView = CalendarView(frame: .zero)
+    /// The timer `/pomo` drives; nil (no pomodoro view) in self-tests that
+    /// don't pass one.
+    private let pomodoro: PomodoroTimer?
+    private let pomodoroView = PomodoroView(frame: .zero)
+    /// The alfresco://pomodoro/... URL the input runs, worked out once per
+    /// change of it (inputDidChange), so neither the list nor a tick parses
+    /// it again; nil while it is no pomodoro command.
+    private var currentPomodoroURL: URL?
     private let suggestionList = SuggestionListView(frame: .zero)
     private let cardsView = WorkflowCardsView(frame: .zero)
     /// The input row (icon, field, hint); moves down when the strip is shown.
@@ -64,17 +80,23 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         InputArea(
             view: cardsView,
             height: { [unowned self] in self.cardsView.preferredHeight },
-            claims: { [unowned self] in self.showsCards(for: $0) }
+            claims: { [unowned self] in self.showsCards(for: self.textField.stringValue) }
         ),
         InputArea(
             view: weatherView,
             height: { WeatherView.height },
-            claims: { [unowned self] in self.weather.query(for: $0) != nil }
+            claims: { [unowned self] in self.weather.query(for: self.textField.stringValue) != nil }
         ),
         InputArea(
             view: calendarView,
             height: { [unowned self] in self.calendarView.preferredHeight },
-            claims: { [unowned self] _ in self.currentCalendarQuery != nil }
+            claims: { [unowned self] in self.currentCalendarQuery != nil }
+        ),
+        InputArea(
+            view: pomodoroView,
+            height: { PomodoroView.height },
+            claims: { [unowned self] in self.currentPomodoroURL != nil },
+            hint: { [unowned self] in self.pomodoroHint() }
         ),
     ]
     /// Height of the input row, which is the whole panel without the weather.
@@ -111,8 +133,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private var calendarTimer: Timer?
     private static let calendarRefreshInterval: TimeInterval = 30
 
-    init(store: WorkflowStore, internalURLHandler: @escaping (URL) -> Bool) {
+    init(store: WorkflowStore, pomodoro: PomodoroTimer? = nil, internalURLHandler: @escaping (URL) -> Bool) {
         self.store = store
+        self.pomodoro = pomodoro
         self.internalURLHandler = internalURLHandler
         super.init(size: NSSize(width: 680, height: LauncherController.rowHeight), verticalOffset: 0.15)
         buildContent()
@@ -122,8 +145,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         calendar.onAccessAnswered = { [weak self] in self?.calendarAccessAnswered(granted: $0) }
         apps.onUpdate = { [weak self] in self?.appsDidChange() }
         suggestionList.onPick = { [weak self] in self?.activate($0) }
+        suggestionList.onHover = { [weak self] in self?.updateHint() }
         cardsView.onPick = { [weak self] in self?.pick($0) }
         weatherStrip.onClick = { [weak self] in self?.showForecast() }
+        pomodoro?.addObserver { [weak self] in self?.pomodoroDidChange() }
     }
 
     override var initialFirstResponder: NSResponder? { textField }
@@ -164,6 +189,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         textField.stringValue = ""
         currentBuiltIn = nil
         currentCalendarQuery = nil
+        currentPomodoroURL = nil
         previews.cancel()
         weather.cancel()
         for area in inputAreas { area.view.isHidden = true }
@@ -181,11 +207,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         )
         currentBuiltIn = builtInAnswer(for: textField.stringValue)
         currentCalendarQuery = calendarQuery(for: textField.stringValue)
+        currentPomodoroURL = pomodoroURL(for: textField.stringValue)
         updateSuggestions()
         updateHint()
         // Each changes what is under the input: resize once, after all.
         updateCards()
         updateCalendar(resize: false)
+        updatePomodoro()
         updateWeather(resize: false)
         updateHeight()
         signposter.endInterval("launcher.input", signpost, "rows=\(self.suggestionList.items.count, privacy: .public)")
@@ -362,7 +390,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         let input = textField.stringValue
         var items: [LauncherItem] = []
         var highlightFirst = false
-        if !inputAreas.contains(where: { $0.claims(input) }) {
+        if !inputAreas.contains(where: { $0.claims() }) {
             let workflows = sortedByUse(store.current.suggestions(for: input), input: input)
             let appLimit = max(1, SuggestionListView.maxVisibleRows - workflows.count)
             let appMatches = inputCanNameApp(input)
@@ -478,6 +506,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             let help = workflow.help ?? "\(workflow.title): type a value after \"\(keyword)\""
             hintLabel.stringValue = help
             hintLabel.toolTip = help
+        } else if let text = areaHint() {
+            // The area under the input says what Enter does (`/pomo`).
+            hintLabel.stringValue = text
+            hintLabel.toolTip = nil
         } else if let command = enterCommand(for: textField.stringValue, query: currentCalendarQuery) {
             hintLabel.stringValue = "↩ \(command.label)"
             hintLabel.toolTip = nil
@@ -509,6 +541,14 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             hintLabel.stringValue = "esc to close"
             hintLabel.toolTip = nil
         }
+    }
+
+    /// The hint of the InputArea that claims the input, when it has its own.
+    private func areaHint() -> String? {
+        for area in inputAreas where area.hint != nil && area.claims() {
+            return area.hint?()
+        }
+        return nil
     }
 
     /// The workflows.json error with the file's path, or nil when it loaded.
@@ -624,6 +664,44 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateCalendar()
     }
 
+    /// The alfresco://pomodoro/... URL `input` runs (`/pomo`, `/pomo 50`,
+    /// or any workflow pointing there), while there is a timer to show.
+    private func pomodoroURL(for input: String) -> URL? {
+        guard pomodoro != nil, let url = CommandParser.parse(input, using: store.current)?.url,
+              InternalURL.feature(of: url) == PomodoroCommand.feature
+        else { return nil }
+        return url
+    }
+
+    /// The pomodoro area's hint: what Enter would do to the timer now
+    /// (PomodoroCommand.preview); nil while the input is no pomodoro command.
+    private func pomodoroHint() -> String? {
+        guard let pomodoro, let url = currentPomodoroURL else { return nil }
+        // nil for an action it doesn't know (`/pomo 500`), which the preview explains.
+        return pomodoro.preview(of: PomodoroCommand(url: url)).hint
+    }
+
+    /// Fills the pomodoro view while the input is a pomodoro command. Its
+    /// height is fixed, so inputDidChange's updateHeight covers it.
+    private func updatePomodoro() {
+        if let pomodoro, let url = currentPomodoroURL {
+            let startMinutes = PomodoroCommand(url: url)?.startMinutes ?? PomodoroPhase.focus.minutes
+            pomodoroView.show(pomodoro, startMinutes: startMinutes)
+        }
+        pomodoroView.isHidden = currentPomodoroURL == nil
+    }
+
+    /// Every timer change and tick, while the view is shown: it follows, and
+    /// so does the hint, which is the pomodoro's then (Enter may now do
+    /// something else, e.g. once a break starts by itself).
+    private func pomodoroDidChange() {
+        guard isShown, !pomodoroView.isHidden else { return }
+        updatePomodoro()
+        if let hint = pomodoroHint(), hintLabel.stringValue != hint {
+            hintLabel.stringValue = hint
+        }
+    }
+
     /// Sizes the panel for the strip, the input row, and the InputArea
     /// shown below it, else the suggestion list.
     private func updateHeight() {
@@ -723,6 +801,14 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     /// What the input reads.
     var inputForSelfTest: String { textField.stringValue }
+
+    /// The hint line, right of the input.
+    var hintForSelfTest: String { hintLabel.stringValue }
+
+    /// What the pomodoro view shows while it is shown, else nil.
+    var pomodoroForSelfTest: PomodoroViewContent? {
+        pomodoroView.isHidden ? nil : pomodoroView.contentForSelfTest
+    }
 
     /// The installed apps found so far (0 until the first scan finishes).
     var appCountForSelfTest: Int { apps.apps.count }

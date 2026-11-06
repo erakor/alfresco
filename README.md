@@ -27,7 +27,7 @@ launcher, and can sleep or lock the Mac.
 | `/cal standup` | Google Calendar's search for `standup`; the launcher lists the matching events |
 | `/cal demain`  | Google Calendar; the launcher lists tomorrow's events (also `lundi`, `12/11`, `25 dec`) |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
-| `/pomo`        | Starts a 25 min [pomodoro](Sources/Pomodoro/README.md), or pauses / resumes it (nothing opens) |
+| `/pomo`        | Starts a 25 min [pomodoro](Sources/Pomodoro/README.md), or pauses / resumes it (nothing opens); the launcher shows the timer and the hint says what Enter will do |
 | `/zz`, `/lockscreen`, `/displaysleep` | Puts the Mac to sleep, locks the screen, or turns the display off ([System](Sources/System/README.md)) |
 | `= 3*14`, `= 10 km in mi` | Nothing: the hint shows the [answer](Sources/BuiltIns/README.md) (`42`) and Enter copies it |
 | `time tokyo`, `time 15:00 in tokyo` | Nothing: the time there, copied with Enter |

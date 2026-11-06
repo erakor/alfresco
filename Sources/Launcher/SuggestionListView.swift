@@ -46,6 +46,8 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
 
     /// A row was clicked.
     var onPick: ((LauncherItem) -> Void)?
+    /// The pointer moved the highlight to another row (↑ ↓ don't call it).
+    var onHover: (() -> Void)?
 
     private(set) var items: [LauncherItem] = []
     /// The highlighted row, which Enter takes; nil when Enter runs what is
@@ -113,18 +115,39 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
         items.indices.contains(number - 1) ? items[number - 1] : nil
     }
 
-    private func syncSelection() {
+    /// `scroll` is false for a hover: the row is already under the pointer,
+    /// and scrolling a partly shown one would move another under it.
+    private func syncSelection(scroll: Bool = true) {
         // The ↩ / ⌘N marks follow the highlight.
         if !items.isEmpty {
             tableView.reloadData(forRowIndexes: IndexSet(integersIn: 0..<items.count), columnIndexes: [0])
         }
         if let selectedIndex {
             tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
-            tableView.scrollRowToVisible(selectedIndex)
+            if scroll { tableView.scrollRowToVisible(selectedIndex) }
         } else {
             tableView.deselectAll(nil)
             tableView.scrollRowToVisible(0)
         }
+    }
+
+    // MARK: Hover
+
+    /// Highlights the row under the pointer, so Enter takes it, like ↓
+    /// would. Only a mouse movement does: rows replaced under a resting
+    /// pointer while typing, or scrolled under it, keep the highlight where
+    /// it was. Leaving the list keeps the last hovered row highlighted.
+    override func mouseMoved(with event: NSEvent) {
+        hover(at: event.locationInWindow)
+    }
+
+    private func hover(at windowPoint: NSPoint) {
+        let point = tableView.convert(windowPoint, from: nil)
+        let row = tableView.row(at: point)
+        guard tableView.visibleRect.contains(point), items.indices.contains(row), row != selectedIndex else { return }
+        selectedIndex = row
+        syncSelection(scroll: false)
+        onHover?()
     }
 
     @objc private func rowClicked() {
@@ -210,6 +233,15 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
+
+        // The panel is non-activating, so the area must track while the app
+        // is inactive; .inVisibleRect follows the view's size by itself.
+        // Moves only, no enter / exit: a list growing under a resting
+        // pointer must not pick a row.
+        addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil
+        ))
 
         // Gives way while the list is hidden at height 0.
         let scrollBottom = scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.padding)
@@ -314,3 +346,22 @@ private final class SuggestionCellView: NSTableCellView {
         key.textColor = selected ? onAccent : .controlAccentColor
     }
 }
+
+#if SELFTEST
+extension SuggestionListView {
+    var selectedRowForSelfTest: Int? { selectedIndex }
+
+    /// Moves the pointer, as far as the list knows, to the middle of `row`,
+    /// or above the list for nil.
+    func moveMouseForSelfTest(toRow row: Int?) {
+        let point: NSPoint
+        if let row {
+            let rect = tableView.rect(ofRow: row)
+            point = tableView.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        } else {
+            point = convert(NSPoint(x: bounds.midX, y: isFlipped ? bounds.minY - 50 : bounds.maxY + 50), to: nil)
+        }
+        hover(at: point)
+    }
+}
+#endif

@@ -402,12 +402,7 @@ final class CalendarView: NSView {
     }
 
     static func label(_ text: String, size: CGFloat, color: NSColor, weight: NSFont.Weight = .regular) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: size, weight: weight)
-        label.textColor = color
-        label.lineBreakMode = .byTruncatingTail
-        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return label
+        NSTextField.areaLabel(text, size: size, color: color, weight: weight)
     }
 
     // MARK: Setup

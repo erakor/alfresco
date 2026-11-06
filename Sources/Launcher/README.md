@@ -22,7 +22,7 @@ every command.
 | `/cal`         | `https://calendar.google.com/calendar/r`; the launcher lists your next [events](../Calendar/README.md) |
 | `/cal standup` | Google Calendar's search for `standup`; the launcher lists the matching events |
 | `/cal demain`  | Google Calendar; the launcher lists tomorrow's events (also `lundi`, `12/11`, `25 dec`) |
-| `/pomo`        | Starts a 25 min [pomodoro](../Pomodoro/README.md), or pauses / resumes it (nothing opens) |
+| `/pomo`        | Starts a 25 min [pomodoro](../Pomodoro/README.md), or pauses / resumes it (nothing opens); the launcher shows the timer and the hint says what Enter will do |
 | `/zz`, `/lockscreen`, `/displaysleep` | Sleep, lock the screen, display off ([System](../System/README.md)) |
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | `= 3*14`, `= 10 km in mi`, `time tokyo`, `uuid`, `now`, `days until 25/12`, `week` | Nothing: a [built-in](../BuiltIns/README.md) shows the answer in the hint and Enter copies it |
@@ -150,7 +150,10 @@ click, or `⌘N`) on a workflow row completes it and opens it if it needs
 nothing more; on an app row it opens the app. With no row highlighted,
 `Enter` runs what is typed, as before (so `/p` alone beeps: no command is
 `p`). The workflow rows go away once the word is a whole keyword or you type
-a space.
+a space. Moving the mouse over the list highlights the row under it, as `↓`
+would, so `Enter` then takes that row; the highlight stays there when the
+mouse leaves the list. Only a mouse movement does this: rows that change
+under a resting pointer while you type leave the highlight alone.
 
 ### Command cards
 
