@@ -99,9 +99,11 @@ enum PomodoroViewTests {
         let running = PomodoroState.running(.focus, endsAt: morning)
         let paused = PomodoroState.paused(.shortBreak, remaining: 60)
         let focus = PomodoroPhase.focus.minutes
+        // Ten minutes before `running` ends.
+        let before = morning.addingTimeInterval(-600)
         func expect(_ name: String, _ command: PomodoroCommand?, _ state: PomodoroState, done: Int = 0,
-                    _ text: String, runs: Bool) {
-            let preview = PomodoroCommand.preview(of: command, state: state, completedFocusSessions: done)
+                    now: Date = before, _ text: String, runs: Bool) {
+            let preview = PomodoroCommand.preview(of: command, state: state, completedFocusSessions: done, now: now)
             check("Enter: \(name)", preview == PomodoroCommand.Preview(text: text, runs: runs),
                   "got \"\(preview.text)\", runs \(preview.runs)")
         }
@@ -120,7 +122,12 @@ enum PomodoroViewTests {
         expect("stop while running", .stop, running, "Stop the focus session and reset the cycle", runs: true)
         expect("stop while idle mid-cycle", .stop, .idle, done: 2, "Reset the cycle", runs: true)
         expect("stop while idle", .stop, .idle, "Nothing to stop", runs: false)
-        let unknown = PomodoroCommand.preview(of: nil, state: .idle, completedFocusSessions: 0)
+        // Run out, not ticked yet: pausing ends it (PomodoroTimer.pause).
+        expect("toggle once it ran out ends it", .toggle, running, now: morning, "End the focus session", runs: true)
+        expect("pause once it ran out ends it", .pause, running, now: morning.addingTimeInterval(1),
+               "End the focus session", runs: true)
+        expect("other actions once it ran out", .skip, running, now: morning, "Skip to the break", runs: true)
+        let unknown = PomodoroCommand.preview(of: nil, state: .idle, completedFocusSessions: 0, now: before)
         check("Enter: an unknown action says what works", !unknown.runs && unknown.hint.contains("minutes"),
               unknown.hint)
         check("Enter: the hint marks what runs with ↩",
@@ -129,20 +136,22 @@ enum PomodoroViewTests {
 
         // What the hint promises is what the timer does, in every state.
         let commands: [PomodoroCommand] = [.toggle, .start(minutes: nil), .start(minutes: 5), .pause, .resume, .skip, .stop]
-        let setups: [(String, @MainActor (PomodoroTimer) -> Void)] = [
-            ("idle", { _ in }),
-            ("idle mid-cycle", { timer in timer.startFocus(); timer.skip(); timer.skip() }),
-            ("running focus", { timer in timer.startFocus() }),
-            ("paused focus", { timer in timer.startFocus(); timer.pause() }),
-            ("running break", { timer in timer.startFocus(); timer.skip(); timer.resume() }),
-            ("paused break", { timer in timer.startFocus(); timer.skip(); timer.resume(); timer.pause() }),
+        let setups: [(String, @MainActor (PomodoroTimer, TestClock) -> Void)] = [
+            ("idle", { _, _ in }),
+            ("idle mid-cycle", { timer, _ in timer.startFocus(); timer.skip(); timer.skip() }),
+            ("running focus", { timer, _ in timer.startFocus() }),
+            ("paused focus", { timer, _ in timer.startFocus(); timer.pause() }),
+            ("running focus past its end, not ticked",
+             { timer, clock in timer.startFocus(); clock.advance(Config.pomodoroFocus + 1) }),
+            ("running break", { timer, _ in timer.startFocus(); timer.skip(); timer.resume() }),
+            ("paused break", { timer, _ in timer.startFocus(); timer.skip(); timer.resume(); timer.pause() }),
         ]
         for (name, setUp) in setups {
             for command in commands {
-                let timer = makeTimer(TestClock())
-                setUp(timer)
-                let preview = PomodoroCommand.preview(
-                    of: command, state: timer.state, completedFocusSessions: timer.completedFocusSessions)
+                let clock = TestClock()
+                let timer = makeTimer(clock)
+                setUp(timer, clock)
+                let preview = timer.preview(of: command)
                 let ran = timer.run(command)
                 check("Enter: \(command) while \(name) runs as the hint says", preview.runs == ran,
                       "hint \"\(preview.hint)\", ran \(ran)")
@@ -275,5 +284,37 @@ enum PomodoroViewTests {
         let withoutTimer = LauncherController(store: store, internalURLHandler: { _ in true })
         withoutTimer.typeForSelfTest("/pomo")
         check("no timer, no view", withoutTimer.pomodoroForSelfTest == nil)
+
+        shownLauncher(controller, timer: timer, clock: clock)
+    }
+
+    /// With the panel really open, the timer's changes and ticks reach the
+    /// view and the hint without anything typed again.
+    private static func shownLauncher(_ controller: LauncherController, timer: PomodoroTimer, clock: TestClock) {
+        let focus = PomodoroPhase.focus.minutes
+        controller.show(prefill: "/pomo")
+        guard controller.isShown else {
+            check("shown: the launcher opens", false)
+            return
+        }
+        check("shown: idle, Enter starts", controller.hintForSelfTest == "↩ Start a \(focus) min focus session",
+              controller.hintForSelfTest)
+        timer.startFocus()
+        check("shown: a start reaches the view", controller.pomodoroForSelfTest?.tint == .focus)
+        check("shown: and the hint", controller.hintForSelfTest == "↩ Pause the focus session",
+              controller.hintForSelfTest)
+        clock.advance(5)
+        timer.tickForSelfTest()
+        check("shown: a tick counts down",
+              controller.pomodoroForSelfTest?.clock == PomodoroTimer.format(Config.pomodoroFocus - 5),
+              controller.pomodoroForSelfTest?.clock ?? "nil")
+        timer.skip()
+        let breakHint = Config.pomodoroAutoStartBreaks ? "↩ Pause the short break" : "↩ Resume the short break"
+        check("shown: the break that follows changes the hint", controller.hintForSelfTest == breakHint,
+              controller.hintForSelfTest)
+        timer.stop()
+        check("shown: stopping too", controller.hintForSelfTest == "↩ Start a \(focus) min focus session",
+              controller.hintForSelfTest)
+        controller.hide()
     }
 }

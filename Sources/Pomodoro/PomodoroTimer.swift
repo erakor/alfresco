@@ -77,7 +77,8 @@ final class PomodoroTimer: NSObject {
     private let fileURL: URL
     /// The current time. Only the self-test passes another clock.
     private let now: @MainActor () -> Date
-    /// Says which day a session ended on, for focusSessionsToday.
+    /// Says which day a session ended on, for focusSessionsToday. The app's
+    /// follows time zone changes (autoupdatingCurrent).
     private let calendar: Calendar
 
     /// Saved in ~/Library/Application Support/Launcher, next to the
@@ -93,7 +94,7 @@ final class PomodoroTimer: NSObject {
     /// gives each timer its own center, so a wake reaches only that timer.
     init(
         fileURL: URL, now: @escaping @MainActor () -> Date, wakeNotifications: NotificationCenter,
-        calendar: Calendar = .current
+        calendar: Calendar = .autoupdatingCurrent
     ) {
         self.fileURL = fileURL
         self.now = now
@@ -141,6 +142,12 @@ final class PomodoroTimer: NSObject {
         case .stop: return stop()
         }
         return true
+    }
+
+    /// What `command` would do now, for the launcher's hint.
+    func preview(of command: PomodoroCommand?) -> PomodoroCommand.Preview {
+        PomodoroCommand.preview(
+            of: command, state: state, completedFocusSessions: completedFocusSessions, now: now())
     }
 
     /// Idle: starts a focus session. Running: pauses. Paused: resumes.

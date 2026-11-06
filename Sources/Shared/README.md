@@ -73,6 +73,9 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `StatusRow.swift`: the loading / error line (spinner or icon, then text)
   that the [weather](../Weather/README.md) and
   [calendar](../Calendar/README.md) areas show under the input.
+- `AreaLabel.swift`: the text label style of the
+  [calendar](../Calendar/README.md) and [pomodoro](../Pomodoro/README.md)
+  areas under the input.
 - `KeywordInput.swift`: reads input as `<keyword> [argument]`, bare for the
   built-ins (`time tokyo`) and after the `/` for the features that own a
   workflow keyword (`/weather paris`).

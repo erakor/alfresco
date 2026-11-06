@@ -92,17 +92,19 @@ final class PomodoroView: NSView {
     private let card = NSView()
     private let icon = NSImageView()
     private let clockLabel = NSTextField(labelWithString: "")
-    private let tagLabel = PomodoroView.label(size: 10, color: .secondaryLabelColor, weight: .semibold)
-    private let titleLabel = PomodoroView.label(size: 17, color: .labelColor, weight: .semibold)
-    private let detailLabel = PomodoroView.label(size: 12, color: .secondaryLabelColor)
-    private let cycleLabel = PomodoroView.label(size: 12, color: .secondaryLabelColor)
-    private let todayLabel = PomodoroView.label(size: 12, color: .secondaryLabelColor)
+    private let tagLabel = NSTextField.areaLabel(size: 10, color: .secondaryLabelColor, weight: .semibold)
+    private let titleLabel = NSTextField.areaLabel(size: 17, color: .labelColor, weight: .semibold)
+    private let detailLabel = NSTextField.areaLabel(size: 12, color: .secondaryLabelColor)
+    private let cycleLabel = NSTextField.areaLabel(size: 12, color: .secondaryLabelColor)
+    private let todayLabel = NSTextField.areaLabel(size: 12, color: .secondaryLabelColor)
     private var shown: PomodoroViewContent?
 
     private static let endTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .none
         formatter.timeStyle = .short
+        // Follow a time zone change while the app runs, like the timer's day.
+        formatter.timeZone = .autoupdatingCurrent
         return formatter
     }()
 
@@ -172,15 +174,6 @@ final class PomodoroView: NSView {
     /// What the labels read, for the self-test.
     var contentForSelfTest: PomodoroViewContent? { shown }
     #endif
-
-    private static func label(size: CGFloat, color: NSColor, weight: NSFont.Weight = .regular) -> NSTextField {
-        let label = NSTextField(labelWithString: "")
-        label.font = .systemFont(ofSize: size, weight: weight)
-        label.textColor = color
-        label.lineBreakMode = .byTruncatingTail
-        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return label
-    }
 
     private func build() {
         separator.boxType = .separator

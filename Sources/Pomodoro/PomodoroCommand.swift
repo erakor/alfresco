@@ -57,12 +57,16 @@ extension PomodoroCommand {
 
     /// `command` is nil for an action PomodoroCommand doesn't know
     /// (`/pomo 500`), which the launcher beeps at. `runs` follows
-    /// PomodoroTimer.run's guards.
+    /// PomodoroTimer.run's guards. `now` tells a phase that has run out
+    /// but not ticked yet, which pausing ends instead (PomodoroTimer.pause).
     static func preview(
-        of command: PomodoroCommand?, state: PomodoroState, completedFocusSessions: Int
+        of command: PomodoroCommand?, state: PomodoroState, completedFocusSessions: Int, now: Date
     ) -> Preview {
         guard let command else {
             return Preview(text: "Type a number of minutes (1 to \(maxMinutes)), pause, resume, skip or stop", runs: false)
+        }
+        if case .running(let phase, let endsAt) = state, endsAt <= now, command == .toggle || command == .pause {
+            return Preview(text: "End the \(phase.noun)", runs: true)
         }
         switch (command, state) {
         case (.toggle, .idle), (.start, .idle):
