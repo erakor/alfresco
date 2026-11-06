@@ -26,7 +26,9 @@ Recorded:
   how often the fallback is used, how often a command card is clicked
   (not which one: that counts when it runs), and how often the weather above
   the input is clicked. The launcher list uses the app and keyword
-  counts to put what you use most first.
+  counts to put what you use most first. What you typed to open an app is
+  not part of these stats: it has its own file and switch
+  ([Learned app picks](../Launcher/README.md#learned-app-picks)).
 - The first word of multi-word fallback inputs, lowercased, only when it is a
   workflow keyword or a typo away from one (one letter added, missing, changed
   or swapped for a keyword of 4 letters, two for 5 letters or more; keywords

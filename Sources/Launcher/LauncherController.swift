@@ -238,7 +238,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// search).
     private func matchedApp() -> AppEntry? {
         let input = textField.stringValue
-        return inputCanNameApp(input) ? apps.bestMatch(for: input, openCounts: usage.apps) : nil
+        return inputCanNameApp(input)
+            ? apps.bestMatch(for: input, openCounts: usage.apps, picks: TypedAppPicks.shared.picks(for: input))
+            : nil
     }
 
     /// Whether the input would go to the fallback search (or nowhere, when
@@ -280,6 +282,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         // Counted when asked: opening an app reports failure later.
         AppIndex.open(app)
         UsageStats.shared.recordAppOpened(bundleID: app.bundleID)
+        // What was typed to find it, so typing that again puts it first.
+        TypedAppPicks.shared.record(input: textField.stringValue, bundleID: app.bundleID)
         didLaunch = true
         textField.stringValue = ""
         hide()
@@ -394,7 +398,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             let workflows = sortedByUse(store.current.suggestions(for: input), input: input)
             let appLimit = max(1, SuggestionListView.maxVisibleRows - workflows.count)
             let appMatches = inputCanNameApp(input)
-                ? apps.matches(for: input, limit: appLimit, openCounts: usage.apps) : []
+                ? apps.matches(
+                    for: input, limit: appLimit, openCounts: usage.apps,
+                    picks: TypedAppPicks.shared.picks(for: input)
+                ) : []
             if let best = appMatches.first {
                 items.append(.app(best))
                 highlightFirst = true

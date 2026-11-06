@@ -49,14 +49,11 @@ final class AppIndex {
     }
 
     /// The apps whose name matches the whole input, best first, at most
-    /// `limit`. Each match has a tier: the exact name, a name starting with
-    /// the input, a word of the name starting with the input ("code" for
-    /// "Visual Studio Code"), then the initials ("vsc"). `openCounts` (bundle
-    /// ID → times opened) lifts an app by up to `maxUsageBoost` tiers, one
-    /// tier per `opensPerTier`-ish opens (logarithmic), so a much-used app can
-    /// beat a closer-matching one; an exact name always comes first. Ties go
-    /// to the shorter name, then alphabetical order.
-    func matches(for raw: String, limit: Int, openCounts: [String: Int] = [:]) -> [AppEntry] {
+    /// `limit` (see `ranked(_:for:limit:openCounts:picks:)`), with an
+    /// "apps.match" signpost.
+    func matches(
+        for raw: String, limit: Int, openCounts: [String: Int] = [:], picks: [String: Double] = [:]
+    ) -> [AppEntry] {
         guard Config.appSearch, limit > 0 else { return [] }
         let input = Self.fold(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !input.isEmpty else { return [] }
@@ -69,22 +66,56 @@ final class AppIndex {
             "apps.match",
             "apps=\(self.apps.count, privacy: .public) limit=\(limit, privacy: .public) inputLength=\(input.count, privacy: .public)"
         )
-        let ranked = apps.compactMap { app -> (score: Double, length: Int, name: String, app: AppEntry)? in
-            guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
-            let opens = app.bundleID.flatMap { openCounts[$0] } ?? 0
-            return (Self.score(rank: rank, opens: opens), app.name.count, app.name, app)
-        }
-        let best = ranked
-            .sorted { ($0.score, $0.length, $0.name) < ($1.score, $1.length, $1.name) }
-            .prefix(limit)
-            .map(\.app)
-        signposter.endInterval("apps.match", signpost, "matches=\(ranked.count, privacy: .public)")
+        let best = Self.ranked(apps, for: input, limit: limit, openCounts: openCounts, picks: picks)
+        signposter.endInterval("apps.match", signpost, "matches=\(best.count, privacy: .public)")
         return best
     }
 
-    /// The best of `matches(for:limit:openCounts:)`, or nil.
-    func bestMatch(for raw: String, openCounts: [String: Int] = [:]) -> AppEntry? {
-        matches(for: raw, limit: 1, openCounts: openCounts).first
+    /// `apps` whose name matches `input` (already folded and trimmed), best
+    /// first, at most `limit`. Each match has a tier: the exact name, a name
+    /// starting with the input, a word of the name starting with the input
+    /// ("code" for "Visual Studio Code"), then the initials ("vsc").
+    /// `openCounts` (bundle ID → times opened) lifts an app by up to
+    /// `maxUsageBoost` tiers, one tier per `opensPerTier`-ish opens
+    /// (logarithmic), so a much-used app can beat a closer-matching one.
+    /// `picks` (bundle ID → weight, from TypedAppPicks: the apps opened for
+    /// exactly this input) come before every tier but the exact name, the
+    /// heaviest first. An exact name always comes first. Ties go to the
+    /// shorter name, then alphabetical order.
+    nonisolated static func ranked(
+        _ apps: [AppEntry], for input: String, limit: Int,
+        openCounts: [String: Int] = [:], picks: [String: Double] = [:]
+    ) -> [AppEntry] {
+        guard limit > 0, !input.isEmpty else { return [] }
+        struct Ranked {
+            /// 0: exact name, 1: picked for this input, 2: the rest.
+            let group: Int
+            let pickWeight: Double
+            let score: Double
+            let app: AppEntry
+        }
+        let ranked = apps.compactMap { app -> Ranked? in
+            guard let rank = app.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
+            let opens = app.bundleID.flatMap { openCounts[$0] } ?? 0
+            let weight = app.bundleID.flatMap { picks[$0] } ?? 0
+            let group = rank == 0 ? 0 : weight > 0 ? 1 : 2
+            return Ranked(group: group, pickWeight: weight, score: Self.score(rank: rank, opens: opens), app: app)
+        }
+        return ranked
+            .sorted { lhs, rhs in
+                if lhs.group != rhs.group { return lhs.group < rhs.group }
+                if lhs.pickWeight != rhs.pickWeight { return lhs.pickWeight > rhs.pickWeight }
+                if lhs.score != rhs.score { return lhs.score < rhs.score }
+                if lhs.app.name.count != rhs.app.name.count { return lhs.app.name.count < rhs.app.name.count }
+                return lhs.app.name < rhs.app.name
+            }
+            .prefix(limit)
+            .map(\.app)
+    }
+
+    /// The best of `matches(for:limit:openCounts:picks:)`, or nil.
+    func bestMatch(for raw: String, openCounts: [String: Int] = [:], picks: [String: Double] = [:]) -> AppEntry? {
+        matches(for: raw, limit: 1, openCounts: openCounts, picks: picks).first
     }
 
     #if SELFTEST
@@ -94,18 +125,18 @@ final class AppIndex {
 
     /// Opens worth one tier: about 31 opens lift an app one tier, about
     /// 1000 two (log2(1 + opens) / 5).
-    private static let opensPerTier = 5.0
-    private static let maxUsageBoost = 2.0
+    private nonisolated static let opensPerTier = 5.0
+    private nonisolated static let maxUsageBoost = 2.0
 
     /// Lower is better.
-    private static func score(rank: Int, opens: Int) -> Double {
+    private nonisolated static func score(rank: Int, opens: Int) -> Double {
         // An exact name stays first whatever the counts.
         if rank == 0 { return -maxUsageBoost - 1 }
         let boost = min(maxUsageBoost, log2(1 + Double(opens)) / opensPerTier)
         return Double(rank) - boost
     }
 
-    private static func rank(_ input: String, in name: String) -> Int? {
+    private nonisolated static func rank(_ input: String, in name: String) -> Int? {
         if name == input { return 0 }
         if name.hasPrefix(input) { return 1 }
         let words = name.split(whereSeparator: { !$0.isLetter && !$0.isNumber })

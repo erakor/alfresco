@@ -106,6 +106,7 @@ copied (a search field's text is reduced to its length).
 | `clipboard.preview`, `thumbnail.decode`, `thumbnail.hit` / `.miss` | The selected item's preview and the picture decodes (background) |
 | `clipboard.restore.write` | Putting an item back on the clipboard |
 | `launcher.input`, `apps.match`, `apps.scan` | Each keystroke in the launcher, app ranking, the app scan (background) |
+| `apps.picks.load`, `apps.picks.save` | Reading and writing the learned app picks (`inputs=`) |
 | `calendar.fetch`, `calendar.storeChanged` | Reading events (background); each change macOS reports |
 | `weather.load`, `preview.load` | Network requests (`kind=ok`, `failed` or `cancelled`) |
 
