@@ -16,6 +16,13 @@ browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the histor
   again doesn't add a second row. Unpinning puts the item at the top of the
   others with a fresh 24 hours. Up to 100 items can be pinned, 10 of them
   images; past that, `⌘P` beeps.
+- `⌘S` names the selected item as a **snippet** (`sig`, `iban`): the search
+  field takes the name, `↩` saves it and `esc` cancels. Typing
+  `/snip sig` in the launcher then pastes it into the app you were in, as
+  picking it here does (see [Snippets](#snippets)). Naming an item pins it;
+  saving an empty name removes the name and keeps the pin; unpinning an item
+  drops its name. The row shows `snippet: sig`, and searching for the name
+  finds it.
 - The panel opens on your latest copy, under the pinned items, so `↩` still
   pastes what you just copied. `⌘1` to `⌘9` count from the top, pinned items
   included.
@@ -57,6 +64,32 @@ browser, ...) and files copied in Finder. Press **`⌘⌥C`** to open the histor
   apps do this), in which case the image is kept. Text wins over an image
   (copying cells in Excel records the text, not a picture of them), unless the
   text is just a web link, as when a browser copies an image with its address.
+
+## Snippets
+
+A pinned item with a name is a snippet, typed from the launcher:
+
+- `/snip` alone lists every snippet under the input, by name, with the
+  start of its text (or the image's size, or the file's name).
+- `/snip si` narrows the list to the names starting with `si`. Enter pastes
+  the snippet with exactly that name, else the only one starting with it
+  (highlighted in the list, and the hint reads `↩ Paste sig`). With none, or
+  several and no exact name, the hint says so and Enter beeps.
+- Pasting needs the same Accessibility permission as the history panel;
+  without it the snippet is only put on the clipboard. Like a pick, it keeps
+  its place among the pinned items.
+- A name is one word of up to 32 characters, stored lowercase: letters
+  (accents included), digits, `-`, `_` and `.` are fine, but not spaces, `/`,
+  `?`, `#` or `%`. Two items can't share a name: naming a second one takes
+  it from the first, which stays pinned.
+- The `/snip` keyword is the `snip` workflow in `workflows.json`, pointing at
+  `alfresco://snippet/{query}`: rename it there. Any workflow pointing at
+  that URL shows the list.
+- Names are saved in `clipboard-history.json` with the item. A build from
+  before snippets keeps the items but drops their names on its next save.
+- Not built (yet): placeholders such as `{date}` or `{clipboard}` inside a
+  snippet, and expansion as you type (it would need a key event tap, which
+  the hotkeys deliberately avoid).
 
 ## Notes
 
@@ -100,4 +133,10 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `ClipFilter.swift`: the panel's search.
 - `ThumbnailLoader.swift`: decodes row thumbnails and preview pictures in the
   background.
-- `PasteKeystroke.swift`: posts `⌘V` into the previous app after a pick.
+- `PasteKeystroke.swift`: posts `⌘V` into the previous app after a pick
+  (from the panel, or a snippet from the launcher once it has closed).
+- `Snippets.swift`: snippet names (`SnippetName`), the
+  `alfresco://snippet/<name>` URL (`SnippetCommand`) and finding one from
+  what is typed (`Snippets`), all pure and checked by the self-test.
+- `SnippetsView.swift`: the list under the launcher input while `/snip` is
+  typed.

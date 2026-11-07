@@ -27,6 +27,49 @@ enum PasteKeystroke {
         _ = AXIsProcessTrustedWithOptions(options)
     }
 
+    /// Where a pick should be pasted: the app that was in front, and the
+    /// clipboard's change count right after the item was written to it.
+    struct Target {
+        let app: pid_t
+        let changeCount: Int
+    }
+
+    /// The app in front, to paste into once the panel is gone (the panels
+    /// don't activate the app, so it is where the user was working). nil
+    /// without the Accessibility permission, which macOS is then asked for
+    /// (once per launch), so the item is only left on the clipboard.
+    static func target() -> Target? {
+        guard isAllowed else {
+            requestPermission()
+            return nil
+        }
+        guard let front = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              front != ProcessInfo.processInfo.processIdentifier
+        else { return nil }
+        return Target(app: front, changeCount: NSPasteboard.general.changeCount)
+    }
+
+    /// Posts ⌘V to `target` once keyboard focus has settled, after a panel
+    /// closed. Skipped if the user switched apps meanwhile, opened either
+    /// panel (whose field would receive it), or copied something else, so
+    /// only the picked item can be pasted. Cancel the task to drop it.
+    static func paste(into target: Target) -> Task<Void, Never> {
+        Task { @MainActor in
+            // A moment for the window server to hand keyboard focus back to
+            // the app underneath before the keystroke arrives.
+            do {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            } catch {
+                return
+            }
+            let panelOpen = NSApp.windows.contains { $0 is LauncherPanel && $0.isVisible }
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.app,
+                  NSPasteboard.general.changeCount == target.changeCount,
+                  !panelOpen else { return }
+            post()
+        }
+    }
+
     /// Posts ⌘V key down and up.
     static func post() {
         // The events carry their own flags, so keys the user is still holding

@@ -144,9 +144,14 @@ struct ClipItem: Codable, Identifiable, Sendable {
     /// there, with its image file, and is gone for good (older builds don't
     /// check StoredHistory.version, so bumping it wouldn't stop them).
     var pinned = false
+    /// The snippet name of a pinned item (`sig`, typed as `/snip sig` in the
+    /// launcher), always SnippetName.normalize'd and unique in the history;
+    /// nil for an unpinned one. Absent (nil) in history written by older
+    /// builds, which drop it on their next save.
+    var snippetName: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, copiedAt, sourceApp, sourceBundleID, content, pinned
+        case id, copiedAt, sourceApp, sourceBundleID, content, pinned, snippetName
     }
 }
 
@@ -159,6 +164,9 @@ extension ClipItem {
         sourceBundleID = try container.decodeIfPresent(String.self, forKey: .sourceBundleID)
         content = try container.decode(ClipContent.self, forKey: .content)
         pinned = try container.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+        // A hand-edited name that isn't a usable one is dropped, never the item.
+        let name = try? container.decodeIfPresent(String.self, forKey: .snippetName)
+        snippetName = pinned ? name.flatMap(SnippetName.normalize) : nil
     }
 }
 
@@ -358,6 +366,8 @@ final class ClipboardStore: NSObject {
         }
         var item = items.remove(at: index)
         item.pinned = pinned
+        // Only pinned items are snippets: an unpinned one would expire.
+        if !pinned { item.snippetName = nil }
         if pinned {
             items.insert(item, at: 0)
         } else {
@@ -365,6 +375,36 @@ final class ClipboardStore: NSObject {
             items.insert(item, at: pinnedCount)
         }
         touchImage(of: item)
+        didChange()
+        return true
+    }
+
+    /// Names an item as a snippet (`sig`, typed as `/snip sig` in the
+    /// launcher), pinning it first if it isn't, or removes its name with nil
+    /// or a blank `name`. Another item holding the name loses it. Returns
+    /// false, changing nothing, when the item is gone, the name isn't a
+    /// usable one (SnippetName.normalize), or it can't be pinned (setPinned).
+    @discardableResult
+    func setSnippetName(id: UUID, _ name: String?) -> Bool {
+        guard items.contains(where: { $0.id == id }) else { return false }
+        let blank = name.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? true
+        let normalized: String?
+        if blank {
+            normalized = nil
+        } else {
+            guard let valid = name.flatMap(SnippetName.normalize) else { return false }
+            normalized = valid
+            guard setPinned(id: id, true) else { return false }
+        }
+        // setPinned may have moved it.
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return false }
+        guard items[index].snippetName != normalized else { return true }
+        if let normalized {
+            for other in items.indices where items[other].snippetName == normalized {
+                items[other].snippetName = nil
+            }
+        }
+        items[index].snippetName = normalized
         didChange()
         return true
     }
@@ -574,7 +614,14 @@ final class ClipboardStore: NSObject {
                 try decoder.decode(StoredHistory.self, from: data).items
             }
             // Pinned first, whatever the file says, so pinnedCount holds.
-            items = loaded.filter(\.pinned) + loaded.filter { !$0.pinned }
+            var pinned = loaded.filter(\.pinned)
+            // A hand-edited file could give two items one name: the first keeps it.
+            var names = Set<String>()
+            for index in pinned.indices {
+                guard let name = pinned[index].snippetName else { continue }
+                if !names.insert(name).inserted { pinned[index].snippetName = nil }
+            }
+            items = pinned + loaded.filter { !$0.pinned }
         } catch {
             setAside(error)
         }

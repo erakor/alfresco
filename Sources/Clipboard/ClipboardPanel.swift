@@ -4,7 +4,9 @@
 // ↑/↓ to choose, ↩ (or a click) to put the item back on the clipboard
 // and paste it into the app that was in front. ⌘1 to ⌘9 do the same for the
 // first nine rows, ⌘↩ only copies. ⌘P pins or unpins the selected item
-// (pinned items stay on top and never expire). ⌘⌫ deletes the selected item.
+// (pinned items stay on top and never expire). ⌘S names it as a snippet,
+// typed in the launcher as `/snip <name>` (Snippets.swift): the search field
+// takes the name until ↩ saves it or esc cancels. ⌘⌫ deletes the selected item.
 // The selected item is shown in full on the right: text, the image, or the
 // file.
 
@@ -89,11 +91,18 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     /// Set by a pick that should paste: the app that was in front, which
     /// didHide sends ⌘V to once the panel is gone, and the clipboard's
     /// change count right after the item was written to it.
-    private var pasteTarget: (app: pid_t, changeCount: Int)?
+    private var pasteTarget: PasteKeystroke.Target?
 
     /// The ⌘V waiting for keyboard focus to settle; cancelled if a panel
     /// opens first, so it can't land in a search field.
     private var pendingPaste: Task<Void, Never>?
+
+    /// The item being named with ⌘S, while the search field holds its
+    /// snippet name instead of the search; nil otherwise.
+    private var namingID: UUID?
+    /// The search to put back when naming ends.
+    private var queryBeforeNaming = ""
+    private static let searchPlaceholder = "Search clipboard history…"
 
     private let ageFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -120,6 +129,10 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         store.onChange = { [weak self] in
             guard let self else { return }
             self.filter.historyDidChange(self.store.items)
+            // The item being named expired or was deleted meanwhile.
+            if let id = self.namingID, !self.store.items.contains(where: { $0.id == id }) {
+                self.endNaming()
+            }
             // Pictures of images cleared, deleted or expired go too, so they
             // don't outlive the history in memory: row thumbnails, and the
             // previews (also of copied image files) while the panel is open.
@@ -149,12 +162,14 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         pasteTarget = nil
         pendingPaste?.cancel()
         pendingPaste = nil
+        endNaming()
         searchField.stringValue = ""
         reload(keepingSelection: false)
         Signposts.signposter.endInterval("clipboard.open", signpost, "items=\(self.store.items.count, privacy: .public)")
     }
 
     override func didHide() {
+        endNaming()
         searchField.stringValue = ""
         imageCache.removeAllObjects()
         previews.removeAll()
@@ -168,24 +183,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
         guard let target = pasteTarget else { return }
         pasteTarget = nil
-        // A moment for the window server to hand keyboard focus back to the
-        // app underneath before the keystroke arrives.
-        pendingPaste = Task { @MainActor in
-            do {
-                try await Task.sleep(nanoseconds: 50_000_000)
-            } catch {
-                return
-            }
-            // Skip it if the user switched apps meanwhile, or opened either
-            // panel (the launcher's would otherwise receive the ⌘V).
-            let panelOpen = NSApp.windows.contains { $0 is LauncherPanel && $0.isVisible }
-            // Also skip it if something else was copied since the pick, so
-            // only the picked item can be pasted.
-            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.app,
-                  NSPasteboard.general.changeCount == target.changeCount,
-                  !panelOpen else { return }
-            PasteKeystroke.post()
-        }
+        pendingPaste = PasteKeystroke.paste(into: target)
     }
 
     // MARK: Data
@@ -196,7 +194,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         defer { signposter.endInterval("clipboard.reload", signpost) }
         let selectedID = keepingSelection ? selectedItem?.id : nil
 
-        let query = searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = currentQuery
         let filtering = signposter.beginInterval(
             "clipboard.filter", "items=\(self.store.items.count, privacy: .public) queryLength=\(query.count, privacy: .public)"
         )
@@ -219,6 +217,13 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         // Always, since selecting the same row again posts no selection
         // change but the item in it may be a different one.
         updatePreview()
+    }
+
+    /// What the list is filtered by: the search field, or while naming, the
+    /// search it held before.
+    private var currentQuery: String {
+        (namingID == nil ? searchField.stringValue : queryBeforeNaming)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var selectedItem: ClipItem? {
@@ -254,10 +259,14 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         if pinned > 0 && visibleItems.count == total { count += ", \(pinned) pinned" }
         countLabel.stringValue = count
 
+        if namingID != nil {
+            hintLabel.stringValue = "↩ save the name (empty removes it) · esc cancel"
+            return
+        }
         let pin = selectedItem?.pinned == true ? "⌘P unpin" : "⌘P pin"
         hintLabel.stringValue = visibleItems.isEmpty
             ? "esc to close"
-            : "↩ paste · ⌘↩ copy · ⌘1–9 pick · \(pin) · ⌘⌫ delete · esc close"
+            : "↩ paste · ⌘↩ copy · ⌘1–9 pick · \(pin) · ⌘S name · ⌘⌫ delete · esc close"
     }
 
     /// Rows reachable with ⌘1 to ⌘9; each shows its shortcut.
@@ -282,17 +291,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         store.promote(id: item.id)
         // A later pick during the fade-out decides alone: ⌘↩ right after ↩
         // must not paste.
-        pasteTarget = nil
-        if paste {
-            let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
-            if !PasteKeystroke.isAllowed {
-                PasteKeystroke.requestPermission()
-            } else if let front, front != ProcessInfo.processInfo.processIdentifier {
-                // The panel doesn't activate the app, so the one in front is
-                // where the user was working.
-                pasteTarget = (front, NSPasteboard.general.changeCount)
-            }
-        }
+        pasteTarget = paste ? PasteKeystroke.target() : nil
         hide()
     }
 
@@ -347,9 +346,10 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     }
 
     /// ⌘1 to ⌘9: paste the Nth row of the (filtered) list. ⌘↩: copy the
-    /// selected row without pasting. ⌘P: pin or unpin the selected row.
+    /// selected row without pasting. ⌘P: pin or unpin the selected row. ⌘S:
+    /// name it as a snippet. While naming, the field's own editing shortcuts.
     override func handleKeyEquivalent(_ event: NSEvent) -> Bool {
-        guard event.shortcutModifiers == .command else { return false }
+        guard event.shortcutModifiers == .command, namingID == nil else { return false }
         let keyCode = Int(event.keyCode)
         if keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter {
             pickSelected(paste: false)
@@ -362,6 +362,10 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         let typesLatin = character.unicodeScalars.contains { $0.isASCII }
         if character == "p" || (!typesLatin && keyCode == kVK_ANSI_P) {
             togglePinSelected()
+            return true
+        }
+        if character == "s" || (!typesLatin && keyCode == kVK_ANSI_S) {
+            startNaming()
             return true
         }
         guard let number = DigitShortcuts.keyCodes[Int(event.keyCode)] else { return false }
@@ -391,6 +395,79 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         UsageStats.shared.record(pin ? .clipboardPinned : .clipboardUnpinned)
     }
 
+    /// ⌘S: the search field takes the selected item's snippet name (empty
+    /// when it has none), selected so typing replaces it. Beeps with nothing
+    /// selected.
+    private func startNaming() {
+        guard let item = selectedItem else {
+            NSSound.beep()
+            return
+        }
+        queryBeforeNaming = searchField.stringValue
+        namingID = item.id
+        searchField.placeholderString = "Snippet name (one word, typed after /snip in the launcher)"
+        searchField.stringValue = item.snippetName ?? ""
+        searchField.currentEditor()?.selectAll(nil)
+        updateLabels(query: currentQuery)
+    }
+
+    /// ↩ while naming: saves the name (a blank one removes it), pinning the
+    /// item if it wasn't. Beeps and keeps naming when the name can't be used
+    /// (a space or `/` in it, too long) or the item can't be pinned.
+    private func saveName() {
+        guard let id = namingID else { return }
+        let name = searchField.stringValue
+        let removing = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hadName = store.items.first { $0.id == id }?.snippetName != nil
+        // Back to the search first: the change reloads the list with it.
+        endNaming()
+        guard store.setSnippetName(id: id, name) else {
+            NSSound.beep()
+            // Back to naming, with what was typed, to fix it.
+            if let row = visibleItems.firstIndex(where: { $0.id == id }) { select(row: row) }
+            startNaming()
+            searchField.stringValue = name
+            return
+        }
+        if !removing || hadName {
+            UsageStats.shared.record(removing ? .clipboardSnippetUnnamed : .clipboardSnippetNamed)
+        }
+    }
+
+    /// Leaves naming (esc, a save, the panel closing): the search comes back.
+    private func endNaming() {
+        guard namingID != nil else { return }
+        namingID = nil
+        searchField.placeholderString = Self.searchPlaceholder
+        searchField.stringValue = queryBeforeNaming
+        queryBeforeNaming = ""
+        if panel.isVisible { reload(keepingSelection: true) }
+    }
+
+    /// `/snip <name>` in the launcher (AppDelegate): puts the snippet `typed`
+    /// names (Snippets.resolve) on the clipboard and pastes it into the app
+    /// underneath once `launcher` has closed, as a pick here does. False
+    /// (the launcher beeps and stays open) when no snippet is named so or
+    /// its image or files are gone.
+    func pasteSnippet(named typed: String, closing launcher: FloatingPanelController) -> Bool {
+        guard let item = Snippets.resolve(typed, in: store.items) else { return false }
+        guard write(item.content, to: NSPasteboard.general) else {
+            UsageStats.shared.record(.clipboardRestoreFailed)
+            return false
+        }
+        UsageStats.shared.recordClipboardRestore(bundleID: item.sourceBundleID)
+        UsageStats.shared.record(.clipboardSnippetPasted)
+        monitor.ignoreCurrentContents()
+        store.promote(id: item.id)
+        if let target = PasteKeystroke.target() {
+            launcher.runAfterHide { [weak self] in
+                self?.pendingPaste?.cancel()
+                self?.pendingPaste = PasteKeystroke.paste(into: target)
+            }
+        }
+        return true
+    }
+
     private func deleteSelected() {
         guard let item = selectedItem else { return }
         let row = tableView.selectedRow
@@ -409,11 +486,26 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     // MARK: NSTextFieldDelegate
 
     func controlTextDidChange(_ obj: Notification) {
+        // While naming, the field holds the name, not a search.
+        guard namingID == nil else { return }
         reload(keepingSelection: false)
     }
 
     /// Focus never leaves the search field, so it routes the list's keys.
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if namingID != nil {
+            switch commandSelector {
+            case #selector(NSResponder.insertNewline(_:)):
+                saveName()
+            case #selector(NSResponder.cancelOperation(_:)):
+                endNaming()
+            case #selector(NSResponder.moveUp(_:)), #selector(NSResponder.moveDown(_:)):
+                break  // The name is for the selected item: it stays selected.
+            default:
+                return false
+            }
+            return true
+        }
         switch commandSelector {
         case #selector(NSResponder.moveUp(_:)):
             select(row: tableView.selectedRow - 1)
@@ -447,6 +539,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         let item = visibleItems[row]
 
         var details: [String] = []
+        // Typed after the snippet keyword in the launcher (`/snip sig`).
+        if let name = item.snippetName { details.append("snippet: \(name)") }
         if let app = item.sourceApp { details.append(app) }
         details.append(ageFormatter.localizedString(for: item.copiedAt, relativeTo: Date()))
 
@@ -485,7 +579,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         guard !isReloading else { return }
         updatePreview()
         // The hint says "pin" or "unpin" for the selected item.
-        updateLabels(query: searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        updateLabels(query: currentQuery)
     }
 
     // MARK: Preview
@@ -684,7 +778,7 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     private func buildContent() {
         let icon = Self.makeIcon(symbolName: "doc.on.clipboard")
 
-        Self.styleSearchField(searchField, placeholder: "Search clipboard history…")
+        Self.styleSearchField(searchField, placeholder: Self.searchPlaceholder)
         searchField.delegate = self
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("clip"))
