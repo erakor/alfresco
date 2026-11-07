@@ -82,6 +82,8 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
     /// fraction of the screen height. 0 is dead center.
     private let verticalOffset: CGFloat
     private var isHiding = false
+    /// Set by runAfterHide: what follows the next hide.
+    private var afterHide: (@MainActor () -> Void)?
 
     init(size: NSSize, verticalOffset: CGFloat) {
         self.size = size
@@ -130,6 +132,9 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
 
     func show() {
         isHiding = false
+        // Opened again before it finished closing: what was to follow the
+        // close no longer applies.
+        afterHide = nil
         // prepareToShow may change the height, so the frame comes after it.
         prepareToShow()
         let target = targetFrame()
@@ -168,6 +173,20 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
         panel.orderOut(nil)
         panel.alphaValue = 1
         didHide()
+        let after = afterHide
+        afterHide = nil
+        after?()
+    }
+
+    /// Runs once after the next hide finishes (after didHide), e.g. a paste
+    /// into the app underneath; dropped if the panel is shown again first.
+    /// Runs at once when the panel isn't on screen.
+    func runAfterHide(_ block: @escaping @MainActor () -> Void) {
+        guard panel.isVisible else {
+            block()
+            return
+        }
+        afterHide = block
     }
 
     /// Grows or shrinks the panel downward, keeping its top edge in place.

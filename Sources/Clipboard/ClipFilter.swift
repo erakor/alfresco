@@ -33,7 +33,10 @@ struct ClipFilter {
             candidates = items
         }
         let matching = candidates.filter { item in
-            texts(of: item).contains { Self.contains($0, folded) }
+            // A snippet's name can change, so it isn't kept with the texts;
+            // it is short and already lowercase.
+            if let name = item.snippetName, Self.contains(AppIndex.fold(name), folded) { return true }
+            return texts(of: item).contains { Self.contains($0, folded) }
         }
         #if SELFTEST
         lastSearchedCount = candidates.count
