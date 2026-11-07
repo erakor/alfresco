@@ -34,6 +34,42 @@ enum ClipContent: Equatable, Sendable {
     }
 }
 
+extension ClipContent {
+    /// The SF Symbol of the kind, where no picture of the clip is shown.
+    var symbolName: String {
+        switch self {
+        case .text: return "doc.plaintext"
+        case .image: return "photo"
+        case .files: return "doc"
+        }
+    }
+
+    /// One line describing the clip: its text on one line, "Image: 4 × 3",
+    /// or the files' names. Used by the history's rows and the launcher's
+    /// snippets list.
+    var summary: String {
+        switch self {
+        case .text(let text): return Self.singleLine(text)
+        case .image(let image): return "Image: \(image.dimensions)"
+        case .files(let paths): return Self.fileNames(paths)
+        }
+    }
+
+    /// The start of `text` with every run of whitespace (line breaks
+    /// included) made one space. Only the start: copied text can be huge.
+    static func singleLine(_ text: String) -> String {
+        text.prefix(400)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    /// "invoice.pdf", or "3 files: a.pdf, b.pdf, c.pdf".
+    static func fileNames(_ paths: [String]) -> String {
+        let names = paths.map { ($0 as NSString).lastPathComponent }
+        return names.count == 1 ? names[0] : "\(names.count) files: \(names.joined(separator: ", "))"
+    }
+}
+
 /// An image clip. Its PNG data is stored as `<sha256>.png` in the store's
 /// images folder; identical images share one file and count as one clip.
 struct ClipImage: Codable, Equatable, Sendable {
@@ -387,15 +423,9 @@ final class ClipboardStore: NSObject {
     @discardableResult
     func setSnippetName(id: UUID, _ name: String?) -> Bool {
         guard items.contains(where: { $0.id == id }) else { return false }
-        let blank = name.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? true
-        let normalized: String?
-        if blank {
-            normalized = nil
-        } else {
-            guard let valid = name.flatMap(SnippetName.normalize) else { return false }
-            normalized = valid
-            guard setPinned(id: id, true) else { return false }
-        }
+        let removing = name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+        let normalized = removing ? nil : name.flatMap(SnippetName.normalize)
+        guard removing || (normalized != nil && setPinned(id: id, true)) else { return false }
         // setPinned may have moved it.
         guard let index = items.firstIndex(where: { $0.id == id }) else { return false }
         guard items[index].snippetName != normalized else { return true }

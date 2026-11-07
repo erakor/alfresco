@@ -3,7 +3,7 @@
 // The snippets area under the launcher input, shown while the input runs the
 // `/snip` workflow (alfresco://snippet/{query}), with or without a name: the
 // snippets whose name starts with what is typed, the one Enter pastes
-// highlighted. The launcher's hint says what Enter does (Snippets.hint).
+// highlighted. The launcher's hint says what Enter does (SnippetSearch.hint).
 
 import Cocoa
 
@@ -25,34 +25,23 @@ struct SnippetsViewContent: Equatable {
     /// At most this many rows; the rest are counted in the footer.
     static let maxRows = 6
 
-    /// `typed` is what follows the keyword (empty for `/snip` alone).
-    init(typed: String, items: [ClipItem]) {
-        let found = Snippets.matches(typed, in: items)
-        let pasted = Snippets.resolve(typed, in: items)?.id
-        rows = found.prefix(Self.maxRows).map { item in
+    init(_ search: SnippetSearch) {
+        rows = search.found.prefix(Self.maxRows).map { item in
             Row(
                 name: item.snippetName ?? "",
-                preview: Snippets.preview(of: item.content),
-                symbolName: Self.symbolName(of: item.content),
-                highlighted: item.id == pasted
+                preview: item.content.summary,
+                symbolName: item.content.symbolName,
+                highlighted: item.id == search.resolved?.id
             )
         }
-        if found.count > Self.maxRows {
-            footer = "\(found.count - Self.maxRows) more"
-        } else if found.isEmpty {
-            footer = Snippets.all(in: items).isEmpty
-                ? "No snippets yet: in the clipboard history, ⌘S names the selected clip"
-                : "No snippet starts with \(typed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+        if search.found.count > Self.maxRows {
+            footer = "\(search.found.count - Self.maxRows) more"
+        } else if !search.hasSnippets {
+            footer = "No snippets yet: in the clipboard history, ⌘S names the selected clip"
+        } else if search.found.isEmpty {
+            footer = "No snippet starts with \(search.query)"
         } else {
             footer = nil
-        }
-    }
-
-    private static func symbolName(of content: ClipContent) -> String {
-        switch content {
-        case .text: return "text.alignleft"
-        case .image: return "photo"
-        case .files: return "doc"
         }
     }
 }
@@ -115,14 +104,18 @@ final class SnippetsView: NSView {
         background.boxType = .custom
         background.borderWidth = 0
         background.cornerRadius = 6
-        background.fillColor = row.highlighted ? NSColor.controlAccentColor.withAlphaComponent(0.18) : .clear
+        // The suggestion list's highlighted row.
+        background.fillColor = row.highlighted ? .selectedContentBackgroundColor : .clear
         let icon = NSImageView(image: NSImage(systemSymbolName: row.symbolName, accessibilityDescription: nil) ?? NSImage())
-        icon.contentTintColor = .secondaryLabelColor
-        let name = NSTextField.areaLabel(row.name, size: 13, color: .labelColor, weight: .semibold)
+        let onAccent = NSColor.alternateSelectedControlTextColor
+        icon.contentTintColor = row.highlighted ? onAccent : .secondaryLabelColor
+        let name = NSTextField.areaLabel(row.name, size: 13, color: row.highlighted ? onAccent : .labelColor, weight: .semibold)
         name.font = .monospacedSystemFont(ofSize: 13, weight: .semibold)
         name.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         name.setContentHuggingPriority(.required, for: .horizontal)
-        let preview = NSTextField.areaLabel(row.preview, size: 13, color: .secondaryLabelColor)
+        let preview = NSTextField.areaLabel(
+            row.preview, size: 13, color: row.highlighted ? onAccent.withAlphaComponent(0.8) : .secondaryLabelColor
+        )
         preview.toolTip = row.preview
         for subview in [background, icon, name, preview] {
             subview.translatesAutoresizingMaskIntoConstraints = false

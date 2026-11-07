@@ -5,8 +5,8 @@
 // that was in front, as picking it in the clipboard history does. The name
 // is given in the history panel with ⌘S (ClipboardController). The `/snip`
 // workflow in workflows.json points at alfresco://snippet/{query}, run by
-// AppDelegate; while it is typed, SnippetsView lists the snippets under the
-// input.
+// AppDelegate; while it is typed, SnippetsView lists what SnippetSearch
+// finds under the input.
 //
 // Everything here is pure (no AppKit), so the self-test checks it.
 
@@ -48,61 +48,44 @@ enum SnippetCommand {
     }
 }
 
-/// Finding snippets in the history.
-enum Snippets {
-    /// The named items of `items` (pinned ones only), by name.
-    static func all(in items: [ClipItem]) -> [ClipItem] {
-        items.filter { $0.pinned && $0.snippetName != nil }
-            .sorted { ($0.snippetName ?? "") < ($1.snippetName ?? "") }
-    }
+/// What `/snip <typed>` finds in the history: worked out once per change of
+/// the launcher's input, then read by the list, the hint and the self-test.
+struct SnippetSearch {
+    /// What was typed after the keyword, as names are stored (trimmed and
+    /// lowercased); empty for the keyword alone.
+    let query: String
+    /// The snippets whose name starts with `query`, by name (so an exact
+    /// name, a prefix of the others, comes first); all of them for "".
+    let found: [ClipItem]
+    /// The one Enter pastes: the exact name, else the only one starting with
+    /// `query`. nil when there is none, or several and no exact one (Enter
+    /// then beeps rather than guess), and for "".
+    let resolved: ClipItem?
+    /// Whether the history has any snippet at all.
+    let hasSnippets: Bool
 
-    /// The snippets whose name starts with `typed` (all of them for empty
-    /// input), the exact name first, then by name.
-    static func matches(_ typed: String, in items: [ClipItem]) -> [ClipItem] {
+    /// `items` is the history, pinned items first (ClipboardStore.items):
+    /// only pinned items carry a name, so only those are looked through.
+    init(typed: String, items: [ClipItem]) {
         let query = typed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let named = all(in: items)
-        guard !query.isEmpty else { return named }
-        let starting = named.filter { $0.snippetName?.hasPrefix(query) == true }
-        let exact = starting.filter { $0.snippetName == query }
-        return exact + starting.filter { $0.snippetName != query }
-    }
-
-    /// The snippet `typed` names: the exact name, else the only one whose
-    /// name starts with it. nil when there is none, or several and no exact
-    /// one (Enter then beeps rather than guess).
-    static func resolve(_ typed: String, in items: [ClipItem]) -> ClipItem? {
-        let found = matches(typed, in: items)
-        guard let first = found.first, !typed.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        if first.snippetName == typed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() { return first }
-        return found.count == 1 ? first : nil
-    }
-
-    /// What `/snip <typed>` would do, for the launcher's hint.
-    static func hint(for typed: String, in items: [ClipItem]) -> String {
-        if let item = resolve(typed, in: items), let name = item.snippetName {
-            return "↩ Paste \(name)"
+        self.query = query
+        let named = items.prefix(while: \.pinned)
+            .filter { $0.snippetName != nil }
+            .sorted { ($0.snippetName ?? "") < ($1.snippetName ?? "") }
+        hasSnippets = !named.isEmpty
+        found = query.isEmpty ? named : named.filter { $0.snippetName?.hasPrefix(query) == true }
+        if query.isEmpty {
+            resolved = nil
+        } else if let first = found.first, first.snippetName == query || found.count == 1 {
+            resolved = first
+        } else {
+            resolved = nil
         }
-        let count = matches(typed, in: items).count
-        let shown = typed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return count == 0 ? "No snippet named \(shown)" : "\(count) snippets start with \(shown)"
     }
 
-    /// One line describing a snippet's content, for the launcher's list:
-    /// the first non-blank line of text, an image's size, or file names.
-    static func preview(of content: ClipContent, maxLength: Int = 120) -> String {
-        switch content {
-        case .text(let text):
-            // Only the start of a long text: never split the whole of it.
-            let head = text.prefix(maxLength * 4)
-            let line = head.split(whereSeparator: \.isNewline)
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .first { !$0.isEmpty } ?? ""
-            return line.count > maxLength ? String(line.prefix(maxLength - 1)) + "…" : line
-        case .image(let image):
-            return "Image: \(image.dimensions)"
-        case .files(let paths):
-            let names = paths.map { ($0 as NSString).lastPathComponent }
-            return names.count == 1 ? names[0] : "\(names[0]) and \(names.count - 1) more"
-        }
+    /// What Enter would do, for the launcher's hint.
+    var hint: String {
+        if let name = resolved?.snippetName { return "↩ Paste \(name)" }
+        return found.isEmpty ? "No snippet named \(query)" : "\(found.count) snippets start with \(query)"
     }
 }

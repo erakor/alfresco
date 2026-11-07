@@ -84,10 +84,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// self-tests that don't pass one.
     private let snippetItems: () -> [ClipItem]
     private let snippetsView = SnippetsView(frame: .zero)
-    /// The name typed after `/snip` ("" for the keyword alone), worked out
-    /// once per change of the input (inputDidChange); nil while it doesn't
-    /// run the snippet workflow.
-    private var currentSnippetQuery: String?
+    /// What the name typed after `/snip` finds ("" for the keyword alone),
+    /// worked out once per change of the input (inputDidChange) for the list
+    /// and the hint; nil while it doesn't run the snippet workflow.
+    private var currentSnippetSearch: SnippetSearch?
     private let suggestionList = SuggestionListView(frame: .zero)
     private let cardsView = WorkflowCardsView(frame: .zero)
     /// The input row (icon, field, hint); moves down when the strip is shown.
@@ -130,11 +130,9 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         InputArea(
             view: snippetsView,
             height: { [unowned self] in self.snippetsView.preferredHeight },
-            claims: { [unowned self] in self.currentSnippetQuery != nil },
+            claims: { [unowned self] in self.currentSnippetSearch != nil },
             // `/snip` alone keeps the workflow's own help (the hint shows it first).
-            hint: { [unowned self] in
-                self.currentSnippetQuery.map { Snippets.hint(for: $0, in: self.snippetItems()) }
-            }
+            hint: { [unowned self] in self.currentSnippetSearch?.hint }
         ),
     ]
     /// Height of the input row, which is the whole panel without the weather.
@@ -248,7 +246,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         currentCalendarQuery = nil
         currentPomodoroURL = nil
         showsStats = false
-        currentSnippetQuery = nil
+        currentSnippetSearch = nil
         previews.cancel()
         weather.cancel()
         for area in inputAreas { area.view.isHidden = true }
@@ -276,7 +274,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         currentCalendarQuery = CalendarQuery.make(input: input, command: currentCommand)
         currentPomodoroURL = pomodoroURL(for: currentCommand)
         showsStats = runsStats(currentCommand)
-        currentSnippetQuery = snippetQuery(for: input, command: currentCommand)
+        currentSnippetSearch = snippetQuery(for: input, command: currentCommand)
+            .map { SnippetSearch(typed: $0, items: snippetItems()) }
         updateSuggestions()
         updateHint()
         // Each changes what is under the input: resize once, after all.
@@ -894,10 +893,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// Fills the snippets list while the input runs `/snip`. Its height
     /// follows the rows; inputDidChange's updateHeight covers it.
     private func updateSnippets() {
-        if let query = currentSnippetQuery {
-            snippetsView.show(SnippetsViewContent(typed: query, items: snippetItems()))
+        if let search = currentSnippetSearch {
+            snippetsView.show(SnippetsViewContent(search))
         }
-        snippetsView.isHidden = currentSnippetQuery == nil
+        snippetsView.isHidden = currentSnippetSearch == nil
     }
 
     /// Sizes the panel for the strip, the input row, and the InputArea

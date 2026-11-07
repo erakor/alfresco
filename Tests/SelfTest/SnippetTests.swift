@@ -126,42 +126,39 @@ enum SnippetTests {
             ClipItem(id: UUID(), copiedAt: Date(), sourceApp: nil, sourceBundleID: nil, content: .text("not a snippet")),
         ]
         func names(_ found: [ClipItem]) -> [String] { found.compactMap(\.snippetName) }
-        check("snippets: all, by name", names(Snippets.all(in: items)) == ["iban", "sig", "sign"])
-        check("snippets: matches by prefix, the exact one first",
-              names(Snippets.matches("SIG", in: items)) == ["sig", "sign"])
+        func search(_ typed: String) -> SnippetSearch { SnippetSearch(typed: typed, items: items) }
+        check("snippets: all, by name", names(search("").found) == ["iban", "sig", "sign"])
+        check("snippets: matches by prefix, the exact one first", names(search(" SIG ").found) == ["sig", "sign"])
         check("snippets: an exact name resolves even when others start with it",
-              Snippets.resolve("sig", in: items)?.snippetName == "sig")
-        check("snippets: the only prefix match resolves", Snippets.resolve("ib", in: items)?.snippetName == "iban")
-        check("snippets: an ambiguous prefix doesn't", Snippets.resolve("si", in: items) == nil)
+              search("sig").resolved?.snippetName == "sig")
+        check("snippets: the only prefix match resolves", search("ib").resolved?.snippetName == "iban")
+        check("snippets: an ambiguous prefix doesn't", search("si").resolved == nil)
         check("snippets: neither do an unknown name and an empty one",
-              Snippets.resolve("x", in: items) == nil && Snippets.resolve("", in: items) == nil)
-        check("snippets: hint for a match", Snippets.hint(for: "ib", in: items) == "↩ Paste iban")
-        check("snippets: hint for several", Snippets.hint(for: "si", in: items) == "2 snippets start with si",
-              Snippets.hint(for: "si", in: items))
-        check("snippets: hint for none", Snippets.hint(for: "Zz", in: items) == "No snippet named zz")
+              search("x").resolved == nil && search("").resolved == nil)
+        check("snippets: hint for a match", search("ib").hint == "↩ Paste iban")
+        check("snippets: hint for several", search("si").hint == "2 snippets start with si", search("si").hint)
+        check("snippets: hint for none", search("Zz").hint == "No snippet named zz")
 
-        check("snippets: a text's preview is its first non-blank line",
-              Snippets.preview(of: .text("\n  Hello  \nworld")) == "Hello")
-        check("snippets: a long line is cut",
-              Snippets.preview(of: .text(String(repeating: "a", count: 300)), maxLength: 10) == "aaaaaaaaa…")
+        check("snippets: a text's summary is on one line",
+              ClipContent.text("\n  Hello  \nworld").summary == "Hello world")
         let image = ClipImage(hash: String(repeating: "a", count: 64), pixelWidth: 4, pixelHeight: 3, byteCount: 1)
-        check("snippets: an image's preview is its size", Snippets.preview(of: .image(image)) == "Image: 4 × 3")
-        check("snippets: files' preview names them",
-              Snippets.preview(of: .files(["/a/x.pdf", "/a/y.pdf"])) == "x.pdf and 1 more")
+        check("snippets: an image's summary is its size", ClipContent.image(image).summary == "Image: 4 × 3")
+        check("snippets: files' summary names them",
+              ClipContent.files(["/a/x.pdf", "/a/y.pdf"]).summary == "2 files: x.pdf, y.pdf")
 
-        let content = SnippetsViewContent(typed: "si", items: items)
+        let content = SnippetsViewContent(search("si"))
         check("snippets: the list shows the matches, none highlighted while ambiguous",
               content.rows.map(\.name) == ["sig", "sign"] && !content.rows.contains(where: \.highlighted)
                   && content.footer == nil)
-        let exact = SnippetsViewContent(typed: "sig", items: items)
+        let exact = SnippetsViewContent(search("sig"))
         check("snippets: the one Enter pastes is highlighted", exact.rows.first?.highlighted == true
               && exact.rows.dropFirst().allSatisfy { !$0.highlighted })
         check("snippets: nothing matching says so",
-              SnippetsViewContent(typed: "q", items: items).footer == "No snippet starts with q")
+              SnippetsViewContent(search("q")).footer == "No snippet starts with q")
         check("snippets: no snippets at all says how to make one",
-              SnippetsViewContent(typed: "", items: []).footer?.contains("⌘S") == true)
+              SnippetsViewContent(SnippetSearch(typed: "", items: [])).footer?.contains("⌘S") == true)
         let many = (0..<(SnippetsViewContent.maxRows + 2)).map { snippet("s\($0)", .text("\($0)")) }
-        let capped = SnippetsViewContent(typed: "", items: many)
+        let capped = SnippetsViewContent(SnippetSearch(typed: "", items: many))
         check("snippets: the list is capped and counts the rest",
               capped.rows.count == SnippetsViewContent.maxRows && capped.footer == "2 more", capped.footer ?? "nil")
     }

@@ -137,6 +137,6 @@ In `Sources/App/Config.swift` (rebuild after a change):
   (from the panel, or a snippet from the launcher once it has closed).
 - `Snippets.swift`: snippet names (`SnippetName`), the
   `alfresco://snippet/<name>` URL (`SnippetCommand`) and finding one from
-  what is typed (`Snippets`), all pure and checked by the self-test.
+  what is typed (`SnippetSearch`), all pure and checked by the self-test.
 - `SnippetsView.swift`: the list under the launcher input while `/snip` is
   typed.

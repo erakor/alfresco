@@ -280,19 +280,28 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     /// launch and the item is left on the clipboard for ⌘V.
     private func pickSelected(paste: Bool) {
         guard let item = selectedItem else { return }
-        guard write(item.content, to: NSPasteboard.general) else {
-            // The image file or every copied file is gone.
-            UsageStats.shared.record(.clipboardRestoreFailed)
+        guard restore(item) else {
             NSSound.beep()
             return
         }
-        UsageStats.shared.recordClipboardRestore(bundleID: item.sourceBundleID)
-        monitor.ignoreCurrentContents()
-        store.promote(id: item.id)
         // A later pick during the fade-out decides alone: ⌘↩ right after ↩
         // must not paste.
         pasteTarget = paste ? PasteKeystroke.target() : nil
         hide()
+    }
+
+    /// Puts `item` back on the clipboard (not recorded again as a copy) and
+    /// moves it up, as a pick does. False, leaving the clipboard alone, when
+    /// its image file or every copied file is gone.
+    private func restore(_ item: ClipItem) -> Bool {
+        guard write(item.content, to: NSPasteboard.general) else {
+            UsageStats.shared.record(.clipboardRestoreFailed)
+            return false
+        }
+        UsageStats.shared.recordClipboardRestore(bundleID: item.sourceBundleID)
+        monitor.ignoreCurrentContents()
+        store.promote(id: item.id)
+        return true
     }
 
     /// Returns false, leaving the clipboard alone, when there's nothing left
@@ -419,16 +428,13 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         let name = searchField.stringValue
         let removing = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let hadName = store.items.first { $0.id == id }?.snippetName != nil
-        // Back to the search first: the change reloads the list with it.
-        endNaming()
+        // Refused: keep naming, with what was typed, to fix it.
         guard store.setSnippetName(id: id, name) else {
             NSSound.beep()
-            // Back to naming, with what was typed, to fix it.
-            if let row = visibleItems.firstIndex(where: { $0.id == id }) { select(row: row) }
-            startNaming()
-            searchField.stringValue = name
             return
         }
+        // The change reloaded the list with the earlier search (currentQuery).
+        endNaming()
         if !removing || hadName {
             UsageStats.shared.record(removing ? .clipboardSnippetUnnamed : .clipboardSnippetNamed)
         }
@@ -445,20 +451,13 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     }
 
     /// `/snip <name>` in the launcher (AppDelegate): puts the snippet `typed`
-    /// names (Snippets.resolve) on the clipboard and pastes it into the app
+    /// names (SnippetSearch.resolved) on the clipboard and pastes it into the app
     /// underneath once `launcher` has closed, as a pick here does. False
     /// (the launcher beeps and stays open) when no snippet is named so or
     /// its image or files are gone.
     func pasteSnippet(named typed: String, closing launcher: FloatingPanelController) -> Bool {
-        guard let item = Snippets.resolve(typed, in: store.items) else { return false }
-        guard write(item.content, to: NSPasteboard.general) else {
-            UsageStats.shared.record(.clipboardRestoreFailed)
-            return false
-        }
-        UsageStats.shared.recordClipboardRestore(bundleID: item.sourceBundleID)
+        guard let item = SnippetSearch(typed: typed, items: store.items).resolved, restore(item) else { return false }
         UsageStats.shared.record(.clipboardSnippetPasted)
-        monitor.ignoreCurrentContents()
-        store.promote(id: item.id)
         if let target = PasteKeystroke.target() {
             launcher.runAfterHide { [weak self] in
                 self?.pendingPaste?.cancel()
@@ -546,17 +545,17 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
         switch item.content {
         case .text(let text):
-            cell.title.stringValue = Self.preview(of: text)
+            cell.title.stringValue = ClipContent.singleLine(text)
             cell.icon.image = item.sourceBundleID.flatMap { appIcon(bundleID: $0) }
-                ?? NSImage(systemSymbolName: "doc.plaintext", accessibilityDescription: nil)
+                ?? NSImage(systemSymbolName: item.content.symbolName, accessibilityDescription: nil)
             let lines = text.utf8.lazy.filter { $0 == UInt8(ascii: "\n") }.count + 1
             if lines > 1 { details.append("\(lines) lines") }
 
         case .image(let image):
-            cell.title.stringValue = "Image: \(image.dimensions)"
+            cell.title.stringValue = item.content.summary
             // The symbol until the thumbnail is decoded (rowThumbnailLoaded).
             cell.icon.image = rowThumbnails.image(for: store.imageURL(for: image))
-                ?? NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
+                ?? NSImage(systemSymbolName: item.content.symbolName, accessibilityDescription: nil)
             details.append(Self.byteCount(image.byteCount))
 
         case .files(let paths):
@@ -722,18 +721,9 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     // MARK: Formatting
 
     /// First line's worth of text with runs of whitespace collapsed.
-    private static func preview(of text: String) -> String {
-        text.prefix(400)
-            .split(whereSeparator: \.isWhitespace)
-            .joined(separator: " ")
-    }
-
     private func title(ofFiles paths: [String]) -> String {
-        let names = paths.map { ($0 as NSString).lastPathComponent }
-        guard paths.count == 1 else {
-            return "\(paths.count) files: \(names.joined(separator: ", "))"
-        }
-        return "\(fileState(paths[0]) == .folder ? "Folder" : "File"): \(names[0])"
+        guard paths.count == 1 else { return ClipContent.fileNames(paths) }
+        return "\(fileState(paths[0]) == .folder ? "Folder" : "File"): \(ClipContent.fileNames(paths))"
     }
 
     private static func abbreviated(_ path: String) -> String {
