@@ -15,8 +15,10 @@
 #
 # Every run uses a fresh scratch folder as ALFRESCO_SUPPORT_DIR, so the real
 # clipboard history and pomodoro state are never touched, and is killed
-# after 60 s. Results go to $OUT_DIR (default build/self-test): self-test.log
-# and menubar.png. Exits non-zero if any check failed.
+# after 60 s. Results go to $OUT_DIR (default build/self-test): self-test.log,
+# menubar.png, and renders of launcher screens (transit-*-light.png and
+# -dark.png, drawn off screen by the plain binary's unit run). Exits non-zero
+# if any check failed.
 #
 # Needs no running copy of the app to be quit: the self-test skips the
 # single-instance lock and registers no hotkeys.
@@ -72,7 +74,7 @@ BUILD_DIR="$OUT_DIR/bundle" EXECUTABLE="$BIN" BUNDLE_ID=local.launcher.selftest 
 APP_BIN="$OUT_DIR/bundle/Launcher.app/Contents/MacOS/Launcher"
 set +e
 
-run "unit, plain binary" env ALFRESCO_SUPPORT_DIR="$(scratch)" SELFTEST_EXPECT_BUNDLE=0 "$BIN" --self-test unit
+run "unit, plain binary" env ALFRESCO_SUPPORT_DIR="$(scratch)" SELFTEST_EXPECT_BUNDLE=0 SELFTEST_RENDER_DIR="$OUT_DIR" "$BIN" --self-test unit
 run "unit, app bundle" env ALFRESCO_SUPPORT_DIR="$(scratch)" SELFTEST_EXPECT_BUNDLE=1 "$APP_BIN" --self-test unit
 
 # --check, as CI and a user run it: the exit status, and output lines that

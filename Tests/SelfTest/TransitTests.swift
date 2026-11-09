@@ -5,7 +5,7 @@
 // while the input runs the transit workflow. Never fetches: the self-test
 // build has no transit service (Config.transitService).
 
-import Foundation
+import AppKit
 
 @MainActor
 enum TransitTests {
@@ -117,9 +117,12 @@ enum TransitTests {
             check("\"\(keyword)\" shows the board", controller.showsTransitForSelfTest)
         }
         check("without a service, no trains", controller.transitBoardForSelfTest == nil)
+        render(controller, as: "transit-setup")
         let soon = TransitDeparture(route: "A", color: 0, textColor: 0, direction: .north, time: Date().addingTimeInterval(200))
         controller.setTransitSnapshotForSelfTest(snapshot([soon], fetchedAt: Date()))
         check("the snapshot's trains are on the board", controller.transitBoardForSelfTest?.north.map(\.route) == ["A"])
+        controller.setTransitSnapshotForSelfTest(sampleBoard())
+        render(controller, as: "transit-board")
         controller.setTransitSnapshotForSelfTest(
             snapshot([], fetchedAt: Date().addingTimeInterval(-TransitProvider.snapshotLifetime - 1))
         )
@@ -127,6 +130,49 @@ enum TransitTests {
         for other in ["/bus", "/zz", "metro", "/", ""] {
             controller.typeForSelfTest(other)
             check("\"\(other)\" doesn't show it", !controller.showsTransitForSelfTest)
+        }
+    }
+
+    // MARK: Renders
+
+    /// A busy W 4 St, in the transit service's colors, for the renders.
+    private static func sampleBoard() -> TransitSnapshot {
+        let now = Date()
+        func train(_ route: String, _ color: UInt32, _ direction: TransitDirection, _ seconds: TimeInterval) -> TransitDeparture {
+            TransitDeparture(route: route, color: color, textColor: 0xFFFFFF, direction: direction, time: now.addingTimeInterval(seconds))
+        }
+        let blue: UInt32 = 0x0062CF, orange: UInt32 = 0xEB6800
+        return TransitSnapshot(
+            stationName: "W 4 St-Wash Sq",
+            departures: [
+                train("A", blue, .north, 20), train("F", orange, .north, 150), train("E", blue, .north, 260),
+                train("D", orange, .north, 420), train("C", blue, .north, 610), train("M", orange, .north, 780),
+                train("B", orange, .north, 900),
+                train("E", blue, .south, 70), train("A", blue, .south, 200), train("F", orange, .south, 330),
+                train("M", orange, .south, 540), train("C", blue, .south, 700), train("D", orange, .south, 850),
+            ],
+            updatedAt: now.addingTimeInterval(-25),
+            fetchedAt: now,
+            someLinesMissing: false
+        )
+    }
+
+    /// Writes the launcher panel as it is now to <name>-light.png and
+    /// <name>-dark.png in SELFTEST_RENDER_DIR, when it is set (CI uploads them).
+    private static func render(_ controller: LauncherController, as name: String) {
+        guard let folder = ProcessInfo.processInfo.environment["SELFTEST_RENDER_DIR"], !folder.isEmpty else { return }
+        for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            let file = URL(fileURLWithPath: folder).appendingPathComponent("\(name)-\(suffix).png")
+            guard let png = controller.renderForSelfTest(appearance: appearance) else {
+                check("\(name) renders in \(suffix) mode", false)
+                continue
+            }
+            do {
+                try png.write(to: file)
+                check("\(name) renders in \(suffix) mode", true)
+            } catch {
+                check("\(name) renders in \(suffix) mode", false, error.localizedDescription)
+            }
         }
     }
 }
