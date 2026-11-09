@@ -47,6 +47,12 @@
       "url": "https://calendar.google.com/calendar/r/search?q={query}"
     },
     {
+      "keywords": ["transit", "metro", "bus"],
+      "title": "Next trains at W 4 St",
+      "description": "Uptown and downtown trains at W 4 St-Washington Sq, Enter opens the station in Google Maps",
+      "url": "https://www.google.com/maps/search/?api=1&query=W+4+St-Washington+Sq+station"
+    },
+    {
       "keywords": ["pomo"],
       "title": "Pomodoro",
       "description": "Start a focus session, or pause / resume the running one",

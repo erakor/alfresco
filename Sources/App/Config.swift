@@ -1,7 +1,7 @@
 // Config.swift
 //
 // Compile-time settings: hotkeys, menu bar icon, clipboard limits, weather,
-// calendar, pomodoro, usage stats, and where the workflows file is found. Edit and rebuild to change them.
+// calendar, transit, pomodoro, usage stats, and where the workflows file is found. Edit and rebuild to change them.
 
 import Foundation
 import Carbon.HIToolbox
@@ -245,6 +245,29 @@ enum Config {
         return clean(try? String(contentsOf: file, encoding: .utf8))
         #endif
     }
+
+    // MARK: Transit
+
+    /// `/transit` (or the workflow's other keywords, `/metro` and `/bus`)
+    /// shows the next subway trains at Config.transitStation under the
+    /// input, from the MTA's real-time feeds (no key needed). Only while the
+    /// input runs a workflow whose first keyword is this one; Enter still
+    /// opens that workflow's URL.
+    static let transitKeyword = "transit"
+    /// The station on the board, by the MTA's parent stop IDs (GTFS
+    /// stops.txt) and the feeds of the lines that stop there. nil turns the
+    /// board off.
+    static let transitStation: TransitStation? = TransitStation(
+        name: "W 4 St-Washington Sq",
+        // A32: the 8 Av platforms (A C E); D20: the 6 Av ones (B D F M).
+        stopIDs: ["A32", "D20"],
+        feeds: ["nyct/gtfs-ace", "nyct/gtfs-bdfm"]
+    )
+    /// Trains listed each way.
+    static let transitDepartures = 6
+    /// A snapshot is reused for this long, then fetched again while the
+    /// board is shown.
+    static let transitCacheLifetime: TimeInterval = 30
 
     // MARK: Calendar
 
