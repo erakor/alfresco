@@ -878,7 +878,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     /// Whether `command` runs a workflow whose first keyword is
-    /// Config.transitKeyword (`/transit`, `/metro`, `/bus`), while a station
+    /// Config.transitKeyword (`/transit`, `/metro`), while a station
     /// is set.
     private func runsTransit(_ command: Command?) -> Bool {
         guard transit.station != nil, case .workflow(let keyword, _)? = command?.source else { return false }
@@ -890,13 +890,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// 10 s redraw running while it is shown. Its height is fixed, so
     /// inputDidChange's updateHeight covers it.
     private func updateTransit() {
-        if showsTransit, let station = transit.station {
+        if showsTransit {
             if !didShowTransit {
                 didShowTransit = true
                 UsageStats.shared.record(.transitShown)
             }
             transit.refreshIfStale()
-            transitView.show(transit.state(), station: station, now: Date())
+            transitView.show(transit.state(), now: Date())
             startTransitTimer()
         } else {
             stopTransitTimer()

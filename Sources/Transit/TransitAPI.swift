@@ -1,26 +1,49 @@
 // TransitAPI.swift
 //
-// The network side of the departure board, off the main actor: the MTA's
-// GTFS-Realtime feeds for the station (one per group of lines, fetched
-// side by side, no key needed) become a TransitSnapshot, the trains due at
-// its platforms. TransitBoard (pure) turns a snapshot into what is shown
+// The network side of the departure board, off the main actor: one request
+// to the transit service (github.com/erakor/transit), whose
+// /subway/arrivals reads the MTA's real-time feeds and answers with the
+// next trains at a station, names and line colors joined in. It becomes a
+// TransitSnapshot; TransitBoard (pure) turns a snapshot into what is shown
 // at a given moment, so countdowns follow the clock without a refetch.
 
 import Foundation
 
-/// The trains due at the station, as fetched.
-struct TransitSnapshot: Sendable, Equatable {
-    let stopTimes: [GTFSRealtime.StopTime]
-    let fetchedAt: Date
-    /// Feeds that failed while others answered: some lines may be missing.
-    let missingFeeds: Int
+/// Where the transit service runs and the token it expects.
+struct TransitService: Sendable, Equatable {
+    let baseURL: URL
+    let token: String
+}
+
+/// Which way a train runs, from the MTA's platform direction: north is
+/// uptown in Manhattan.
+enum TransitDirection: String, Sendable, Equatable, Decodable {
+    case north = "N"
+    case south = "S"
 }
 
 /// One train on the board.
 struct TransitDeparture: Sendable, Equatable {
-    /// The route as shown in its bullet ("F" for the feed's "FX").
+    /// The route as riders know it ("F" for the "FX" express, "S" for the
+    /// shuttles), from the service.
     let route: String
+    /// sRGB, 0xRRGGBB.
+    let color: UInt32
+    let textColor: UInt32
+    let direction: TransitDirection
     let time: Date
+}
+
+/// The trains due at the station, as fetched.
+struct TransitSnapshot: Sendable, Equatable {
+    let stationName: String
+    let departures: [TransitDeparture]
+    /// The oldest MTA feed used, else when the answer arrived.
+    let updatedAt: Date
+    /// When the answer arrived: how long it is reused and shown.
+    let fetchedAt: Date
+    /// Some of the station's feeds failed: some lines may be missing.
+    let someLinesMissing: Bool
 }
 
 /// What the board shows at one moment: the next trains each way, soonest
@@ -35,15 +58,12 @@ struct TransitBoard: Sendable, Equatable {
 
     static func make(from snapshot: TransitSnapshot, now: Date, limit: Int) -> TransitBoard {
         func departures(_ direction: TransitDirection) -> [TransitDeparture] {
-            var seen = Set<String>()
-            return snapshot.stopTimes
-                .filter { $0.direction == direction && $0.time.timeIntervalSince(now) >= -departedAfter }
-                .sorted { $0.time < $1.time }
-                .map { TransitDeparture(route: displayRoute($0.route), time: $0.time) }
-                // The same train in two feeds (a rerouted line) shows once.
-                .filter { seen.insert("\($0.route) \($0.time.timeIntervalSince1970)").inserted }
-                .prefix(limit)
-                .map { $0 }
+            Array(
+                snapshot.departures
+                    .filter { $0.direction == direction && $0.time.timeIntervalSince(now) >= -departedAfter }
+                    .sorted { $0.time < $1.time }
+                    .prefix(limit)
+            )
         }
         return TransitBoard(north: departures(.north), south: departures(.south))
     }
@@ -62,47 +82,21 @@ struct TransitBoard: Sendable, Equatable {
         if seconds < 60 { return "\(seconds) s ago" }
         return "\(seconds / 60) min ago"
     }
-
-    /// The letter on the bullet: express variants ("FX", "6X", "7X") show
-    /// as their line, and the shuttles ("GS", "FS", "H") as "S".
-    static func displayRoute(_ routeID: String) -> String {
-        switch routeID {
-        case "GS", "FS", "H": return "S"
-        case "SI", "SS": return "SIR"
-        default:
-            if routeID.count == 2, routeID.hasSuffix("X") { return String(routeID.prefix(1)) }
-            return routeID
-        }
-    }
-
-    /// The line's color (sRGB, 0xRRGGBB) and whether its letter is dark,
-    /// from the MTA's palette.
-    static func color(of route: String) -> (rgb: UInt32, darkText: Bool) {
-        switch route {
-        case "A", "C", "E", "SIR": return (0x0039A6, false)
-        case "B", "D", "F", "M": return (0xFF6319, false)
-        case "G": return (0x6CBE45, false)
-        case "J", "Z": return (0x996633, false)
-        case "L": return (0xA7A9AC, false)
-        case "N", "Q", "R", "W": return (0xFCCC0A, true)
-        case "1", "2", "3": return (0xEE352E, false)
-        case "4", "5", "6": return (0x00933C, false)
-        case "7": return (0xB933AD, false)
-        default: return (0x808183, false)
-        }
-    }
 }
 
-enum TransitError: Error, Sendable {
+enum TransitError: Error, Sendable, Equatable {
     case offline
+    /// The service refused the token (401).
+    case token
     case server(Int)
     case badResponse
 
     var message: String {
         switch self {
-        case .offline: return "Can't reach the MTA."
-        case .server(let status): return "MTA: error \(status)."
-        case .badResponse: return "Unreadable answer from the MTA."
+        case .offline: return "Can't reach the transit service."
+        case .token: return "The transit service refused the token. See Sources/Transit/README.md."
+        case .server(let status): return "Transit service: error \(status)."
+        case .badResponse: return "Unreadable answer from the transit service."
         }
     }
 
@@ -110,6 +104,7 @@ enum TransitError: Error, Sendable {
     var usageName: String {
         switch self {
         case .offline: return "offline"
+        case .token: return "token"
         case .server: return "server"
         case .badResponse: return "badResponse"
         }
@@ -117,81 +112,113 @@ enum TransitError: Error, Sendable {
 }
 
 enum TransitLoader {
-    private static let timeout: TimeInterval = 8
-    private static let baseURL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/"
-    /// A feed is a few hundred KB; anything far past that isn't one.
-    private static let maxBytes = 16 * 1024 * 1024
+    private static let timeout: TimeInterval = 10
 
-    private enum FeedResult: Sendable {
-        case stopTimes([GTFSRealtime.StopTime], bytes: Int)
-        case failed(TransitError)
-        case cancelled
+    /// The /subway/arrivals answer, only the fields the board uses.
+    private struct Response: Decodable {
+        struct Stop: Decodable {
+            let name: String
+        }
+
+        struct Group: Decodable {
+            struct Arrival: Decodable {
+                let time: TimeInterval
+            }
+
+            let name: String
+            let color: String
+            let textColor: String
+            let direction: TransitDirection
+            let arrivals: [Arrival]
+        }
+
+        let stop: Stop
+        let updatedAt: TimeInterval?
+        let groups: [Group]
+        let unavailableFeeds: [String]?
     }
 
-    /// Every feed of `station`, side by side. Throws TransitError when none
-    /// answered, or CancellationError.
-    static func load(_ station: TransitStation) async throws -> TransitSnapshot {
+    /// The URL of `station`'s arrivals, `limit` trains per line and
+    /// direction (the service allows 1 to 10).
+    static func url(for station: String, limit: Int, service: TransitService) -> URL? {
+        guard var components = URLComponents(
+            url: service.baseURL.appendingPathComponent("subway/arrivals"), resolvingAgainstBaseURL: false
+        ) else { return nil }
+        components.queryItems = [
+            URLQueryItem(name: "stop", value: station),
+            URLQueryItem(name: "limit", value: String(min(max(limit, 1), 10))),
+        ]
+        // A station id joins its stops with "+", which a query reads as a space.
+        components.percentEncodedQuery = components.percentEncodedQuery?
+            .replacingOccurrences(of: "+", with: "%2B")
+        return components.url
+    }
+
+    /// Decodes an answer of the service. nil when it isn't one.
+    static func snapshot(from data: Data, fetchedAt: Date) -> TransitSnapshot? {
+        guard let response = try? JSONDecoder().decode(Response.self, from: data) else { return nil }
+        let departures = response.groups.flatMap { group in
+            group.arrivals.map {
+                TransitDeparture(
+                    route: group.name,
+                    color: rgb(group.color) ?? 0x808183,
+                    textColor: rgb(group.textColor) ?? 0xFFFFFF,
+                    direction: group.direction,
+                    time: Date(timeIntervalSince1970: $0.time)
+                )
+            }
+        }
+        return TransitSnapshot(
+            stationName: response.stop.name,
+            departures: departures,
+            updatedAt: response.updatedAt.map(Date.init(timeIntervalSince1970:)) ?? fetchedAt,
+            fetchedAt: fetchedAt,
+            someLinesMissing: !(response.unavailableFeeds ?? []).isEmpty
+        )
+    }
+
+    /// "#RRGGBB" as 0xRRGGBB.
+    static func rgb(_ hex: String) -> UInt32? {
+        guard hex.count == 7, hex.hasPrefix("#") else { return nil }
+        return UInt32(hex.dropFirst(), radix: 16)
+    }
+
+    /// The next trains at `station`. Throws TransitError, or
+    /// CancellationError.
+    static func load(_ station: String, limit: Int, service: TransitService) async throws -> TransitSnapshot {
         let signposter = Signposts.signposter
         let signpost = signposter.beginInterval("transit.load", id: signposter.makeSignpostID())
         var outcome = Signposts.Kind.failed
         var bytes = 0
         defer { Signposts.end("transit.load", signpost, outcome, bytes: bytes) }
 
-        let stopIDs = station.stopIDs
-        let results = await withTaskGroup(of: FeedResult.self) { group in
-            for feed in station.feeds {
-                group.addTask { await TransitLoader.fetch(feed, stopIDs: stopIDs) }
-            }
-            var results: [FeedResult] = []
-            for await result in group { results.append(result) }
-            return results
-        }
-
-        var stopTimes: [GTFSRealtime.StopTime] = []
-        var answered = 0
-        var firstError: TransitError?
-        for result in results {
-            switch result {
-            case .stopTimes(let times, let size):
-                stopTimes += times
-                bytes += size
-                answered += 1
-            case .failed(let error):
-                if firstError == nil { firstError = error }
-            case .cancelled:
-                outcome = .cancelled
-                throw CancellationError()
-            }
-        }
-        if Task.isCancelled {
-            outcome = .cancelled
-            throw CancellationError()
-        }
-        if answered == 0, let firstError { throw firstError }
-        outcome = .ok
-        return TransitSnapshot(stopTimes: stopTimes, fetchedAt: Date(), missingFeeds: results.count - answered)
-    }
-
-    private static func fetch(_ feed: String, stopIDs: Set<String>) async -> FeedResult {
-        let path = feed.replacingOccurrences(of: "/", with: "%2F")
-        guard let url = URL(string: baseURL + path) else { return .failed(.badResponse) }
-        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        guard let url = url(for: station, limit: limit, service: service) else { throw TransitError.badResponse }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        // Not Authorization: the service's CDN never caches requests carrying it.
+        request.setValue(service.token, forHTTPHeaderField: "X-Transit-Token")
         let result: (Data, URLResponse)
         do {
             result = try await HTTPSession.shared.data(for: request)
         } catch let error as URLError where error.code == .cancelled {
-            return .cancelled
+            outcome = .cancelled
+            throw CancellationError()
         } catch is CancellationError {
-            return .cancelled
+            outcome = .cancelled
+            throw CancellationError()
         } catch {
-            return .failed(.offline)
+            throw TransitError.offline
         }
-        let data = result.0
-        guard let http = result.1 as? HTTPURLResponse else { return .failed(.badResponse) }
-        guard (200..<300).contains(http.statusCode) else { return .failed(.server(http.statusCode)) }
-        guard data.count <= maxBytes,
-              let times = try? GTFSRealtime.stopTimes(in: data, stopIDs: stopIDs)
-        else { return .failed(.badResponse) }
-        return .stopTimes(times, bytes: data.count)
+        let (data, response) = result
+        bytes = data.count
+        if Task.isCancelled {
+            outcome = .cancelled
+            throw CancellationError()
+        }
+        guard let http = response as? HTTPURLResponse else { throw TransitError.badResponse }
+        if http.statusCode == 401 { throw TransitError.token }
+        guard (200..<300).contains(http.statusCode) else { throw TransitError.server(http.statusCode) }
+        guard let snapshot = snapshot(from: data, fetchedAt: Date()) else { throw TransitError.badResponse }
+        outcome = .ok
+        return snapshot
     }
 }

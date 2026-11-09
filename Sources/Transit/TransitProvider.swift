@@ -3,7 +3,8 @@
 // Main-actor side of the departure board: keeps the last snapshot of
 // Config.transitStation's trains, fetches a new one through TransitLoader
 // once it is older than Config.transitCacheLifetime (one request at a
-// time), and calls onUpdate when it arrives.
+// time), and calls onUpdate when it arrives. The service's address and
+// token come from Config.transitService(), read before each fetch.
 
 import Foundation
 
@@ -25,34 +26,34 @@ final class TransitProvider {
     var onUpdate: (@MainActor () -> Void)?
 
     /// nil turns the feature off.
-    let station: TransitStation? = Config.transitStation
+    let station: String? = Config.transitStation
+    /// Shown while no service is set up.
+    static let setupMessage = "Set the transit service's address and token: see Sources/Transit/README.md."
 
     private var snapshot: TransitSnapshot?
     private var failure: (message: String, at: Date)?
     private var task: Task<Void, Never>?
 
     /// What to show at `now`: the last snapshot while it is recent enough
-    /// (a newer one may be on its way), else the last failure, else loading.
+    /// (a newer one may be on its way), else the last failure, else how to
+    /// set up the service when it isn't, else loading.
     func state(now: Date = Date()) -> TransitState {
         if let snapshot, now.timeIntervalSince(snapshot.fetchedAt) < Self.snapshotLifetime {
             return .loaded(snapshot)
         }
         if let failure { return .failed(failure.message) }
+        if Config.transitService() == nil { return .failed(Self.setupMessage) }
         return .loading
     }
 
     /// Fetches a new snapshot unless the last one is fresh, a failure is
-    /// recent, or a fetch is already running. The self-test build never
-    /// fetches: its launcher would reach the MTA on every run.
+    /// recent, a fetch is already running, or no service is set up (always
+    /// so in the self-test build, see Config.transitService).
     func refreshIfStale(now: Date = Date()) {
-        guard task == nil, let station else { return }
+        guard task == nil, let station, let service = Config.transitService() else { return }
         if let snapshot, now.timeIntervalSince(snapshot.fetchedAt) < Config.transitCacheLifetime { return }
         if let failure, now.timeIntervalSince(failure.at) < Self.failureLifetime { return }
-        #if SELFTEST
-        _ = station
-        #else
-        load(station)
-        #endif
+        load(station, service: service)
     }
 
     /// Stops a fetch in progress (the launcher closed).
@@ -61,11 +62,11 @@ final class TransitProvider {
         task = nil
     }
 
-    private func load(_ station: TransitStation) {
+    private func load(_ station: String, service: TransitService) {
         task = Task { [weak self] in
             let result: Result<TransitSnapshot, TransitError>
             do {
-                let snapshot = try await TransitLoader.load(station)
+                let snapshot = try await TransitLoader.load(station, limit: Config.transitDepartures, service: service)
                 result = .success(snapshot)
             } catch is CancellationError {
                 return

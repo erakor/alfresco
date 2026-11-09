@@ -227,47 +227,67 @@ enum Config {
     /// ~/.config/alfresco/weatherapi-key. Re-read each time the launcher
     /// opens. nil turns the weather panel off.
     static func weatherAPIKey() -> String? {
+        userSetting(environment: "ALFRESCO_WEATHERAPI_KEY", file: "weatherapi-key")
+    }
+
+    /// The `environment` variable, else the first line of
+    /// ~/.config/alfresco/<file>, trimmed; nil when empty. Always nil in the
+    /// self-test build, even when set in the shell: a launcher it drives
+    /// would make requests with it.
+    private static func userSetting(environment: String, file: String) -> String? {
         func clean(_ value: String?) -> String? {
             let line = value?.split(whereSeparator: \.isNewline).first
-            let key = line?.trimmingCharacters(in: .whitespaces) ?? ""
-            return key.isEmpty ? nil : key
+            let text = line?.trimmingCharacters(in: .whitespaces) ?? ""
+            return text.isEmpty ? nil : text
         }
         #if SELFTEST
-        // The self-test never uses a real key, even one exported in the
-        // shell: a launcher it drives would fetch the forecast with it.
         return nil
         #else
-        if let key = clean(ProcessInfo.processInfo.environment["ALFRESCO_WEATHERAPI_KEY"]) {
-            return key
+        if let value = clean(ProcessInfo.processInfo.environment[environment]) {
+            return value
         }
-        let file = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/alfresco/weatherapi-key")
-        return clean(try? String(contentsOf: file, encoding: .utf8))
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/alfresco/\(file)")
+        return clean(try? String(contentsOf: url, encoding: .utf8))
         #endif
     }
 
     // MARK: Transit
 
-    /// `/transit` (or the workflow's other keywords, `/metro` and `/bus`)
-    /// shows the next subway trains at Config.transitStation under the
-    /// input, from the MTA's real-time feeds (no key needed). Only while the
-    /// input runs a workflow whose first keyword is this one; Enter still
-    /// opens that workflow's URL.
+    /// `/transit` (or the workflow's other keyword, `/metro`) shows the next
+    /// subway trains at Config.transitStation under the input, from the
+    /// transit service (Config.transitService). Only while the input runs a
+    /// workflow whose first keyword is this one; Enter still opens that
+    /// workflow's URL.
     static let transitKeyword = "transit"
-    /// The station on the board, by the MTA's parent stop IDs (GTFS
-    /// stops.txt) and the feeds of the lines that stop there. nil turns the
-    /// board off.
-    static let transitStation: TransitStation? = TransitStation(
-        name: "W 4 St-Washington Sq",
-        // A32: the 8 Av platforms (A C E); D20: the 6 Av ones (B D F M).
-        stopIDs: ["A32", "D20"],
-        feeds: ["nyct/gtfs-ace", "nyct/gtfs-bdfm"]
-    )
-    /// Trains listed each way.
+    /// The station on the board: a station id from the transit service's
+    /// /stops/search (a complex's stop ids joined with "+"), or one stop
+    /// id. "A32+D20" is W 4 St-Washington Sq, 8 Av and 6 Av platforms.
+    /// nil turns the board off.
+    static let transitStation: String? = "A32+D20"
+    /// Column titles for the MTA's northbound and southbound platforms
+    /// ("Manhattan" and "Brooklyn" suit an L or G station better).
+    static let transitNorthLabel = "Uptown"
+    static let transitSouthLabel = "Downtown"
+    /// Trains listed each way (at most 10, the service's limit per line).
     static let transitDepartures = 6
     /// A snapshot is reused for this long, then fetched again while the
     /// board is shown.
     static let transitCacheLifetime: TimeInterval = 30
+
+    /// The transit service (github.com/erakor/transit): its https address
+    /// from `ALFRESCO_TRANSIT_URL`, else ~/.config/alfresco/transit-url, and
+    /// its token from `ALFRESCO_TRANSIT_TOKEN`, else
+    /// ~/.config/alfresco/transit-token. Read before each fetch. nil while
+    /// either is missing (the board then says how to set them up), and
+    /// always in the self-test build.
+    static func transitService() -> TransitService? {
+        guard let address = userSetting(environment: "ALFRESCO_TRANSIT_URL", file: "transit-url"),
+              let url = URL(string: address), url.scheme == "https", url.host != nil,
+              let token = userSetting(environment: "ALFRESCO_TRANSIT_TOKEN", file: "transit-token")
+        else { return nil }
+        return TransitService(baseURL: url, token: token)
+    }
 
     // MARK: Calendar
 

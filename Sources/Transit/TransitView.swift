@@ -31,25 +31,27 @@ final class TransitView: NSView {
         fatalError("init(coder:) is not used")
     }
 
-    func show(_ state: TransitState, station: TransitStation, now: Date) {
-        titleLabel.stringValue = station.name
+    func show(_ state: TransitState, now: Date) {
         switch state {
         case .loading:
+            titleLabel.stringValue = ""
             setContentVisible(false)
-            statusRow.showLoading("Trains at \(station.name)…")
+            statusRow.showLoading("Next trains…")
             setBoardForSelfTest(nil)
         case .failed(let message):
+            titleLabel.stringValue = ""
             setContentVisible(false)
             statusRow.showMessage(message)
             setBoardForSelfTest(nil)
         case .loaded(let snapshot):
             statusRow.stopSpinner()
             setContentVisible(true)
+            titleLabel.stringValue = snapshot.stationName
             let board = TransitBoard.make(from: snapshot, now: now, limit: Config.transitDepartures)
-            columns[0].fill(title: station.northLabel, departures: board.north, now: now)
-            columns[1].fill(title: station.southLabel, departures: board.south, now: now)
-            var footer = "Updated \(TransitBoard.age(of: snapshot.fetchedAt, now: now))"
-            if snapshot.missingFeeds > 0 { footer += " · some lines unavailable" }
+            columns[0].fill(title: Config.transitNorthLabel, departures: board.north, now: now)
+            columns[1].fill(title: Config.transitSouthLabel, departures: board.south, now: now)
+            var footer = "Updated \(TransitBoard.age(of: snapshot.updatedAt, now: now))"
+            if snapshot.someLinesMissing { footer += " · some lines unavailable" }
             footerLabel.stringValue = footer + " · MTA real-time data"
             setBoardForSelfTest(board)
         }
@@ -185,35 +187,46 @@ private final class DepartureRow: NSView {
     }
 
     func fill(with departure: TransitDeparture, now: Date) {
-        bullet.route = departure.route
+        bullet.show(departure)
         countdownLabel.stringValue = TransitBoard.countdown(to: departure.time, now: now)
         clockLabel.stringValue = Self.clock.string(from: departure.time)
     }
 }
 
-/// The MTA's round line bullet: the line's color with its letter in white
-/// (black on yellow).
+/// The MTA's round line bullet: the line's color and letter, as the
+/// transit service gives them.
 private final class RouteBullet: NSView {
-    var route = "" {
-        didSet { if route != oldValue { needsDisplay = true } }
+    private var route = ""
+    private var color: UInt32 = 0
+    private var textColor: UInt32 = 0
+
+    func show(_ departure: TransitDeparture) {
+        guard departure.route != route || departure.color != color || departure.textColor != textColor else { return }
+        route = departure.route
+        color = departure.color
+        textColor = departure.textColor
+        needsDisplay = true
+    }
+
+    private static func nsColor(_ rgb: UInt32) -> NSColor {
+        NSColor(
+            srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1
+        )
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let color = TransitBoard.color(of: route)
         let side = min(bounds.width, bounds.height)
         let circle = NSRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
-        NSColor(
-            srgbRed: CGFloat((color.rgb >> 16) & 0xFF) / 255,
-            green: CGFloat((color.rgb >> 8) & 0xFF) / 255,
-            blue: CGFloat(color.rgb & 0xFF) / 255,
-            alpha: 1
-        ).setFill()
+        Self.nsColor(color).setFill()
         NSBezierPath(ovalIn: circle).fill()
 
         let fontSize: CGFloat = route.count > 1 ? 8 : 12
         let text = NSAttributedString(string: route, attributes: [
             .font: NSFont.systemFont(ofSize: fontSize, weight: .bold),
-            .foregroundColor: color.darkText ? NSColor.black : NSColor.white,
+            .foregroundColor: Self.nsColor(textColor),
         ])
         let size = text.size()
         text.draw(at: NSPoint(x: circle.midX - size.width / 2, y: circle.midY - size.height / 2))
