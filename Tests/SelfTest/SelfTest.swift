@@ -103,6 +103,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
             TypedAppPicksTests.run()
             BuiltInTests.run()
             CalendarTests.run()
+            TransitTests.run()
             WorkflowCheckTests.run()
             CommandPrefixTests.run()
             WorkflowCardTests.run()

@@ -3,6 +3,8 @@
 // The checks that keep secrets and control where they belong: workflows.json
 // can only use the URL schemes Config allows (never file:), and previews are
 // https only, with a refused workflow left out rather than the whole file;
+// the transit service's token goes with a preview only to the service's own
+// origin, never through a redirect elsewhere;
 // the usage stats keep a fallback word only when it is near a keyword; files
 // and folders the app writes are owner-only; the clipboard watcher skips
 // marked copies (old markers too) and ignored apps; and a PDF over the pixel
@@ -24,6 +26,7 @@ enum SecurityTests {
         let root = ClipboardStore.directory.appendingPathComponent("security-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         workflowSchemes(in: root)
+        previewToken()
         fallbackWords()
         permissions(in: root)
         clipboardMonitor(in: root)
@@ -56,6 +59,81 @@ enum SecurityTests {
     private static func loads(_ url: String, preview: String? = nil) -> Bool {
         guard let set = decode(json([workflow(url, preview: preview)])) else { return false }
         return set.workflows.count == 1 && set.refused.isEmpty
+    }
+
+    // MARK: Preview token
+
+    private static func previewToken() {
+        let service = TransitService(baseURL: URL(string: "https://svc.example/")!, token: "secret")
+        func token(_ url: String, _ service: TransitService?) -> String? {
+            URL(string: url).flatMap { PreviewRequest.make($0, service: service) }?
+                .value(forHTTPHeaderField: TransitService.tokenHeader)
+        }
+        check("preview token: sent to the service's host", token("https://svc.example/preview/subway?q=x", service) == "secret")
+        check("preview token: host case and the default port don't matter",
+              token("https://SVC.example:443/preview/subway", service) == "secret")
+        check("preview token: not sent to another host", token("https://wttr.in/paris", service) == nil)
+        check("preview token: not sent to a host ending like the service's", token("https://evil.svc.example/p", service) == nil)
+        check("preview token: not sent to a host starting like the service's", token("https://svc.example.evil.test/p", service) == nil)
+        check("preview token: not sent with the service's name as user info", token("https://svc.example@evil.test/p", service) == nil)
+        check("preview token: not sent to another port", token("https://svc.example:8443/p", service) == nil)
+        check("preview token: not sent without a service", token("https://svc.example/p", nil) == nil)
+
+        // {service}/… in workflows.json: loaded, filled in with the service's
+        // address and token, and nothing at all without a service.
+        let set = decode(json([workflow("https://example.com/{query}", preview: "{service}/preview/subway?q={query}")]))
+        check("preview token: a {service}/ preview loads", set?.workflows.first?.preview != nil && set?.refused.isEmpty == true,
+              "\(set?.refused ?? [])")
+        let preview = set.flatMap { CommandParser.parse("/kw bedford av", using: $0) }?.preview
+        check("preview token: a {service}/ preview is a service URL until it is sent",
+              preview?.absoluteString == "alfresco-service:/preview/subway?q=bedford%20av",
+              "\(String(describing: preview))")
+        let request = preview.flatMap { PreviewRequest.make($0, service: service) }
+        check("preview token: a {service}/ preview goes to the service, with its token",
+              request?.url?.absoluteString == "https://svc.example/preview/subway?q=bedford%20av"
+                  && request?.value(forHTTPHeaderField: TransitService.tokenHeader) == "secret",
+              "\(String(describing: request?.url))")
+        let nested = TransitService(baseURL: URL(string: "https://svc.example/base")!, token: "secret")
+        check("preview token: a service address with a path keeps it",
+              preview.flatMap { PreviewRequest.resolve($0, service: nested) }?.absoluteString
+                  == "https://svc.example/base/preview/subway?q=bedford%20av")
+        check("preview token: a {service}/ preview without a service sends nothing",
+              preview.flatMap { PreviewRequest.make($0, service: nil) } == nil)
+        check("preview token: {service} must be followed by /", !loads("https://example.com/{query}", preview: "{service}.evil.test/{query}"))
+        check("preview token: {service} only counts at the start",
+              !loads("https://example.com/{query}", preview: "http://evil.test/{service}/{query}"))
+
+        // Redirects: never to http, and with a token never to another origin.
+        func redirect(_ from: String, _ to: String, token: Bool) -> Bool {
+            var original = URLRequest(url: URL(string: from)!)
+            var next = URLRequest(url: URL(string: to)!)
+            if token {
+                original.setValue("secret", forHTTPHeaderField: TransitService.tokenHeader)
+                next.setValue("secret", forHTTPHeaderField: TransitService.tokenHeader)
+            }
+            return HTTPSession.allowsRedirect(from: original, to: next)
+        }
+        check("redirects: with a token, followed on the same origin",
+              redirect("https://svc.example/a", "https://svc.example/b", token: true))
+        check("redirects: with a token, not to another host",
+              !redirect("https://svc.example/a", "https://evil.test/b", token: true))
+        check("redirects: with a token, not to another port",
+              !redirect("https://svc.example/a", "https://svc.example:8443/b", token: true))
+        check("redirects: without a token, followed to another https host",
+              redirect("https://wttr.in/a", "https://example.com/b", token: false))
+        check("redirects: never to http", !redirect("https://wttr.in/a", "http://wttr.in/b", token: false))
+
+        // How long an answer is kept.
+        let lifetime = PreviewRequest.lifetime(cacheControl:)
+        check("preview lifetime: max-age, not the CDN's s-maxage",
+              lifetime("public, max-age=20, s-maxage=20, stale-while-revalidate=40") == 20
+                  && lifetime("public, s-maxage=3, max-age=30") == 30)
+        check("preview lifetime: the longest without max-age",
+              lifetime(nil) == PreviewRequest.maxLifetime && lifetime("public, s-maxage=20") == PreviewRequest.maxLifetime)
+        check("preview lifetime: capped", lifetime("max-age=999999") == PreviewRequest.maxLifetime)
+        check("preview lifetime: a few seconds for max-age=0 or no-store",
+              lifetime("max-age=0") == PreviewRequest.minLifetime && lifetime("no-store") == PreviewRequest.minLifetime)
+        check("preview lifetime: an unreadable max-age is ignored", lifetime("max-age=soon") == PreviewRequest.maxLifetime)
     }
 
     private static func workflowSchemes(in root: URL) {

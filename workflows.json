@@ -47,6 +47,19 @@
       "url": "https://calendar.google.com/calendar/r/search?q={query}"
     },
     {
+      "keywords": ["transit", "metro"],
+      "title": "Next trains at W 4 St",
+      "description": "Uptown and downtown trains at W 4 St-Washington Sq, Enter opens the station in Google Maps",
+      "url": "https://www.google.com/maps/search/?api=1&query=W+4+St-Washington+Sq+station"
+    },
+    {
+      "keywords": ["subway"],
+      "title": "Station in Google Maps",
+      "description": "Next trains at any subway station in the hint, e.g. /subway bedford av",
+      "url": "https://www.google.com/maps/search/?api=1&query={query}+subway+station",
+      "preview": "{service}/preview/subway?q={query}"
+    },
+    {
       "keywords": ["pomo"],
       "title": "Pomodoro",
       "description": "Start a focus session, or pause / resume the running one",

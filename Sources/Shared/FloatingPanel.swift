@@ -75,6 +75,9 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
 
     /// The current size; subclasses change the height with setHeight(_:).
     private var size: NSSize
+    #if SELFTEST
+    var currentSizeForSelfTest: NSSize { size }
+    #endif
     /// The size the panel was created with. Its top edge fixes where the
     /// panel sits, so a taller panel grows downward.
     private let baseSize: NSSize
@@ -297,3 +300,41 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
         return label
     }
 }
+
+#if SELFTEST
+extension FloatingPanelController {
+    /// The panel's content as it lays out now, drawn off screen into a PNG
+    /// in `appearance`, for the self-test's renders. The frosted background
+    /// samples what is behind the window, so it is replaced by a flat
+    /// window background; everything on it is drawn as in the app.
+    func renderForSelfTest(appearance: NSAppearance.Name) -> Data? {
+        panel.setContentSize(currentSizeForSelfTest)
+        let view = contentView
+        let previous = view.appearance
+        view.appearance = NSAppearance(named: appearance)
+        defer { view.appearance = previous }
+        view.layoutSubtreeIfNeeded()
+        let bounds = view.bounds
+        guard bounds.width > 0, bounds.height > 0,
+              let content = view.bitmapImageRepForCachingDisplay(in: bounds)
+        else { return nil }
+        view.cacheDisplay(in: bounds, to: content)
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: content.pixelsWide, pixelsHigh: content.pixelsHigh,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return nil }
+        rep.size = bounds.size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
+            let shape = NSBezierPath(roundedRect: bounds, xRadius: Self.cornerRadius, yRadius: Self.cornerRadius)
+            NSColor.windowBackgroundColor.setFill()
+            shape.fill()
+            content.draw(in: bounds)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:])
+    }
+}
+#endif

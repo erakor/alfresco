@@ -1,7 +1,7 @@
 // LauncherController.swift
 //
 // The launcher panel: input field, hint line, keyword suggestions, the
-// weather, calendar, pomodoro, usage and snippets areas, and Enter handling, which opens a workflow's
+// weather, calendar, transit, pomodoro, usage and snippets areas, and Enter handling, which opens a workflow's
 // URL or an installed app, or copies a built-in's answer.
 
 import Carbon.HIToolbox
@@ -88,6 +88,17 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// worked out once per change of the input (inputDidChange) for the list
     /// and the hint; nil while it doesn't run the snippet workflow.
     private var currentSnippetSearch: SnippetSearch?
+    /// The departure board (`/transit`), and whether the input runs the
+    /// transit workflow, worked out once per change of it (inputDidChange).
+    private let transit = TransitProvider()
+    private let transitView = TransitView(frame: .zero)
+    private var showsTransit = false
+    /// Whether the board was shown since the panel was (usage stats).
+    private var didShowTransit = false
+    /// Redraws the board while it is shown, so countdowns follow the clock
+    /// and a stale snapshot is fetched again.
+    private var transitTimer: Timer?
+    private static let transitRefreshInterval: TimeInterval = 10
     private let suggestionList = SuggestionListView(frame: .zero)
     private let cardsView = WorkflowCardsView(frame: .zero)
     /// The input row (icon, field, hint); moves down when the strip is shown.
@@ -113,6 +124,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             view: calendarView,
             height: { [unowned self] in self.calendarView.preferredHeight },
             claims: { [unowned self] in self.currentCalendarQuery != nil }
+        ),
+        InputArea(
+            view: transitView,
+            height: { TransitView.height },
+            claims: { [unowned self] in self.showsTransit }
         ),
         InputArea(
             view: pomodoroView,
@@ -187,6 +203,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
         weather.onUpdate = { [weak self] in self?.updateWeather() }
+        transit.onUpdate = { [weak self] in self?.transitDidUpdate() }
         calendar.onUpdate = { [weak self] in self?.calendarDidUpdate() }
         calendar.onAccessAnswered = { [weak self] in self?.calendarAccessAnswered(granted: $0) }
         apps.onUpdate = { [weak self] in self?.appsDidChange() }
@@ -212,6 +229,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         accessPromptInput = nil
         didLaunch = false
         didShowCalendar = false
+        didShowTransit = false
         usage = UsageStats.shared.totals()
         // Read typed-picks.json while the panel opens, not on the first keystroke.
         _ = TypedAppPicks.shared
@@ -247,8 +265,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         currentPomodoroURL = nil
         showsStats = false
         currentSnippetSearch = nil
+        showsTransit = false
         previews.cancel()
         weather.cancel()
+        transit.cancel()
+        stopTransitTimer()
         for area in inputAreas { area.view.isHidden = true }
         weatherStrip.clearHover()
         meetingStrip.clearHover()
@@ -276,6 +297,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         showsStats = runsStats(currentCommand)
         currentSnippetSearch = snippetQuery(for: input, command: currentCommand)
             .map { SnippetSearch(typed: $0, items: snippetItems()) }
+        showsTransit = runsTransit(currentCommand)
         updateSuggestions()
         updateHint()
         // Each changes what is under the input: resize once, after all.
@@ -284,6 +306,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updatePomodoro()
         updateStats()
         updateSnippets()
+        updateTransit()
         updateWeather(resize: false)
         updateHeight()
         signposter.endInterval("launcher.input", signpost, "rows=\(self.suggestionList.items.count, privacy: .public)")
@@ -899,6 +922,59 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         snippetsView.isHidden = currentSnippetSearch == nil
     }
 
+    /// Whether `command` runs a workflow whose first keyword is
+    /// Config.transitKeyword (`/transit`, `/metro`), while a station
+    /// is set.
+    private func runsTransit(_ command: Command?) -> Bool {
+        guard transit.station != nil, case .workflow(let keyword, _)? = command?.source else { return false }
+        return keyword == Config.transitKeyword
+    }
+
+    /// Fills the departure board while the input runs the transit workflow,
+    /// fetching a new snapshot once the last one is stale, and keeps the
+    /// 10 s redraw running while it is shown. Its height is fixed, so
+    /// inputDidChange's updateHeight covers it.
+    private func updateTransit() {
+        if showsTransit {
+            if !didShowTransit {
+                didShowTransit = true
+                UsageStats.shared.record(.transitShown)
+            }
+            transit.refreshIfStale()
+            transitView.show(transit.state(), now: Date())
+            startTransitTimer()
+        } else {
+            stopTransitTimer()
+        }
+        transitView.isHidden = !showsTransit
+    }
+
+    /// A fetch ended: the board follows while it is shown.
+    private func transitDidUpdate() {
+        guard isShown, showsTransit else { return }
+        updateTransit()
+    }
+
+    private func startTransitTimer() {
+        guard transitTimer == nil else { return }
+        let timer = Timer(
+            timeInterval: Self.transitRefreshInterval, target: self,
+            selector: #selector(transitTimerFired), userInfo: nil, repeats: true
+        )
+        timer.tolerance = 2
+        RunLoop.main.add(timer, forMode: .common)
+        transitTimer = timer
+    }
+
+    private func stopTransitTimer() {
+        transitTimer?.invalidate()
+        transitTimer = nil
+    }
+
+    @objc private func transitTimerFired() {
+        transitDidUpdate()
+    }
+
     /// Sizes the panel for the strip, the input row, and the InputArea
     /// shown below it, else the suggestion list.
     private func updateHeight() {
@@ -1011,6 +1087,19 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     /// The hint line, right of the input.
     var hintForSelfTest: String { hintLabel.stringValue }
+
+    /// The departure board while it shows trains, else nil.
+    var transitBoardForSelfTest: TransitBoard? { transitView.isHidden ? nil : transitView.boardForSelfTest }
+
+    /// Whether the departure board is shown (loading, failed or loaded).
+    var showsTransitForSelfTest: Bool { !transitView.isHidden }
+
+    /// Stands in for a fetch, then redraws the board (shown or not, since
+    /// the test never opens the panel).
+    func setTransitSnapshotForSelfTest(_ snapshot: TransitSnapshot?) {
+        transit.setSnapshotForSelfTest(snapshot)
+        updateTransit()
+    }
 
     /// The usage report while it is shown, else nil.
     var statsForSelfTest: UsageReport? { statsView.isHidden ? nil : statsView.reportForSelfTest }
