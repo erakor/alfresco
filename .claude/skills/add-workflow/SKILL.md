@@ -59,6 +59,9 @@ reference is the table under "Workflows" in `Sources/Launcher/README.md`.
   `?format=`). Same `{query}` rules as `url`. Pre-encode literal `%` as `%25`
   (`format=%25t`), since a bare `%t` is not a valid URL. Only add one when the
   user wants it: the typed argument is sent to that server while typing.
+  A preview served by the user's transit service starts with `{service}/`
+  (`{service}/preview/subway?q={query}`), never with its real address: the
+  app fills in the address and sends the token from `~/.config/alfresco`.
 
 If the user gave only a URL or a site name, find a real example URL to pin down
 where the ID goes rather than guessing the path. Ask when it's ambiguous.

@@ -71,8 +71,9 @@ In `Sources/App/Config.swift` (rebuild after a change):
 - `SetAsideFile.swift`: moves an unreadable clipboard history, usage or
   typed-picks file out of the way (`*.unreadable.json`, `-2`, `-3`…) instead of overwriting it.
 - `HTTPSession.swift`: the URL session for weather, transit and preview requests (no
-  cache, no cookies). At launch it also empties the cache earlier builds
-  used, which could hold the WeatherAPI key.
+  cache, no cookies; redirects only to https, and a request carrying the
+  transit token only on its own origin). At launch it also empties the cache
+  earlier builds used, which could hold the WeatherAPI key.
 - `ShortcutModifiers.swift`: `NSEvent.shortcutModifiers`, so ⌘ shortcuts
   work with Caps Lock on.
 - `HotKeys.swift`: global hotkeys through Carbon `RegisterEventHotKey`, so

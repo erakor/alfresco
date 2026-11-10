@@ -13,6 +13,11 @@ import Foundation
 struct TransitService: Sendable, Equatable {
     let baseURL: URL
     let token: String
+
+    /// Not Authorization: the service's CDN never caches requests carrying
+    /// it. Also sent with workflow previews on the service's host
+    /// (PreviewRequest).
+    static let tokenHeader = "X-Transit-Token"
 }
 
 /// Which way a train runs, from the MTA's platform direction: north is
@@ -194,8 +199,7 @@ enum TransitLoader {
 
         guard let url = url(for: station, limit: limit, service: service) else { throw TransitError.badResponse }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
-        // Not Authorization: the service's CDN never caches requests carrying it.
-        request.setValue(service.token, forHTTPHeaderField: "X-Transit-Token")
+        request.setValue(service.token, forHTTPHeaderField: TransitService.tokenHeader)
         let result: (Data, URLResponse)
         do {
             result = try await HTTPSession.shared.data(for: request)

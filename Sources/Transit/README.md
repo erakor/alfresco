@@ -41,6 +41,24 @@ the launcher is closed. A failed fetch keeps the last snapshot on screen for
 up to 3 minutes (the footer's age shows it getting older), then shows the
 error; the next try waits 15 seconds.
 
+## Any station in the hint
+
+`/subway <station>` (`/subway bedford av`) shows the next train per line
+and direction at any station in the launcher's hint, from the service's
+`/preview/subway`, and Enter opens the station in Google Maps:
+
+```
+Bedford Av · L ↑2 ↓4 min  ↩ Station in Google Maps bedford av
+```
+
+`↑` is the northbound (uptown) platform, `↓` the southbound one. The name
+is the service's best match, so check it in the hint before relying on the
+times. It is the `subway` workflow's `preview` in
+[`workflows.json`](../../workflows.json), `{service}/preview/subway?q={query}`:
+`{service}` is the address set up above, sent with the token, and kept for
+the 20 seconds the service says. Without the address and token there is no
+preview, and the workflow still opens Maps.
+
 ## Another station
 
 Set `Config.transitStation` in [`Config.swift`](../App/Config.swift) to a

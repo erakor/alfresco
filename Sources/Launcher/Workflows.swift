@@ -111,7 +111,8 @@ struct Workflow: Decodable, Sendable {
     /// menu bar's Workflows submenu. Written as "description" in JSON.
     let help: String?
     let transforms: [ArgumentTransform]
-    /// https URL template fetched while the input matches this workflow;
+    /// https URL template (or `{service}/…`, see servicePlaceholder) fetched
+    /// while the input matches this workflow;
     /// the first line of its plain-text response is shown in the hint. nil
     /// when the file's was refused (see previewRefusal).
     let preview: String?
@@ -126,6 +127,19 @@ struct Workflow: Decodable, Sendable {
     let previewRefusal: String?
 
     var takesArgument: Bool { url.contains("{query}") }
+
+    /// A preview starting with `{service}/` goes to the transit service
+    /// (Config.transitService(): its https address, read from the user's
+    /// config so it isn't in workflows.json, and its token), as a path on it.
+    static let servicePlaceholder = "{service}"
+    /// Command.preview's scheme for such a preview until PreviewFetcher puts
+    /// the service's address in its place: `{service}/p?q=x` becomes
+    /// `alfresco-service:/p?q=x`.
+    static let serviceScheme = "alfresco-service"
+
+    static func isServicePreview(_ preview: String) -> Bool {
+        preview.hasPrefix(servicePlaceholder + "/")
+    }
 
     private enum CodingKeys: String, CodingKey {
         case keywords, title, url, transforms, preview
@@ -145,9 +159,10 @@ struct Workflow: Decodable, Sendable {
         let preview = try container.decodeIfPresent(String.self, forKey: .preview)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }
-        if let preview, Self.scheme(of: preview) != "https" {
-            // https only: what is typed after the keyword goes into it.
-            previewRefusal = "preview must be an https URL"
+        if let preview, !Self.isServicePreview(preview), Self.scheme(of: preview) != "https" {
+            // https only: what is typed after the keyword goes into it. The
+            // service's address is https too (Config.transitService()).
+            previewRefusal = "preview must be an https URL or start with {service}/"
         } else if let preview, preview.contains("{query}"), !url.contains("{query}") {
             previewRefusal = "preview uses {query} but url does not"
         } else {
@@ -482,7 +497,7 @@ enum CommandParser {
                 return Command(
                     url: url, label: "\(workflow.title) \(argument)",
                     source: .workflow(keyword: workflow.keywords.first ?? keyword.lowercased(), withArgument: true),
-                    preview: workflow.preview.flatMap { expand($0, with: argument) }
+                    preview: workflow.preview.flatMap { expand(previewTemplate($0), with: argument) }
                 )
             }
         } else if parts.count == 1, let workflow = set.workflow(for: keyword, withArgument: false),
@@ -490,10 +505,17 @@ enum CommandParser {
             return Command(
                 url: url, label: workflow.title,
                 source: .workflow(keyword: workflow.keywords.first ?? keyword.lowercased(), withArgument: false),
-                preview: workflow.preview.flatMap { URL(string: $0) }
+                preview: workflow.preview.flatMap { URL(string: previewTemplate($0)) }
             )
         }
         return nil
+    }
+
+    /// `{service}/…` as `alfresco-service:/…` (Workflow.serviceScheme), a URL
+    /// PreviewFetcher resolves against the service's address; others as is.
+    private static func previewTemplate(_ preview: String) -> String {
+        guard Workflow.isServicePreview(preview) else { return preview }
+        return Workflow.serviceScheme + ":" + String(preview.dropFirst(Workflow.servicePlaceholder.count))
     }
 
     private static func expand(_ template: String, with argument: String) -> URL? {
