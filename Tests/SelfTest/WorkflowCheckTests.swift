@@ -76,7 +76,7 @@ enum WorkflowCheckTests {
         SelfTest.check("workflow check: a refused preview is an error that keeps the workflow",
                        !refusedPreview.passed && refusedPreview.set?.workflows.count == 1
                            && refusedPreview.problems.first?.message
-                               == #"refused "Weather": preview must be an https URL (its preview is left out)"#,
+                               == #"refused "Weather": preview must be an https URL or start with {service}/ (its preview is left out)"#,
                        "got \(refusedPreview.problems)")
 
         let refusedFallback = check(#"""
