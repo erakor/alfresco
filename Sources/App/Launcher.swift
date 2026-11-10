@@ -40,7 +40,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         self.pomodoro = pomodoro
         self.pomodoroStatusItem = pomodoroStatusItem
 
-        let launcher = LauncherController(store: workflowStore, pomodoro: pomodoro) { [weak self] url in
+        let launcher = LauncherController(
+            store: workflowStore, pomodoro: pomodoro,
+            snippets: { [weak self] in self?.clipboardStore?.items ?? [] }
+        ) { [weak self] url in
             self?.handleInternalURL(url) ?? false
         }
         self.launcher = launcher
@@ -152,8 +155,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         case SystemCommand.feature: return SystemCommand(url: url)?.run() ?? false
         case PomodoroCommand.feature: return handlePomodoroURL(url)
         case StatsCommand.feature: return handleStatsURL(url)
+        case SnippetCommand.feature: return handleSnippetURL(url)
         default: return false
         }
+    }
+
+    /// alfresco://snippet/<name> (`/snip sig`): pastes the pinned clip with
+    /// that name into the app underneath once the launcher has closed.
+    private func handleSnippetURL(_ url: URL) -> Bool {
+        guard let name = SnippetCommand.name(of: url), let launcher, let clipboardPanel else { return false }
+        return clipboardPanel.pasteSnippet(named: name, closing: launcher)
     }
 
     /// `/stats`: the launcher showed the last days; Enter opens the Usage…

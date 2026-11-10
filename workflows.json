@@ -94,6 +94,12 @@
       "title": "Usage",
       "description": "This week's commands, apps, clips and focus sessions, and the commands nobody runs",
       "url": "alfresco://stats"
+    },
+    {
+      "keywords": ["snip"],
+      "title": "Paste snippet",
+      "description": "Paste a named pinned clip (⌘S in the clipboard history), e.g. /snip sig",
+      "url": "alfresco://snippet/{query}"
     }
   ],
   "fallback": {

@@ -87,6 +87,11 @@ enum UsageCounter: String, Sendable {
     case clipboardRestoreFailed = "clipboard.restoreFailed"
     case clipboardPinned = "clipboard.pinned"
     case clipboardUnpinned = "clipboard.unpinned"
+    /// A clip given a snippet name with ⌘S, or its name removed.
+    case clipboardSnippetNamed = "clipboard.snippetNamed"
+    case clipboardSnippetUnnamed = "clipboard.snippetUnnamed"
+    /// A snippet pasted from the launcher (`/snip sig`); also a restore.
+    case clipboardSnippetPasted = "clipboard.snippetPasted"
 
     /// A focus session ran its full length (skipped ones don't count),
     /// counted on the day it ended (record(_:on:)).
@@ -468,6 +473,7 @@ final class UsageStats {
             "Clipboard: \(copied) copied",
             "  skipped: \(skipped), restores failed: \(count(.clipboardRestoreFailed))",
             "  pinned: \(count(.clipboardPinned)), unpinned: \(count(.clipboardUnpinned))",
+            "  snippets named: \(count(.clipboardSnippetNamed)), pasted from the launcher: \(count(.clipboardSnippetPasted))",
             apps.isEmpty ? "  (none)" : apps.joined(separator: "\n"),
         ]
         return lines.joined(separator: "\n")

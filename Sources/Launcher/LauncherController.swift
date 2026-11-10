@@ -1,7 +1,7 @@
 // LauncherController.swift
 //
 // The launcher panel: input field, hint line, keyword suggestions, the
-// weather, calendar, transit, pomodoro and usage areas, and Enter handling, which opens a workflow's
+// weather, calendar, transit, pomodoro, usage and snippets areas, and Enter handling, which opens a workflow's
 // URL or an installed app, or copies a built-in's answer.
 
 import Carbon.HIToolbox
@@ -80,6 +80,14 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// Whether the input runs alfresco://stats, worked out once per change
     /// of it (inputDidChange).
     private var showsStats = false
+    /// The clipboard history, for the snippets `/snip` lists; empty in
+    /// self-tests that don't pass one.
+    private let snippetItems: () -> [ClipItem]
+    private let snippetsView = SnippetsView(frame: .zero)
+    /// What the name typed after `/snip` finds ("" for the keyword alone),
+    /// worked out once per change of the input (inputDidChange) for the list
+    /// and the hint; nil while it doesn't run the snippet workflow.
+    private var currentSnippetSearch: SnippetSearch?
     /// The departure board (`/transit`), and whether the input runs the
     /// transit workflow, worked out once per change of it (inputDidChange).
     private let transit = TransitProvider()
@@ -135,6 +143,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             // What Enter does there: the menu bar's Usage… alert.
             hint: { "↩ Last \(UsageStats.summaryDays) days in detail" }
         ),
+        InputArea(
+            view: snippetsView,
+            height: { [unowned self] in self.snippetsView.preferredHeight },
+            claims: { [unowned self] in self.currentSnippetSearch != nil },
+            // `/snip` alone keeps the workflow's own help (the hint shows it first).
+            hint: { [unowned self] in self.currentSnippetSearch?.hint }
+        ),
     ]
     /// Height of the input row, which is the whole panel without the weather.
     private static let rowHeight: CGFloat = 60
@@ -176,9 +191,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private var calendarTimer: Timer?
     private static let calendarRefreshInterval: TimeInterval = 30
 
-    init(store: WorkflowStore, pomodoro: PomodoroTimer? = nil, internalURLHandler: @escaping (URL) -> Bool) {
+    init(
+        store: WorkflowStore, pomodoro: PomodoroTimer? = nil, snippets: @escaping () -> [ClipItem] = { [] },
+        internalURLHandler: @escaping (URL) -> Bool
+    ) {
         self.store = store
         self.pomodoro = pomodoro
+        self.snippetItems = snippets
         self.internalURLHandler = internalURLHandler
         super.init(size: NSSize(width: 680, height: LauncherController.rowHeight), verticalOffset: 0.15)
         buildContent()
@@ -245,6 +264,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         currentCalendarQuery = nil
         currentPomodoroURL = nil
         showsStats = false
+        currentSnippetSearch = nil
         showsTransit = false
         previews.cancel()
         weather.cancel()
@@ -275,6 +295,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         currentCalendarQuery = CalendarQuery.make(input: input, command: currentCommand)
         currentPomodoroURL = pomodoroURL(for: currentCommand)
         showsStats = runsStats(currentCommand)
+        currentSnippetSearch = snippetQuery(for: input, command: currentCommand)
+            .map { SnippetSearch(typed: $0, items: snippetItems()) }
         showsTransit = runsTransit(currentCommand)
         updateSuggestions()
         updateHint()
@@ -283,6 +305,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateCalendar(resize: false)
         updatePomodoro()
         updateStats()
+        updateSnippets()
         updateTransit()
         updateWeather(resize: false)
         updateHeight()
@@ -877,6 +900,28 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         statsView.isHidden = !showsStats
     }
 
+    /// What follows the snippet keyword when the input runs the `/snip`
+    /// workflow (alfresco://snippet/{query}): the typed name, or "" for the
+    /// keyword alone, which runs nothing yet. nil for any other input.
+    private func snippetQuery(for input: String, command: Command?) -> String? {
+        if let url = command?.url, InternalURL.feature(of: url) == SnippetCommand.feature {
+            return KeywordInput(command: input)?.argument ?? ""
+        }
+        if let workflow = store.current.workflowAwaitingArgument(input), SnippetCommand.isSnippetTemplate(workflow.url) {
+            return ""
+        }
+        return nil
+    }
+
+    /// Fills the snippets list while the input runs `/snip`. Its height
+    /// follows the rows; inputDidChange's updateHeight covers it.
+    private func updateSnippets() {
+        if let search = currentSnippetSearch {
+            snippetsView.show(SnippetsViewContent(search))
+        }
+        snippetsView.isHidden = currentSnippetSearch == nil
+    }
+
     /// Whether `command` runs a workflow whose first keyword is
     /// Config.transitKeyword (`/transit`, `/metro`), while a station
     /// is set.
@@ -1058,6 +1103,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
 
     /// The usage report while it is shown, else nil.
     var statsForSelfTest: UsageReport? { statsView.isHidden ? nil : statsView.reportForSelfTest }
+
+    /// What the snippets area shows, nil while it is hidden.
+    var snippetsForSelfTest: SnippetsViewContent? {
+        snippetsView.isHidden ? nil : snippetsView.contentForSelfTest
+    }
 
     /// What the pomodoro view shows while it is shown, else nil.
     var pomodoroForSelfTest: PomodoroViewContent? {
