@@ -55,12 +55,12 @@ jobs:
       - name: Self-test
         run: Tests/run-self-tests.sh
 
-      - name: Upload self-test log and screenshot
+      - name: Upload self-test log, screenshot and renders
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: self-test
           path: |
             build/self-test/*.log
-            build/self-test/menubar.png
+            build/self-test/*.png
           if-no-files-found: ignore
