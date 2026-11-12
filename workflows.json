@@ -60,6 +60,34 @@
       "preview": "{service}/preview/subway?q={query}"
     },
     {
+      "keywords": ["path"],
+      "title": "PATH station in Google Maps",
+      "description": "Next PATH trains to each destination in the hint, e.g. /path grove",
+      "url": "https://www.google.com/maps/search/?api=1&query={query}+PATH+station",
+      "preview": "{service}/preview/path?q={query}"
+    },
+    {
+      "keywords": ["lirr"],
+      "title": "LIRR station in Google Maps",
+      "description": "Next LIRR departures to each destination in the hint, e.g. /lirr penn",
+      "url": "https://www.google.com/maps/search/?api=1&query={query}+LIRR+station",
+      "preview": "{service}/preview/lirr?q={query}"
+    },
+    {
+      "keywords": ["mnr"],
+      "title": "Metro-North station in Google Maps",
+      "description": "Next Metro-North departures to each destination in the hint, e.g. /mnr white plains",
+      "url": "https://www.google.com/maps/search/?api=1&query={query}+Metro-North+station",
+      "preview": "{service}/preview/mnr?q={query}"
+    },
+    {
+      "keywords": ["ferry"],
+      "title": "NYC Ferry landing in Google Maps",
+      "description": "Next NYC Ferry boats to each destination in the hint, e.g. /ferry wall st",
+      "url": "https://www.google.com/maps/search/?api=1&query={query}+NYC+Ferry",
+      "preview": "{service}/preview/ferry?q={query}"
+    },
+    {
       "keywords": ["pomo"],
       "title": "Pomodoro",
       "description": "Start a focus session, or pause / resume the running one",

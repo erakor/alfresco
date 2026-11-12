@@ -29,6 +29,7 @@ launcher, and can sleep or lock the Mac.
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | `/transit`, `/metro` | The station in Google Maps; the launcher shows the next [trains](Sources/Transit/README.md) at W 4 St, uptown and downtown |
 | `/subway bedford av` | The station in Google Maps; the hint shows its next [trains](Sources/Transit/README.md#any-station-in-the-hint) per line (`Bedford Av · L ↑2 ↓4 min`) |
+| `/path grove`, `/lirr penn`, `/mnr rye`, `/ferry wall st` | The station in Google Maps; the hint shows the next [departure](Sources/Transit/README.md#path-lirr-metro-north-and-nyc-ferry) to each destination (`Grove Street · Journal Square 0 · 33rd Street 1 min`) |
 | `/pomo`        | Starts a 25 min [pomodoro](Sources/Pomodoro/README.md), or pauses / resumes it (nothing opens); the launcher shows the timer and the hint says what Enter will do |
 | `/zz`, `/lockscreen`, `/displaysleep` | Puts the Mac to sleep, locks the screen, or turns the display off ([System](Sources/System/README.md)) |
 | `/stats`       | Nothing: the launcher shows this week's [usage](Sources/Stats/README.md) (top commands and apps, clips restored, focus sessions, commands never run); Enter opens the 30-day summary |
