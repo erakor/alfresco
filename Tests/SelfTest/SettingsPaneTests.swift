@@ -39,6 +39,12 @@ enum SettingsPaneTests {
               panes.allSatisfy { $0.url.scheme == SettingsPanes.scheme && $0.url.absoluteString.hasSuffix($0.id) })
     }
 
+    /// Panes a Mac can lack without the ID having moved: GitHub's macOS
+    /// runner images ship without Printers & Scanners, which every desktop
+    /// install has. The app leaves an absent pane out either way; listing it
+    /// here keeps the check strict for every other pane.
+    private static let mayBeAbsent: Set<String> = ["com.apple.Print-Scanner-Settings.extension"]
+
     /// Pane IDs move between macOS versions: this fails on a macOS whose
     /// System Settings dropped or renamed one, naming it, so the table gets
     /// fixed. The app itself just leaves such a pane out.
@@ -49,12 +55,13 @@ enum SettingsPaneTests {
         }
         let installedIDs = SettingsPanes.installedIDs()
         check("System Settings' extensions are found", installedIDs.count > 20, "\(installedIDs.count)")
-        let missing = SettingsPanes.all.filter { !installedIDs.contains($0.id) }.map { "\($0.english) (\($0.id))" }
+        let missingPanes = SettingsPanes.all.filter { !installedIDs.contains($0.id) }
+        let missing = missingPanes.filter { !mayBeAbsent.contains($0.id) }.map { "\($0.english) (\($0.id))" }
         let version = ProcessInfo.processInfo.operatingSystemVersionString
         check("every pane in the table is on this macOS (\(version))", missing.isEmpty,
               "missing: " + missing.joined(separator: ", "))
         check("installed() keeps the panes this Mac has",
-              SettingsPanes.installed().count == SettingsPanes.all.count - missing.count)
+              SettingsPanes.installed().count == SettingsPanes.all.count - missingPanes.count)
         let empty = SelfTest.scratchFile("no-extensions").deletingLastPathComponent()
         check("a folder without extensions gives no panes", SettingsPanes.installed(in: empty).isEmpty)
         let handler = SettingsPanes.all.first.flatMap { NSWorkspace.shared.urlForApplication(toOpen: $0.url) }
