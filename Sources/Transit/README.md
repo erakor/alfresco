@@ -97,8 +97,10 @@ A single stop id (`L08`) works too. `transitNorthLabel` and
 "Manhattan" and "Brooklyn" suit an L or G station better). `nil` turns the
 board off: the workflow then just opens its URL.
 
-The board shows only the subway. The other systems are in the hint
-(above), and buses aren't on the service yet.
+The board shows only the subway; PATH, the LIRR, Metro-North and the ferry
+are in the hint (above). Buses can't be added yet: the service has bus
+service alerts (`/bus/alerts`) but no bus arrivals, which wait on an MTA
+Bus Time key and the static bus data (see the service's roadmap).
 
 ## Files
 
