@@ -2,7 +2,8 @@
 
 A small, Spotlight-style URL launcher for macOS. Press a global hotkey,
 type a command (`/pr 12`; `/` lists them all), hit Enter, and the URL opens
-in your default browser. Type an app's name instead and it opens the app.
+in your default browser. Type an app's name instead and it opens the app,
+or a System Settings pane's (`wifi`, `bluetooth`) to open that pane.
 Type `/cal` to see your upcoming events (Google calendars included), or `= 3*14` to calculate. It also keeps a 24-hour clipboard
 history on a second hotkey, runs a pomodoro timer you start from the
 launcher, and can sleep or lock the Mac.
@@ -12,7 +13,7 @@ launcher, and can sleep or lock the Mac.
 - Workflows live in a JSON file and reload automatically: no rebuild to add one.
 - Frosted `NSVisualEffectView` panel, auto-focused input, fade/slide animation.
 - Commands start with `/`, so a bare word never runs one by accident; `/` or `/help` lists them all.
-- Suggestions as you type, with icons: matching apps, and commands after `/` (`/p` lists `/pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
+- Suggestions as you type, with icons: matching apps and System Settings panes, and commands after `/` (`/p` lists `/pr`); `Tab` completes, `↑` `↓` choose, `⌘1` to `⌘9` pick.
 - Your commands as [cards](Sources/Launcher/README.md#command-cards) under the empty input, the most used first; click one to type it.
 
 | Input          | Opens                                                             |
@@ -29,6 +30,7 @@ launcher, and can sleep or lock the Mac.
 | `saf`, `code`, `vsc` | The installed app whose name matches (Safari, Visual Studio Code) |
 | `/transit`, `/metro` | The station in Google Maps; the launcher shows the next [trains](Sources/Transit/README.md) at W 4 St, uptown and downtown |
 | `/subway bedford av` | The station in Google Maps; the hint shows its next [trains](Sources/Transit/README.md#any-station-in-the-hint) per line (`Bedford Av · L ↑2 ↓4 min`) |
+| `wifi`, `bluetooth`, `display`, `clavier` | That [System Settings pane](Sources/Launcher/README.md#system-settings-panes) |
 | `/pomo`        | Starts a 25 min [pomodoro](Sources/Pomodoro/README.md), or pauses / resumes it (nothing opens); the launcher shows the timer and the hint says what Enter will do |
 | `/zz`, `/lockscreen`, `/displaysleep` | Puts the Mac to sleep, locks the screen, or turns the display off ([System](Sources/System/README.md)) |
 | `/stats`       | Nothing: the launcher shows this week's [usage](Sources/Stats/README.md) (top commands and apps, clips restored, focus sessions, commands never run); Enter opens the 30-day summary |
@@ -43,7 +45,7 @@ Each feature has its own README, next to its code in `Sources/`:
 
 | Feature | What it does |
 | ------- | ------------ |
-| [Launcher](Sources/Launcher/README.md) | The `⌘Space` bar: workflows (`workflows.json`, its format and where it is read from), `/` commands and their suggestions, and opening apps by name. |
+| [Launcher](Sources/Launcher/README.md) | The `⌘Space` bar: workflows (`workflows.json`, its format and where it is read from), `/` commands and their suggestions, and opening apps and System Settings panes by name. |
 | [Weather](Sources/Weather/README.md) | The forecast under the input for `/weather` / `/weather <place>`, and the current weather above it. Needs a free WeatherAPI.com key. |
 | [Calendar](Sources/Calendar/README.md) | Your upcoming events under the input for `/cal`, one day's with `/cal demain` or `/cal 12/11`, and a search with `/cal <text>`, read from macOS Calendar (Google accounts included). Needs `build/Launcher.app`. |
 | [Transit](Sources/Transit/README.md) | The next subway trains at a station (W 4 St-Washington Sq) under the input for `/transit` or `/metro`, from the MTA's real-time feeds through the [transit](https://github.com/erakor/transit) service. Needs its address and token. |
@@ -110,7 +112,7 @@ copied (a search field's text is reduced to its length).
 | `clipboard.open`, `clipboard.reload`, `clipboard.filter` | Opening the history panel and each keystroke in it |
 | `clipboard.preview`, `thumbnail.decode`, `thumbnail.hit` / `.miss` | The selected item's preview and the picture decodes (background) |
 | `clipboard.restore.write` | Putting an item back on the clipboard |
-| `launcher.input`, `apps.match`, `apps.scan` | Each keystroke in the launcher, app ranking, the app scan (background) |
+| `launcher.input`, `apps.match`, `apps.scan`, `panes.scan` | Each keystroke in the launcher, app and pane ranking, the app scan and the System Settings panes read at launch (background) |
 | `store.load`, `store.save` | Reading and writing `usage.json` and `typed-picks.json` (`kind=usage` or `typedAppPicks`, `bytes=`) |
 | `calendar.fetch`, `calendar.storeChanged` | Reading events (background); each change macOS reports |
 | `stats.report` | Adding up the usage stats as `/stats` appears |

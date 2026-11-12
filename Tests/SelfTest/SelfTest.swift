@@ -108,6 +108,7 @@ private final class SelfTestRunner: NSObject, NSApplicationDelegate {
             CommandPrefixTests.run()
             WorkflowCardTests.run()
             SuggestionListTests.run()
+            SettingsPaneTests.run()
             ClipboardTests.run()
             SnippetTests.run()
             ClipboardSpeedTests.run()

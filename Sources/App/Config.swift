@@ -162,6 +162,10 @@ enum Config {
     static let typedAppPicksRetentionDays = 90
     /// Inputs kept at most; the least recently typed go first.
     static let typedAppPicksMaxInputs = 500
+    /// Typing a System Settings pane's name, in English or French (`wifi`,
+    /// `bluetooth`, `moniteurs`), offers that pane next to the apps (see
+    /// SettingsPanes; macOS 13 and later).
+    static let settingsPaneSearch = true
 
     // MARK: Built-ins
 
