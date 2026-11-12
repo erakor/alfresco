@@ -2,7 +2,7 @@
 //
 // The launcher panel: input field, hint line, keyword suggestions, the
 // weather, calendar, transit, pomodoro, usage and snippets areas, and Enter handling, which opens a workflow's
-// URL or an installed app, or copies a built-in's answer.
+// URL, an installed app or a System Settings pane, or copies a built-in's answer.
 
 import Carbon.HIToolbox
 import Cocoa
@@ -326,27 +326,28 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateWeather() // resizes the panel to the new list
     }
 
-    /// The installed app the input names, when no workflow keyword or
-    /// built-in claims the input (it would otherwise go to the fallback
-    /// search).
-    private func matchedApp() -> AppEntry? {
+    /// The installed app or System Settings pane the input names (an `.app`
+    /// or `.settingsPane` row), when no workflow keyword or built-in claims
+    /// the input (it would otherwise go to the fallback search).
+    private func matchedResult() -> LauncherItem? {
         appMatches(for: textField.stringValue, limit: 1).first
     }
 
-    /// The installed apps `input` names, best first, ranked with every
-    /// signal (opens over the kept days, the apps picked for this input), so
-    /// Enter and the list's first row always agree.
-    private func appMatches(for input: String, limit: Int) -> [AppEntry] {
+    /// The installed apps and System Settings panes `input` names, best
+    /// first, ranked with every signal (opens over the kept days, the apps
+    /// picked for this input), so Enter and the list's first row always
+    /// agree.
+    private func appMatches(for input: String, limit: Int) -> [LauncherItem] {
         guard inputCanNameApp(input) else { return [] }
-        return apps.matches(
+        return apps.results(
             for: input, limit: limit, openCounts: usage.apps, picks: TypedAppPicks.shared.picks(for: input)
         )
     }
 
     /// Whether the input would go to the fallback search (or nowhere, when
     /// workflows.json's fallback was refused), which is the only input apps
-    /// take (never a workflow keyword or a built-in's input). `input` is the
-    /// field's text, so currentBuiltIn is its built-in answer.
+    /// and panes take (never a workflow keyword or a built-in's input).
+    /// `input` is the field's text, so currentBuiltIn is its built-in answer.
     private func inputCanNameApp(_ input: String) -> Bool {
         store.current.workflowAwaitingArgument(input) == nil
             && CommandParser.isUnmatched(input, using: store.current)
@@ -389,22 +390,37 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         hide()
     }
 
-    /// A list row taken with Enter, ⌘1 to ⌘9 or a click: an app opens; a
-    /// workflow is completed, then run if it needs no argument.
+    /// Opens System Settings on the pane, or beeps and stays open when
+    /// macOS can't.
+    private func open(_ pane: SettingsPane) {
+        guard NSWorkspace.shared.open(pane.url) else {
+            NSSound.beep()
+            return
+        }
+        UsageStats.shared.record(.launcherOpenedSettingsPane)
+        didLaunch = true
+        textField.stringValue = ""
+        hide()
+    }
+
+    /// A list row taken with Enter, ⌘1 to ⌘9 or a click: an app or a pane
+    /// opens; a workflow is completed, then run if it needs no argument.
     private func activate(_ item: LauncherItem) {
         switch item {
         case .app(let app):
             open(app)
+        case .settingsPane(let pane):
+            open(pane)
         case .workflow(let suggestion):
             complete(with: suggestion.completion)
             if !suggestion.workflow.takesArgument { execute() }
         }
     }
 
-    /// Enter: a built-in's answer, else the matching app, else the workflow
-    /// (`/pr 12`) or fallback URL. ⌘↩ (`searchOnly`) skips built-ins and the
-    /// app and runs the fallback search; for command input it searches for
-    /// what is typed, `/` included.
+    /// Enter: a built-in's answer, else the matching app or pane, else the
+    /// workflow (`/pr 12`) or fallback URL. ⌘↩ (`searchOnly`) skips
+    /// built-ins, apps and panes and runs the fallback search; for command
+    /// input it searches for what is typed, `/` included.
     private func execute(searchOnly: Bool = false) {
         // Keyword typed without its argument: keep the bar open and wait.
         if store.current.workflowAwaitingArgument(textField.stringValue) != nil {
@@ -415,8 +431,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             copyAnswer(answer)
             return
         }
-        if !searchOnly, let app = matchedApp() {
-            open(app)
+        if !searchOnly, let result = matchedResult() {
+            activate(result)
             return
         }
         let input = textField.stringValue
@@ -484,10 +500,11 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         inputDidChange()
     }
 
-    /// Fills the list under the input: the best matching app first (it is
-    /// what Enter opens, so it starts highlighted), then the keywords that
-    /// start with what is typed after the command prefix (every one for `/`
-    /// or `/help`), then the other matching apps, up to nine rows unless
+    /// Fills the list under the input: the best matching app or System
+    /// Settings pane first (it is what Enter opens, so it starts
+    /// highlighted), then the keywords that start with what is typed after
+    /// the command prefix (every one for `/` or `/help`), then the other
+    /// matching apps and panes, up to nine rows unless
     /// there are more keywords. Empty while an InputArea claims the input
     /// (it takes that space).
     private func updateSuggestions() {
@@ -497,13 +514,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         if !inputAreas.contains(where: { $0.claims() }) {
             let workflows = sortedByUse(store.current.suggestions(for: input), input: input)
             let appLimit = max(1, SuggestionListView.maxVisibleRows - workflows.count)
-            let matchedApps = appMatches(for: input, limit: appLimit)
-            if let best = matchedApps.first {
-                items.append(.app(best))
+            let results = appMatches(for: input, limit: appLimit)
+            if let best = results.first {
+                items.append(best)
                 highlightFirst = true
             }
             items += workflows.map(LauncherItem.workflow)
-            items += matchedApps.dropFirst().map(LauncherItem.app)
+            items += results.dropFirst()
         }
         suggestionList.show(items, highlightFirst: highlightFirst)
         suggestionList.isHidden = items.isEmpty
@@ -587,18 +604,28 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         }
 
         // A highlighted row takes Enter; without one, a built-in or the
-        // matching app does (never both: apps don't take a built-in's input).
-        let app: AppEntry?
+        // matching app or pane does (never both: they don't take a
+        // built-in's input).
+        let result: LauncherItem?
         switch suggestionList.selected {
-        case .app(let selectedApp)?: app = selectedApp
-        case .workflow?: app = nil
-        case nil: app = matchedApp()
+        case .workflow?: result = nil
+        case let selected?: result = selected
+        case nil: result = matchedResult()
         }
         let builtIn = suggestionList.selected == nil ? currentBuiltIn : nil
-        if let app {
-            let iconImage = NSWorkspace.shared.icon(forFile: app.url.path)
+        // The app's icon, or System Settings' for a pane.
+        let resultIconPath: String?
+        switch result {
+        case .app(let app)?: resultIconPath = app.url.path
+        case .settingsPane?: resultIconPath = SettingsPanes.appURL?.path
+        default: resultIconPath = nil
+        }
+        if let resultIconPath {
+            let iconImage = NSWorkspace.shared.icon(forFile: resultIconPath)
             iconImage.size = NSSize(width: 24, height: 24)
             icon.image = iconImage
+        } else if result != nil {
+            icon.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil) ?? searchIcon
         } else if let builtIn {
             icon.image = NSImage(systemSymbolName: builtIn.kind.symbolName, accessibilityDescription: nil) ?? searchIcon
         } else {
@@ -613,9 +640,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         } else if let builtIn {
             hintLabel.stringValue = builtIn.hint
             hintLabel.toolTip = builtIn.detail
-        } else if let app {
-            hintLabel.stringValue = "↩ Open \(app.name)" + (store.current.fallback.map { "  ⌘↩ \($0.title)" } ?? "")
-            hintLabel.toolTip = app.url.path
+        } else if let result {
+            hintLabel.stringValue = "↩ Open \(result.completion)" + (store.current.fallback.map { "  ⌘↩ \($0.title)" } ?? "")
+            switch result {
+            case .app(let app): hintLabel.toolTip = app.url.path
+            case .settingsPane(let pane): hintLabel.toolTip = "\(SettingsPanes.appName) › \(pane.title)"
+            case .workflow: hintLabel.toolTip = nil
+            }
         } else if let workflow = store.current.workflowAwaitingArgument(textField.stringValue) {
             // The keyword is typed but its argument is not: show its help.
             let keyword = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

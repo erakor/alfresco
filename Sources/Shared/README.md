@@ -23,7 +23,8 @@ Recorded:
 - Launcher: how often it opens, how often it closes without opening anything
   (and whether something was typed), Enter on a keyword still missing its
   argument, each workflow run (by its first keyword: `pr` or `pr …`, never what
-  you typed after it), which installed apps were opened (by bundle ID), and
+  you typed after it), which installed apps were opened (by bundle ID), how
+  many System Settings panes were opened (not which), and
   how often the fallback is used, how often a command card is clicked
   (not which one: that counts when it runs), and how often the weather above
   the input is clicked. The launcher list uses the app and keyword
