@@ -59,6 +59,25 @@ times. It is the `subway` workflow's `preview` in
 the 20 seconds the service says. Without the address and token there is no
 preview, and the workflow still opens Maps.
 
+## PATH, LIRR, Metro-North and NYC Ferry
+
+The same kind of hint, one line from the service's `/preview/path`,
+`/preview/lirr`, `/preview/mnr` and `/preview/ferry`: the station, then the
+next departure to each destination in whole minutes, soonest first.
+
+| Type | Hint |
+| --- | --- |
+| `/path grove` | `Grove Street · Journal Square 0 · 33rd Street 1 · Newark 3 min` |
+| `/lirr penn` | `Penn Station · Ronkonkoma 1 · Huntington 9 · Port Washington 16 min` |
+| `/mnr white plains` | next Metro-North trains at White Plains |
+| `/ferry wall st` | next boats from Wall St/Pier 11 |
+
+Enter opens the station in Google Maps. Like `/subway`, the name is the
+service's best match, the line is kept for the 20 seconds the service says,
+and without the address and token there is no preview. A PATH train at the
+platform reads 0. Ferry times past a boat's next stop are the service's
+estimates.
+
 ## Another station
 
 Set `Config.transitStation` in [`Config.swift`](../App/Config.swift) to a
@@ -78,7 +97,10 @@ A single stop id (`L08`) works too. `transitNorthLabel` and
 "Manhattan" and "Brooklyn" suit an L or G station better). `nil` turns the
 board off: the workflow then just opens its URL.
 
-Buses aren't on the board yet: the service serves only the subway for now.
+The board shows only the subway; PATH, the LIRR, Metro-North and the ferry
+are in the hint (above). Buses can't be added yet: the service has bus
+service alerts (`/bus/alerts`) but no bus arrivals, which wait on an MTA
+Bus Time key and the static bus data (see the service's roadmap).
 
 ## Files
 
