@@ -7,6 +7,9 @@
 import Cocoa
 
 final class StatusRow: NSStackView {
+    /// The height of an area that shows only this line (loading, an error).
+    static let areaHeight: CGFloat = 52
+
     private let spinner = NSProgressIndicator()
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")

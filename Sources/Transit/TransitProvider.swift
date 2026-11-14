@@ -46,6 +46,9 @@ final class TransitProvider {
     private var snapshot: TransitSnapshot?
     private var failure: (message: String, at: Date)?
     private var task: Task<Void, Never>?
+    /// The last refreshIfStale found no service set up, so `state` can say
+    /// so without reading the settings files again.
+    private var serviceMissing = false
     private var alerts: TransitAlerts?
     private var alertsFailedAt: Date?
     private var alertsTask: Task<Void, Never>?
@@ -67,19 +70,21 @@ final class TransitProvider {
             return .loaded(snapshot)
         }
         if let failure { return .failed(failure.message) }
-        if Config.transitService() == nil { return .failed(Self.setupMessage) }
-        return .loading
+        return serviceMissing ? .failed(Self.setupMessage) : .loading
     }
 
     /// Fetches a new snapshot unless the last one is fresh, a failure is
     /// recent, a fetch is already running, or no service is set up (always
-    /// so in the self-test build, see Config.transitService).
+    /// so in the self-test build, see Config.transitService). Callers run it
+    /// before `state`, which reports what it found.
     func refreshIfStale(now: Date = Date()) {
         guard task == nil, let station else { return }
         if let snapshot, now.timeIntervalSince(snapshot.fetchedAt) < Config.transitCacheLifetime { return }
         if let failure, now.timeIntervalSince(failure.at) < Self.failureLifetime { return }
         // Read last: it reads the settings files.
-        guard let service = Config.transitService() else { return }
+        let service = Config.transitService()
+        serviceMissing = service == nil
+        guard let service else { return }
         load(station, service: service)
     }
 
@@ -98,8 +103,8 @@ final class TransitProvider {
 
     /// Fetches the alerts unless the last answer is younger than
     /// `alertsLifetime`, a failure is recent, a fetch is already running, or
-    /// no service is set up. Never cancelled by `cancel()`: the menu bar
-    /// icon waits on it.
+    /// no service is set up. Never cancelled: the menu bar icon waits
+    /// on it.
     func refreshAlertsIfStale(now: Date = Date()) {
         guard alertsTask == nil, let station else { return }
         if let alerts, now.timeIntervalSince(alerts.fetchedAt) < Self.alertsLifetime { return }
@@ -130,12 +135,6 @@ final class TransitProvider {
             }
             self.notify(.alerts)
         }
-    }
-
-    /// Stops a train fetch in progress (the launcher closed).
-    func cancel() {
-        task?.cancel()
-        task = nil
     }
 
     private func load(_ station: String, service: TransitService) {

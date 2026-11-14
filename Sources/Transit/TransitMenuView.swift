@@ -117,7 +117,9 @@ private final class AlertRow: NSView {
     private let categoryLabel = NSTextField.areaLabel(size: 11, color: .secondaryLabelColor, weight: .semibold)
     private let headerLabel = NSTextField(wrappingLabelWithString: "")
 
+    #if SELFTEST
     var categoryText: String { categoryLabel.stringValue }
+    #endif
 
     override var isFlipped: Bool { true }
 

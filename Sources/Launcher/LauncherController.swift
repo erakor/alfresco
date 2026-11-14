@@ -273,7 +273,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         showsTransit = false
         previews.cancel()
         weather.cancel()
-        transit.cancel()
+        // A train fetch still running is kept: the provider is shared with
+        // the menu bar item, and its answer serves the next opening.
         stopTransitTimer()
         for area in inputAreas { area.view.isHidden = true }
         weatherStrip.clearHover()

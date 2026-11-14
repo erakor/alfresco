@@ -58,7 +58,8 @@ affects the station: delays,
 suspensions, reroutes, anything the MTA hasn't planned. Planned work
 (weekend and night changes) is listed in the menu but never shows the dot,
 since there is some most nights. For the dot, the station's alerts are
-checked every 5 minutes while the screens are awake
+checked every 5 minutes while the screens are awake and your session is
+in front (not while another user's is)
 (`Config.transitAlertCheckInterval`; the service caches them for a minute,
 so this costs it little), and the dot goes away once they can't be checked
 for 30 minutes. The icon's tool tip names the first incident.

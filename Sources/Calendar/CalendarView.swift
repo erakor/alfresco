@@ -15,7 +15,7 @@ final class CalendarView: NSView {
     private static let headerHeight: CGFloat = 24
     private static let rowHeight: CGFloat = 26
     private static let moreHeight: CGFloat = 22
-    private static let statusHeight: CGFloat = 52
+    private static let statusHeight = StatusRow.areaHeight
     private static let padding: CGFloat = 8
     // "Next up first" (`/cal`)
     private static let ongoingHeight: CGFloat = 18

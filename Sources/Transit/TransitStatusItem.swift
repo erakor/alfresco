@@ -5,7 +5,8 @@
 // fetched when the menu opens (TransitProvider.refreshIfStale, shared with
 // the launcher's `/transit`) and redrawn every 10 s while it stays open.
 // Alerts are also checked every Config.transitAlertCheckInterval while the
-// screens are awake, so the icon can show a dot during an incident.
+// screens are awake and this user's session is in front, so the icon can
+// show a dot during an incident.
 
 import Cocoa
 
@@ -64,6 +65,9 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(self, selector: #selector(screensDidSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
         workspace.addObserver(self, selector: #selector(screensDidWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
+        // Nobody sees this menu bar while another user's session is in front.
+        workspace.addObserver(self, selector: #selector(screensDidSleep), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(screensDidWake), name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
         startAlertTimer()
         checkAlerts()
     }
@@ -161,7 +165,8 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
 
     /// Fetches the alerts, and drops the dot once the last answer is too
     /// old to trust. Only from the timer, which stops while the screens
-    /// sleep, and on launch and wake.
+    /// sleep or another user's session is in front, and on launch, wake and
+    /// return.
     private func checkAlerts() {
         updateIcon()
         guard Config.transitAlertCheckInterval != nil else { return }

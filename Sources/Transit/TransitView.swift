@@ -11,7 +11,7 @@ final class TransitView: NSView {
     /// Height the launcher adds below its input row while this is shown.
     static let height: CGFloat = 240
     /// Enough for the status line alone (loading, failed).
-    static let statusHeight: CGFloat = 52
+    static let statusHeight = StatusRow.areaHeight
 
     /// The height `state` needs: the board's, or the status line's. The
     /// launcher keeps `height` throughout; the menu bar item follows this.
