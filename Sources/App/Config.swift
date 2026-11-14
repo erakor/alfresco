@@ -278,6 +278,17 @@ enum Config {
     /// A snapshot is reused for this long, then fetched again while the
     /// board is shown.
     static let transitCacheLifetime: TimeInterval = 30
+    /// A tram in the menu bar whose menu shows the same board, and the
+    /// station's service alerts under it. Trains are fetched only while the
+    /// menu is open. Independent of showMenuBarIcon; off while
+    /// transitStation is nil.
+    static let transitMenuBarItem = true
+    /// How often the station's service alerts are checked in the
+    /// background, while the screens are awake, so the menu bar item's
+    /// icon can show a dot during an incident (delays, suspensions; not
+    /// planned work). nil: alerts are only fetched when the menu opens, and
+    /// the icon never shows the dot.
+    static let transitAlertCheckInterval: TimeInterval? = 5 * 60
 
     /// The transit service (github.com/erakor/transit): its https address
     /// from `ALFRESCO_TRANSIT_URL`, else ~/.config/alfresco/transit-url, and

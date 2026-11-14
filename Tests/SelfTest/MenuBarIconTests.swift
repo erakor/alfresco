@@ -12,30 +12,12 @@ enum MenuBarIconTests {
         SelfTest.check("menu bar icon: template image", image.isTemplate)
         SelfTest.check("menu bar icon: 18 pt square", image.size == NSSize(width: 18, height: 18))
 
-        // Drawn at 2x, like a Retina menu bar.
-        guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 36, pixelsHigh: 36,
-                                            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
+        guard let bitmap = SelfTest.drawAt2x(image) else {
             SelfTest.check("menu bar icon: bitmap for drawing", false)
             return
         }
-        // 36 pixels for 18 points; without this the bitmap is 36 points and
-        // the icon fills only a quarter of it. Set before the context is
-        // made from the bitmap, which keeps the size it sees then.
-        bitmap.size = image.size
-        guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
-            SelfTest.check("menu bar icon: bitmap for drawing", false)
-            return
-        }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-        image.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
-        NSGraphicsContext.restoreGraphicsState()
-
         // Points from the top left, as in MenuBarIcon.
-        func alpha(_ x: Double, _ y: Double) -> Double {
-            Double(bitmap.colorAt(x: Int(x * 2), y: Int(y * 2))?.alphaComponent ?? -1)
-        }
+        func alpha(_ x: Double, _ y: Double) -> Double { SelfTest.alpha(in: bitmap, x, y) }
         let points: [(String, Double, Double, Bool)] = [
             ("sun outline", 9, 4, true),
             ("inside the sun", 9, 7, false),

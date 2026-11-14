@@ -49,7 +49,7 @@ Each feature has its own README, next to its code in `Sources/`:
 | [Launcher](Sources/Launcher/README.md) | The `⌘Space` bar: workflows (`workflows.json`, its format and where it is read from), `/` commands and their suggestions, and opening apps and System Settings panes by name. |
 | [Weather](Sources/Weather/README.md) | The forecast under the input for `/weather` / `/weather <place>`, and the current weather above it. Needs a free WeatherAPI.com key. |
 | [Calendar](Sources/Calendar/README.md) | Your upcoming events under the input for `/cal`, one day's with `/cal demain` or `/cal 12/11`, and a search with `/cal <text>`, read from macOS Calendar (Google accounts included). Needs `build/Launcher.app`. |
-| [Transit](Sources/Transit/README.md) | The next subway trains at a station (W 4 St-Washington Sq) under the input for `/transit` or `/metro`, from the MTA's real-time feeds through the [transit](https://github.com/erakor/transit) service. Needs its address and token. |
+| [Transit](Sources/Transit/README.md) | The next subway trains at a station (W 4 St-Washington Sq) under the input for `/transit` or `/metro` and in a menu bar item, whose tram shows an orange dot during a service alert, from the MTA's real-time feeds through the [transit](https://github.com/erakor/transit) service. Needs its address and token. |
 | [Built-ins](Sources/BuiltIns/README.md) | Answers in the launcher's hint, copied with Enter: a calculator and unit converter (`= 3*14`, `= 10 km in mi`), time zones (`time tokyo`), a new UUID (`uuid`), the current time (`now`) and dates (`days until 25/12`, `= today + 30 days`, `week`). |
 | [Pomodoro](Sources/Pomodoro/README.md) | A focus / break timer started with `/pomo`, counting down in the menu bar. |
 | [System](Sources/System/README.md) | `/zz` (sleep), `/lockscreen` and `/displaysleep` from the launcher, with no permission prompt. |
@@ -117,7 +117,7 @@ copied (a search field's text is reduced to its length).
 | `store.load`, `store.save` | Reading and writing `usage.json` and `typed-picks.json` (`kind=usage` or `typedAppPicks`, `bytes=`) |
 | `calendar.fetch`, `calendar.storeChanged` | Reading events (background); each change macOS reports |
 | `stats.report` | Adding up the usage stats as `/stats` appears |
-| `weather.load`, `transit.load`, `preview.load` | Network requests (`kind=ok`, `failed` or `cancelled`; `bytes=`) |
+| `weather.load`, `transit.load`, `transit.alerts`, `preview.load` | Network requests (`kind=ok`, `failed` or `cancelled`; `bytes=`) |
 
 **Without Xcode**, watch them live while you use the app, one line per
 interval with its duration:

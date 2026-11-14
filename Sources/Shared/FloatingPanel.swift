@@ -309,28 +309,41 @@ extension FloatingPanelController {
     /// window background; everything on it is drawn as in the app.
     func renderForSelfTest(appearance: NSAppearance.Name) -> Data? {
         panel.setContentSize(currentSizeForSelfTest)
-        let view = contentView
-        let previous = view.appearance
-        view.appearance = NSAppearance(named: appearance)
-        defer { view.appearance = previous }
-        view.layoutSubtreeIfNeeded()
-        let bounds = view.bounds
-        guard bounds.width > 0, bounds.height > 0,
-              let content = view.bitmapImageRepForCachingDisplay(in: bounds)
-        else { return nil }
-        view.cacheDisplay(in: bounds, to: content)
-        guard let rep = NSBitmapImageRep(
+        return contentView.renderForSelfTest(appearance: appearance, cornerRadius: Self.cornerRadius)
+    }
+}
+
+extension NSView {
+    /// The view as it lays out now, drawn off screen at the screen's scale.
+    func bitmapForSelfTest() -> NSBitmapImageRep? {
+        layoutSubtreeIfNeeded()
+        guard bounds.width > 0, bounds.height > 0, let bitmap = bitmapImageRepForCachingDisplay(in: bounds) else {
+            return nil
+        }
+        cacheDisplay(in: bounds, to: bitmap)
+        return bitmap
+    }
+
+    /// The view drawn off screen into a PNG in `appearance`, on a flat
+    /// window background (rounded by `cornerRadius`): a panel's or a menu's
+    /// frosted one samples what is behind the window.
+    func renderForSelfTest(appearance: NSAppearance.Name, cornerRadius: CGFloat = 0) -> Data? {
+        let previous = self.appearance
+        let drawing = NSAppearance(named: appearance)
+        self.appearance = drawing
+        defer { self.appearance = previous }
+        guard let content = bitmapForSelfTest(), let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: content.pixelsWide, pixelsHigh: content.pixelsHigh,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
         ) else { return nil }
+        let bounds = self.bounds
         rep.size = bounds.size
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
-            let shape = NSBezierPath(roundedRect: bounds, xRadius: Self.cornerRadius, yRadius: Self.cornerRadius)
+        drawing?.performAsCurrentDrawingAppearance {
             NSColor.windowBackgroundColor.setFill()
-            shape.fill()
+            NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius).fill()
             content.draw(in: bounds)
         }
         NSGraphicsContext.restoreGraphicsState()

@@ -41,6 +41,36 @@ the launcher is closed. A failed fetch keeps the last snapshot on screen for
 up to 3 minutes (the footer's age shows it getting older), then shows the
 error; the next try waits 15 seconds.
 
+## In the menu bar
+
+A tram in the menu bar opens the same board as a menu, with the station's
+service alerts under it: the MTA's status for each (Delays, Part
+Suspended…), its lines' bullets and what it says, incidents first and
+planned work dimmed, at most four and a count of the rest. **Open /transit
+in Launcher** opens the launcher on the board.
+
+Trains are fetched only while the menu is open (the launcher and the menu
+share what was fetched, so opening one right after the other doesn't
+fetch again), and the countdowns follow the clock while it stays open.
+
+The tram shows an orange dot in its top-right corner while an incident
+affects the station: delays,
+suspensions, reroutes, anything the MTA hasn't planned. Planned work
+(weekend and night changes) is listed in the menu but never shows the dot,
+since there is some most nights. For the dot, the station's alerts are
+checked every 5 minutes while the screens are awake and your session is
+in front (not while another user's is)
+(`Config.transitAlertCheckInterval`; the service caches them for a minute,
+so this costs it little), and the dot goes away once they can't be checked
+for 30 minutes. The icon's tool tip names the first incident.
+
+`Config.transitMenuBarItem = false` removes the item;
+`Config.transitAlertCheckInterval = nil` stops the background checks (the
+menu still lists the alerts when it opens, and the dot never shows). The
+item is independent of `Config.showMenuBarIcon`, and absent while
+`Config.transitStation` is nil. Without the service's address and token,
+the menu says how to set them up.
+
 ## Any station in the hint
 
 `/subway <station>` (`/subway bedford av`) shows the next train per line
@@ -107,10 +137,16 @@ Bus Time key and the static bus data (see the service's roadmap).
 | File | What it does |
 | --- | --- |
 | `TransitAPI.swift` | `TransitLoader` asks the service for the station's trains (signpost `transit.load`) and decodes the answer; `TransitBoard` (pure) sorts, limits and counts down what a snapshot holds at a given moment. |
-| `TransitProvider.swift` | Keeps the last snapshot and fetches a new one when it is stale, one at a time. Never fetches in the self-test build, which has no service. |
+| `TransitProvider.swift` | Keeps the last snapshot and the last alerts, and fetches new ones when they are stale, one of each at a time, for the launcher and the menu bar item (one provider, made by the app). Never fetches in the self-test build, which has no service. |
 | `TransitView.swift` | The board under the input, with the shared `StatusRow` while loading or failed. |
+| `TransitAlerts.swift` | `TransitAlertsLoader` asks the service for the station's alerts (`/subway/alerts?stop=`, signpost `transit.alerts`) and decodes them; `TransitAlerts.incidents` are the ones that show the dot. |
+| `TransitStatusItem.swift` | The menu bar item: fetches when its menu opens, redraws every 10 s while open, checks alerts in the background while the screens are awake. |
+| `TransitMenuView.swift` | The menu's content: the board, then the alerts. |
+| `TransitMenuBarIcon.swift` | The tram as a template image (with a hole for the dot during an incident), and `TransitBadgeView`, the orange dot over it: a template image is one color, so the dot is a view on the status button. |
 
 The usage stats count snapshots loaded (`transit.loaded`), failures by kind
-(`transit.failed.offline`, `.token`, `.server`, `.badResponse`) and how
-often the board is shown (`transit.shown`, once per opening), never what it
-lists.
+(`transit.failed.offline`, `.token`, `.server`, `.badResponse`), alerts
+loaded and their failures (`transit.alertsLoaded`,
+`transit.alertsFailed.<kind>`), and how often the board is shown
+(`transit.shown`, once per launcher opening; `transit.menuOpened` from the
+menu bar), never what it lists.

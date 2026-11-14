@@ -90,7 +90,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private var currentSnippetSearch: SnippetSearch?
     /// The departure board (`/transit`), and whether the input runs the
     /// transit workflow, worked out once per change of it (inputDidChange).
-    private let transit = TransitProvider()
+    private let transit: TransitProvider
     private let transitView = TransitView(frame: .zero)
     private var showsTransit = false
     /// Whether the board was shown since the panel was (usage stats).
@@ -192,18 +192,23 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private static let calendarRefreshInterval: TimeInterval = 30
 
     init(
-        store: WorkflowStore, pomodoro: PomodoroTimer? = nil, snippets: @escaping () -> [ClipItem] = { [] },
+        store: WorkflowStore, pomodoro: PomodoroTimer? = nil, transit: TransitProvider = TransitProvider(),
+        snippets: @escaping () -> [ClipItem] = { [] },
         internalURLHandler: @escaping (URL) -> Bool
     ) {
         self.store = store
         self.pomodoro = pomodoro
+        self.transit = transit
         self.snippetItems = snippets
         self.internalURLHandler = internalURLHandler
         super.init(size: NSSize(width: 680, height: LauncherController.rowHeight), verticalOffset: 0.15)
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
         weather.onUpdate = { [weak self] in self?.updateWeather() }
-        transit.onUpdate = { [weak self] in self?.transitDidUpdate() }
+        transit.addObserver { [weak self] change in
+            // The board shows no alerts.
+            if change == .trains { self?.transitDidUpdate() }
+        }
         calendar.onUpdate = { [weak self] in self?.calendarDidUpdate() }
         calendar.onAccessAnswered = { [weak self] in self?.calendarAccessAnswered(granted: $0) }
         apps.onUpdate = { [weak self] in self?.appsDidChange() }
@@ -268,7 +273,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         showsTransit = false
         previews.cancel()
         weather.cancel()
-        transit.cancel()
+        // A train fetch still running is kept: the provider is shared with
+        // the menu bar item, and its answer serves the next opening.
         stopTransitTimer()
         for area in inputAreas { area.view.isHidden = true }
         weatherStrip.clearHover()

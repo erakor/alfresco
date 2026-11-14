@@ -10,12 +10,28 @@ import Cocoa
 final class TransitView: NSView {
     /// Height the launcher adds below its input row while this is shown.
     static let height: CGFloat = 240
+    /// Enough for the status line alone (loading, failed).
+    static let statusHeight = StatusRow.areaHeight
+
+    /// The height `state` needs: the board's, or the status line's. The
+    /// launcher keeps `height` throughout; the menu bar item follows this.
+    static func preferredHeight(for state: TransitState) -> CGFloat {
+        if case .loaded = state { return height }
+        return statusHeight
+    }
 
     private let titleLabel = NSTextField.areaLabel(size: 13, color: .labelColor, weight: .semibold)
     private let footerLabel = NSTextField.areaLabel(size: 11, color: .tertiaryLabelColor)
     private let columns = [DirectionColumn(frame: .zero), DirectionColumn(frame: .zero)]
     private let columnsStack = NSStackView()
     private let statusRow = StatusRow(frame: .zero)
+    private let separator = NSBox()
+
+    /// The line above the station's name, which sets the board off from the
+    /// launcher's input row. The menu bar item's board has none.
+    var showsSeparator = true {
+        didSet { separator.isHidden = !showsSeparator }
+    }
 
     #if SELFTEST
     /// The board last shown, nil while loading or failed.
@@ -70,7 +86,6 @@ final class TransitView: NSView {
     }
 
     private func build() {
-        let separator = NSBox()
         separator.boxType = .separator
 
         columnsStack.orientation = .horizontal
@@ -194,17 +209,21 @@ private final class DepartureRow: NSView {
 }
 
 /// The MTA's round line bullet: the line's color and letter, as the
-/// transit service gives them.
-private final class RouteBullet: NSView {
+/// transit service gives them. Also used by the menu bar item's alerts.
+final class RouteBullet: NSView {
     private var route = ""
     private var color: UInt32 = 0
     private var textColor: UInt32 = 0
 
     func show(_ departure: TransitDeparture) {
-        guard departure.route != route || departure.color != color || departure.textColor != textColor else { return }
-        route = departure.route
-        color = departure.color
-        textColor = departure.textColor
+        show(route: departure.route, color: departure.color, textColor: departure.textColor)
+    }
+
+    func show(route: String, color: UInt32, textColor: UInt32) {
+        guard route != self.route || color != self.color || textColor != self.textColor else { return }
+        self.route = route
+        self.color = color
+        self.textColor = textColor
         needsDisplay = true
     }
 

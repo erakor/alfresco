@@ -146,13 +146,17 @@ enum TransitLoader {
     /// The URL of `station`'s arrivals, `limit` trains per line and
     /// direction (the service allows 1 to 10).
     static func url(for station: String, limit: Int, service: TransitService) -> URL? {
-        guard var components = URLComponents(
-            url: service.baseURL.appendingPathComponent("subway/arrivals"), resolvingAgainstBaseURL: false
-        ) else { return nil }
-        components.queryItems = [
-            URLQueryItem(name: "stop", value: station),
+        url(path: "subway/arrivals", station: station, service: service, extra: [
             URLQueryItem(name: "limit", value: String(min(max(limit, 1), 10))),
-        ]
+        ])
+    }
+
+    /// `path` on the service for `station` (its `stop` parameter), then `extra`.
+    static func url(path: String, station: String, service: TransitService, extra: [URLQueryItem] = []) -> URL? {
+        guard var components = URLComponents(
+            url: service.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false
+        ) else { return nil }
+        components.queryItems = [URLQueryItem(name: "stop", value: station)] + extra
         // A station id joins its stops with "+", which a query reads as a space.
         components.percentEncodedQuery = components.percentEncodedQuery?
             .replacingOccurrences(of: "+", with: "%2B")
@@ -166,8 +170,8 @@ enum TransitLoader {
             group.arrivals.map {
                 TransitDeparture(
                     route: group.name,
-                    color: rgb(group.color) ?? 0x808183,
-                    textColor: rgb(group.textColor) ?? 0xFFFFFF,
+                    color: routeColor(group.color),
+                    textColor: routeTextColor(group.textColor),
                     direction: group.direction,
                     time: Date(timeIntervalSince1970: $0.time)
                 )
@@ -182,6 +186,12 @@ enum TransitLoader {
         )
     }
 
+    /// A route's color from the service, MTA gray when it can't be read.
+    static func routeColor(_ hex: String) -> UInt32 { rgb(hex) ?? 0x808183 }
+
+    /// A route's letter color from the service, white when it can't be read.
+    static func routeTextColor(_ hex: String) -> UInt32 { rgb(hex) ?? 0xFFFFFF }
+
     /// "#RRGGBB" as 0xRRGGBB.
     static func rgb(_ hex: String) -> UInt32? {
         guard hex.count == 7, hex.hasPrefix("#") else { return nil }
@@ -191,13 +201,24 @@ enum TransitLoader {
     /// The next trains at `station`. Throws TransitError, or
     /// CancellationError.
     static func load(_ station: String, limit: Int, service: TransitService) async throws -> TransitSnapshot {
+        guard let url = url(for: station, limit: limit, service: service) else { throw TransitError.badResponse }
+        return try await get(url, service: service, signpost: "transit.load") {
+            snapshot(from: $0, fetchedAt: Date())
+        }
+    }
+
+    /// One GET to the service with its token, timed by a `signpost`
+    /// interval, then `decode` (nil when the answer isn't one). Throws
+    /// TransitError, or CancellationError.
+    static func get<Value>(
+        _ url: URL, service: TransitService, signpost name: StaticString, decode: (Data) -> Value?
+    ) async throws -> Value {
         let signposter = Signposts.signposter
-        let signpost = signposter.beginInterval("transit.load", id: signposter.makeSignpostID())
+        let signpost = signposter.beginInterval(name, id: signposter.makeSignpostID())
         var outcome = Signposts.Kind.failed
         var bytes = 0
-        defer { Signposts.end("transit.load", signpost, outcome, bytes: bytes) }
+        defer { Signposts.end(name, signpost, outcome, bytes: bytes) }
 
-        guard let url = url(for: station, limit: limit, service: service) else { throw TransitError.badResponse }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         request.setValue(service.token, forHTTPHeaderField: TransitService.tokenHeader)
         let result: (Data, URLResponse)
@@ -221,8 +242,8 @@ enum TransitLoader {
         guard let http = response as? HTTPURLResponse else { throw TransitError.badResponse }
         if http.statusCode == 401 { throw TransitError.token }
         guard (200..<300).contains(http.statusCode) else { throw TransitError.server(http.statusCode) }
-        guard let snapshot = snapshot(from: data, fetchedAt: Date()) else { throw TransitError.badResponse }
+        guard let value = decode(data) else { throw TransitError.badResponse }
         outcome = .ok
-        return snapshot
+        return value
     }
 }

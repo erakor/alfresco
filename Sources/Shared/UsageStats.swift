@@ -10,7 +10,8 @@
 //   4 letters or more (a mistyped keyword), and which apps were opened (by
 //   bundle ID);
 // - previews, weather and transit: requests answered and failures, by
-//   error, and how often the departure board is shown;
+//   error, and how often the departure board is shown (in the launcher or
+//   from the menu bar);
 // - calendar: how often the event list is shown (never what it lists);
 // - built-ins: how often each one's answer is copied (never the input or
 //   the answer);
@@ -62,6 +63,10 @@ enum UsageCounter: String, Sendable {
     // Failures are counted as "transit.failed.<TransitError.usageName>".
     /// The departure board was shown (once per launcher opening).
     case transitShown = "transit.shown"
+    /// The menu bar item's board was opened.
+    case transitMenuOpened = "transit.menuOpened"
+    case transitAlertsLoaded = "transit.alertsLoaded"
+    // Failures are counted as "transit.alertsFailed.<TransitError.usageName>".
 
     /// The event list was shown (once per launcher opening).
     case calendarShown = "calendar.shown"
@@ -211,6 +216,10 @@ final class UsageStats {
 
     func recordTransitFailure(_ error: TransitError) {
         record(named: "transit.failed.\(error.usageName)")
+    }
+
+    func recordTransitAlertsFailure(_ error: TransitError) {
+        record(named: "transit.alertsFailed.\(error.usageName)")
     }
 
     /// The key a workflow run is counted under in `keywords`: its first

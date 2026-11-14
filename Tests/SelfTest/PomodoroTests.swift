@@ -485,6 +485,7 @@ enum PomodoroTests {
     private static var heldTimer: PomodoroTimer?
     private static var heldItem: PomodoroStatusItem?
     private static var heldAppIcon: NSStatusItem?
+    private static var heldTransitItem: TransitStatusItem?
 
     /// Runs a real focus session for SELFTEST_HOLD_SECONDS (default 15) so
     /// a screenshot can show its menu bar item, next to the app's own
@@ -501,6 +502,13 @@ enum PomodoroTests {
         let appIcon = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         appIcon.button?.image = MenuBarIcon.make()
         heldAppIcon = appIcon
+        // The transit item during an incident, so the screenshot shows its dot.
+        let transit = TransitProvider()
+        transit.setAlertsForSelfTest(TransitAlerts(
+            alerts: [TransitAlert(id: "hold", planned: false, category: "Delays", header: "Delays", routes: [])],
+            fetchedAt: Date()
+        ))
+        heldTransitItem = TransitStatusItem(provider: transit) {}
         let seconds = Double(ProcessInfo.processInfo.environment["SELFTEST_HOLD_SECONDS"] ?? "") ?? 15
         SelfTest.log("HOLDING \(item.buttonTitle ?? "nil") for \(Int(seconds)) s")
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
@@ -511,6 +519,8 @@ enum PomodoroTests {
                 heldTimer?.stop()
                 check("menubar-hold: the item was still shown, reading \(title)", shown)
                 check("menubar-hold: the app's menu bar icon was shown", iconShown)
+                check("menubar-hold: the transit item showed its dot",
+                      heldTransitItem?.badgeShownForSelfTest == (Config.transitAlertCheckInterval != nil))
                 SelfTest.finish()
             }
         }
