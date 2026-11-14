@@ -10,8 +10,6 @@ import Cocoa
 
 final class TransitMenuView: NSView {
     static let width: CGFloat = 400
-    /// The board while it shows only a status line (loading, failed).
-    static let statusHeight: CGFloat = 52
     /// Alerts listed; a line counts the rest.
     static let maxAlerts = 4
     private static let inset: CGFloat = 14
@@ -21,6 +19,7 @@ final class TransitMenuView: NSView {
     private let alertsTitle = NSTextField.areaLabel(size: 11, color: .secondaryLabelColor, weight: .medium)
     private var rows: [AlertRow] = []
     private let moreLabel = NSTextField.areaLabel(size: 11, color: .tertiaryLabelColor)
+    private var shownLayout: Layout?
 
     #if SELFTEST
     /// The board last shown, nil while loading or failed.
@@ -36,7 +35,7 @@ final class TransitMenuView: NSView {
     override var isFlipped: Bool { true }
 
     override init(frame frameRect: NSRect) {
-        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.statusHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: TransitView.statusHeight))
         board.showsSeparator = false
         alertsSeparator.boxType = .separator
         rows = (0..<Self.maxAlerts).map { _ in AlertRow(frame: .zero) }
@@ -51,13 +50,17 @@ final class TransitMenuView: NSView {
     }
 
     /// The board in `state` at `now`, then `alerts` (no section before the
-    /// first answer), and sizes the view to fit.
+    /// first answer), and sizes the view to fit. The alerts are laid out
+    /// again only when they or the board's height changed: each 10 s redraw
+    /// only refreshes the countdowns.
     func show(_ state: TransitState, alerts: TransitAlerts?, now: Date) {
         board.show(state, now: now)
+        let boardHeight = TransitView.preferredHeight(for: state)
+        let layout = Layout(boardHeight: boardHeight, alerts: alerts?.alerts)
+        guard layout != shownLayout else { return }
+        shownLayout = layout
+
         let width = Self.width - Self.inset * 2
-        var loaded = false
-        if case .loaded = state { loaded = true }
-        let boardHeight = loaded ? TransitView.height : Self.statusHeight
         board.frame = NSRect(x: Self.inset, y: 4, width: width, height: boardHeight)
         var y = board.frame.maxY
 
@@ -94,11 +97,11 @@ final class TransitMenuView: NSView {
         setFrameSize(NSSize(width: Self.width, height: ceil(y + 6)))
     }
 
-    /// What an alert's first line says: the MTA's status, else what kind
-    /// of alert it is.
-    static func categoryText(of alert: TransitAlert) -> String {
-        if let category = alert.category, !category.isEmpty { return category }
-        return alert.planned ? "Planned work" : "Service alert"
+    /// What the last layout was made for (the alerts without their fetch
+    /// time, which changes on every answer).
+    private struct Layout: Equatable {
+        let boardHeight: CGFloat
+        let alerts: [TransitAlert]?
     }
 }
 
@@ -151,7 +154,7 @@ private final class AlertRow: NSView {
         }
         if x > 0 { x += 3 }
 
-        categoryLabel.stringValue = TransitMenuView.categoryText(of: alert)
+        categoryLabel.stringValue = alert.categoryText
         categoryLabel.textColor = alert.planned ? .tertiaryLabelColor : .secondaryLabelColor
         categoryLabel.sizeToFit()
         let labelHeight = categoryLabel.frame.height

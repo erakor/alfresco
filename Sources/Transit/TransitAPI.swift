@@ -146,13 +146,17 @@ enum TransitLoader {
     /// The URL of `station`'s arrivals, `limit` trains per line and
     /// direction (the service allows 1 to 10).
     static func url(for station: String, limit: Int, service: TransitService) -> URL? {
-        guard var components = URLComponents(
-            url: service.baseURL.appendingPathComponent("subway/arrivals"), resolvingAgainstBaseURL: false
-        ) else { return nil }
-        components.queryItems = [
-            URLQueryItem(name: "stop", value: station),
+        url(path: "subway/arrivals", station: station, service: service, extra: [
             URLQueryItem(name: "limit", value: String(min(max(limit, 1), 10))),
-        ]
+        ])
+    }
+
+    /// `path` on the service for `station` (its `stop` parameter), then `extra`.
+    static func url(path: String, station: String, service: TransitService, extra: [URLQueryItem] = []) -> URL? {
+        guard var components = URLComponents(
+            url: service.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false
+        ) else { return nil }
+        components.queryItems = [URLQueryItem(name: "stop", value: station)] + extra
         // A station id joins its stops with "+", which a query reads as a space.
         components.percentEncodedQuery = components.percentEncodedQuery?
             .replacingOccurrences(of: "+", with: "%2B")
@@ -166,8 +170,8 @@ enum TransitLoader {
             group.arrivals.map {
                 TransitDeparture(
                     route: group.name,
-                    color: rgb(group.color) ?? 0x808183,
-                    textColor: rgb(group.textColor) ?? 0xFFFFFF,
+                    color: routeColor(group.color),
+                    textColor: routeTextColor(group.textColor),
                     direction: group.direction,
                     time: Date(timeIntervalSince1970: $0.time)
                 )
@@ -181,6 +185,12 @@ enum TransitLoader {
             someLinesMissing: !(response.unavailableFeeds ?? []).isEmpty
         )
     }
+
+    /// A route's color from the service, MTA gray when it can't be read.
+    static func routeColor(_ hex: String) -> UInt32 { rgb(hex) ?? 0x808183 }
+
+    /// A route's letter color from the service, white when it can't be read.
+    static func routeTextColor(_ hex: String) -> UInt32 { rgb(hex) ?? 0xFFFFFF }
 
     /// "#RRGGBB" as 0xRRGGBB.
     static func rgb(_ hex: String) -> UInt32? {

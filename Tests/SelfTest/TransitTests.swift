@@ -180,7 +180,7 @@ enum TransitTests {
         check("alerts: the summary", alerts.summary == "1 service alert, 1 planned change", alerts.summary)
         check("alerts: none", TransitAlerts(alerts: [], fetchedAt: now).summary == "No service alerts")
         check("alerts: a status, else the kind",
-              alerts.alerts.map { TransitMenuView.categoryText(of: $0) } == ["Delays", "Planned work"])
+              alerts.alerts.map { $0.categoryText } == ["Delays", "Planned work"])
         check("alerts: an error body isn't an answer",
               TransitAlertsLoader.alerts(from: Data(#"{"error": "unknown stop"}"#.utf8), fetchedAt: now) == nil)
 
@@ -206,26 +206,12 @@ enum TransitTests {
             let name = alert ? "with the dot" : "plain"
             check("icon \(name): template image", image.isTemplate)
             check("icon \(name): 18 pt square", image.size == TransitMenuBarIcon.size)
-            guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 36, pixelsHigh: 36,
-                                                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
+            guard let bitmap = SelfTest.drawAt2x(image) else {
                 check("icon \(name): bitmap for drawing", false)
                 continue
             }
-            bitmap.size = image.size
-            guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
-                check("icon \(name): bitmap for drawing", false)
-                continue
-            }
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = context
-            image.draw(in: NSRect(origin: .zero, size: image.size))
-            NSGraphicsContext.restoreGraphicsState()
-
             // Points from the top left, as the icon draws them.
-            func alpha(_ x: CGFloat, _ y: CGFloat) -> Double {
-                Double(bitmap.colorAt(x: Int(x * 2), y: Int(y * 2))?.alphaComponent ?? -1)
-            }
+            func alpha(_ x: CGFloat, _ y: CGFloat) -> Double { SelfTest.alpha(in: bitmap, Double(x), Double(y)) }
             var drawn = 0
             for x in 0..<36 {
                 for y in 0..<36 where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 {
@@ -252,7 +238,7 @@ enum TransitTests {
         let item = TransitStatusItem(provider: provider) {}
         defer { item.removeForSelfTest() }
 
-        check("menu bar: no dot before any alert", !item.showsAlertForSelfTest)
+        check("menu bar: no dot before any alert", !item.badgeShownForSelfTest)
         check("menu bar: tool tip", item.toolTipForSelfTest == "Next trains", item.toolTipForSelfTest ?? "nil")
         check("menu bar: alerts are checked in the background",
               item.isAlertTimerRunningForSelfTest == (Config.transitAlertCheckInterval != nil))
@@ -279,8 +265,7 @@ enum TransitTests {
               view.alertsTitleForSelfTest ?? "nil")
         check("menu bar: the board and the alerts fit", view.frame.height > TransitView.height + 60, "\(view.frame.height)")
         let expectsDot = Config.transitAlertCheckInterval != nil
-        check("menu bar: an incident shows the dot", item.showsAlertForSelfTest == expectsDot)
-        check("menu bar: the orange dot is on the button", item.badgeShownForSelfTest == expectsDot)
+        check("menu bar: an incident shows the orange dot", item.badgeShownForSelfTest == expectsDot)
         if expectsDot { badgePosition(item) }
         check("menu bar: the tool tip names it",
               item.toolTipForSelfTest?.hasPrefix("Next trains · 1 service alert, 1 planned change\n") == true,
@@ -289,7 +274,7 @@ enum TransitTests {
 
         provider.setAlertsForSelfTest(TransitAlerts(alerts: [alert("3", planned: true)], fetchedAt: Date()))
         item.providerDidUpdateForSelfTest()
-        check("menu bar: planned work alone shows no dot", !item.showsAlertForSelfTest && !item.badgeShownForSelfTest)
+        check("menu bar: planned work alone shows no dot", !item.badgeShownForSelfTest)
 
         provider.setAlertsForSelfTest(TransitAlerts(
             alerts: (1...6).map { alert("\($0)", planned: false) }, fetchedAt: Date()
@@ -304,7 +289,7 @@ enum TransitTests {
             fetchedAt: Date().addingTimeInterval(-TransitProvider.alertsShownFor - 1)
         ))
         item.providerDidUpdateForSelfTest()
-        check("menu bar: alerts too old are dropped", !item.showsAlertForSelfTest && view.alertsTitleForSelfTest == nil)
+        check("menu bar: alerts too old are dropped", !item.badgeShownForSelfTest && view.alertsTitleForSelfTest == nil)
 
         item.screensDidSleepForSelfTest()
         check("menu bar: no checks while the screens sleep", !item.isAlertTimerRunningForSelfTest)
@@ -321,13 +306,11 @@ enum TransitTests {
             check("menu bar: the status button", false)
             return
         }
-        button.layoutSubtreeIfNeeded()
-        let bounds = button.bounds
-        guard bounds.width > 0, bounds.height > 0, let bitmap = button.bitmapImageRepForCachingDisplay(in: bounds) else {
-            check("menu bar: the status button draws", false, "\(bounds)")
+        guard let bitmap = button.bitmapForSelfTest() else {
+            check("menu bar: the status button draws", false, "\(button.bounds)")
             return
         }
-        button.cacheDisplay(in: bounds, to: bitmap)
+        let bounds = button.bounds
         let scale = CGFloat(bitmap.pixelsWide) / bounds.width
         let icon = TransitMenuBarIcon.size
         let center = TransitMenuBarIcon.badgeCenter
@@ -365,65 +348,27 @@ enum TransitTests {
         )
     }
 
-    /// Writes `view` as it lays out now to <name>-light.png and
-    /// <name>-dark.png in SELFTEST_RENDER_DIR, when it is set, on a flat
-    /// window background (a menu's is frosted).
-    private static func render(_ view: NSView, as name: String) {
-        guard let folder = ProcessInfo.processInfo.environment["SELFTEST_RENDER_DIR"], !folder.isEmpty else { return }
-        for (suffix, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            let file = URL(fileURLWithPath: folder).appendingPathComponent("\(name)-\(suffix).png")
-            let previous = view.appearance
-            let appearance = NSAppearance(named: appearanceName)
-            view.appearance = appearance
-            defer { view.appearance = previous }
-            view.layoutSubtreeIfNeeded()
-            let bounds = view.bounds
-            guard bounds.width > 0, bounds.height > 0,
-                  let content = view.bitmapImageRepForCachingDisplay(in: bounds),
-                  let rep = NSBitmapImageRep(
-                      bitmapDataPlanes: nil, pixelsWide: content.pixelsWide, pixelsHigh: content.pixelsHigh,
-                      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                      colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-                  )
-            else {
-                check("\(name) renders in \(suffix) mode", false)
-                continue
-            }
-            view.cacheDisplay(in: bounds, to: content)
-            rep.size = bounds.size
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-            appearance?.performAsCurrentDrawingAppearance {
-                NSColor.windowBackgroundColor.setFill()
-                bounds.fill()
-                content.draw(in: bounds)
-            }
-            NSGraphicsContext.restoreGraphicsState()
-            do {
-                guard let png = rep.representation(using: .png, properties: [:]) else {
-                    check("\(name) renders in \(suffix) mode", false)
-                    continue
-                }
-                try png.write(to: file)
-                check("\(name) renders in \(suffix) mode", true)
-            } catch {
-                check("\(name) renders in \(suffix) mode", false, error.localizedDescription)
-            }
-        }
-    }
-
     /// Writes the launcher panel as it is now to <name>-light.png and
     /// <name>-dark.png in SELFTEST_RENDER_DIR, when it is set (CI uploads them).
     private static func render(_ controller: LauncherController, as name: String) {
+        render(as: name) { controller.renderForSelfTest(appearance: $0) }
+    }
+
+    /// The same for a view (the menu bar item's menu).
+    private static func render(_ view: NSView, as name: String) {
+        render(as: name) { view.renderForSelfTest(appearance: $0) }
+    }
+
+    private static func render(as name: String, png: (NSAppearance.Name) -> Data?) {
         guard let folder = ProcessInfo.processInfo.environment["SELFTEST_RENDER_DIR"], !folder.isEmpty else { return }
         for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             let file = URL(fileURLWithPath: folder).appendingPathComponent("\(name)-\(suffix).png")
-            guard let png = controller.renderForSelfTest(appearance: appearance) else {
+            guard let data = png(appearance) else {
                 check("\(name) renders in \(suffix) mode", false)
                 continue
             }
             do {
-                try png.write(to: file)
+                try data.write(to: file)
                 check("\(name) renders in \(suffix) mode", true)
             } catch {
                 check("\(name) renders in \(suffix) mode", false, error.localizedDescription)

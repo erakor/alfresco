@@ -24,12 +24,8 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
     private var redrawTimer: Timer?
     private var alertTimer: Timer?
     private var isMenuOpen = false
-    private var screensAsleep = false
-    /// Whether the icon shows the dot, so the image is only set on change.
-    private var showsAlert: Bool?
 
     #if SELFTEST
-    var showsAlertForSelfTest: Bool { showsAlert ?? false }
     var badgeShownForSelfTest: Bool { !badge.isHidden && badge.superview != nil }
     var buttonForSelfTest: NSStatusBarButton? { item.button }
     var toolTipForSelfTest: String? { item.button?.toolTip }
@@ -39,8 +35,8 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
     /// Opens the menu's content as opening the menu does, without tracking it.
     func openForSelfTest() { menuWillOpen(menu) }
     func closeForSelfTest() { menuDidClose(menu) }
-    /// Redraws the icon and an open menu as a finished fetch does.
-    func providerDidUpdateForSelfTest() { providerDidUpdate() }
+    /// Redraws the icon and an open menu as a finished alerts fetch does.
+    func providerDidUpdateForSelfTest() { providerDidUpdate(.alerts) }
     func screensDidSleepForSelfTest() { screensDidSleep() }
     func screensDidWakeForSelfTest() { screensDidWake() }
     /// Takes the item out of the menu bar and stops its timers.
@@ -60,10 +56,10 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
         super.init()
         buildMenu()
         item.menu = menu
+        item.button?.image = TransitMenuBarIcon.make(alert: false)
         badge.isHidden = true
         if let button = item.button { badge.place(in: button) }
-        updateIcon()
-        provider.addObserver { [weak self] in self?.providerDidUpdate() }
+        provider.addObserver { [weak self] in self?.providerDidUpdate($0) }
 
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(self, selector: #selector(screensDidSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
@@ -91,7 +87,6 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         UsageStats.shared.record(.transitMenuOpened)
         isMenuOpen = true
-        provider.refreshIfStale()
         provider.refreshAlertsIfStale()
         redraw()
         startRedrawTimer()
@@ -130,8 +125,8 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
     }
 
     /// A fetch ended (from here or the launcher).
-    private func providerDidUpdate() {
-        updateIcon()
+    private func providerDidUpdate(_ change: TransitChange) {
+        if change == .alerts { updateIcon() }
         if isMenuOpen { redraw() }
     }
 
@@ -139,18 +134,15 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
 
     /// The dot while an incident is in effect, and a tool tip saying so.
     private func updateIcon() {
-        let alerts = provider.currentAlerts()
-        let incidents = alerts?.incidents ?? []
-        let alert = Config.transitAlertCheckInterval != nil && !incidents.isEmpty
-        if showsAlert != alert {
+        let alert = provider.marksIcon()
+        if badge.isHidden == alert {
             item.button?.image = TransitMenuBarIcon.make(alert: alert)
             badge.isHidden = !alert
-            showsAlert = alert
         }
         var toolTip = "Next trains"
-        if let alerts, !alerts.alerts.isEmpty {
+        if let alerts = provider.currentAlerts(), !alerts.alerts.isEmpty {
             toolTip += " · \(alerts.summary)"
-            if let first = incidents.first { toolTip += "\n\(first.header)" }
+            if let first = alerts.incidents.first { toolTip += "\n\(first.header)" }
         }
         if item.button?.toolTip != toolTip { item.button?.toolTip = toolTip }
     }
@@ -167,22 +159,21 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
         checkAlerts()
     }
 
-    /// Fetches the alerts unless the screens are asleep, and drops the dot
-    /// once the last answer is too old to trust.
+    /// Fetches the alerts, and drops the dot once the last answer is too
+    /// old to trust. Only from the timer, which stops while the screens
+    /// sleep, and on launch and wake.
     private func checkAlerts() {
         updateIcon()
-        guard Config.transitAlertCheckInterval != nil, !screensAsleep else { return }
+        guard Config.transitAlertCheckInterval != nil else { return }
         provider.refreshAlertsIfStale()
     }
 
     @objc private func screensDidSleep() {
-        screensAsleep = true
         alertTimer?.invalidate()
         alertTimer = nil
     }
 
     @objc private func screensDidWake() {
-        screensAsleep = false
         startAlertTimer()
         checkAlerts()
     }

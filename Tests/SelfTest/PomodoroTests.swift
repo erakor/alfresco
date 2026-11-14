@@ -508,9 +508,7 @@ enum PomodoroTests {
             alerts: [TransitAlert(id: "hold", planned: false, category: "Delays", header: "Delays", routes: [])],
             fetchedAt: Date()
         ))
-        let transitItem = TransitStatusItem(provider: transit) {}
-        transitItem.providerDidUpdateForSelfTest()
-        heldTransitItem = transitItem
+        heldTransitItem = TransitStatusItem(provider: transit) {}
         let seconds = Double(ProcessInfo.processInfo.environment["SELFTEST_HOLD_SECONDS"] ?? "") ?? 15
         SelfTest.log("HOLDING \(item.buttonTitle ?? "nil") for \(Int(seconds)) s")
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
@@ -521,9 +519,8 @@ enum PomodoroTests {
                 heldTimer?.stop()
                 check("menubar-hold: the item was still shown, reading \(title)", shown)
                 check("menubar-hold: the app's menu bar icon was shown", iconShown)
-                if Config.transitAlertCheckInterval != nil {
-                    check("menubar-hold: the transit item showed its dot", heldTransitItem?.badgeShownForSelfTest == true)
-                }
+                check("menubar-hold: the transit item showed its dot",
+                      heldTransitItem?.badgeShownForSelfTest == (Config.transitAlertCheckInterval != nil))
                 SelfTest.finish()
             }
         }

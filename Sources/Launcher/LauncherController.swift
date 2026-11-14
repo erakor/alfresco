@@ -205,7 +205,10 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         buildContent()
         previews.onUpdate = { [weak self] in self?.updateHint() }
         weather.onUpdate = { [weak self] in self?.updateWeather() }
-        transit.addObserver { [weak self] in self?.transitDidUpdate() }
+        transit.addObserver { [weak self] change in
+            // The board shows no alerts.
+            if change == .trains { self?.transitDidUpdate() }
+        }
         calendar.onUpdate = { [weak self] in self?.calendarDidUpdate() }
         calendar.onAccessAnswered = { [weak self] in self?.calendarAccessAnswered(granted: $0) }
         apps.onUpdate = { [weak self] in self?.appsDidChange() }

@@ -11,6 +11,11 @@
 
 import Foundation
 
+/// What a finished fetch changed.
+enum TransitChange: Sendable {
+    case trains, alerts
+}
+
 enum TransitState: Sendable {
     case loading
     case loaded(TransitSnapshot)
@@ -31,7 +36,7 @@ final class TransitProvider {
     /// Alerts this old are no longer shown: they may have been lifted.
     static let alertsShownFor: TimeInterval = 30 * 60
 
-    private var observers: [@MainActor () -> Void] = []
+    private var observers: [@MainActor (TransitChange) -> Void] = []
 
     /// nil turns the feature off.
     let station: String? = Config.transitStation
@@ -45,13 +50,13 @@ final class TransitProvider {
     private var alertsFailedAt: Date?
     private var alertsTask: Task<Void, Never>?
 
-    /// Runs `observer` each time a fetch (trains or alerts) ends.
-    func addObserver(_ observer: @escaping @MainActor () -> Void) {
+    /// Runs `observer` each time a fetch ends, with what it changed.
+    func addObserver(_ observer: @escaping @MainActor (TransitChange) -> Void) {
         observers.append(observer)
     }
 
-    private func notify() {
-        for observer in observers { observer() }
+    private func notify(_ change: TransitChange) {
+        for observer in observers { observer(change) }
     }
 
     /// What to show at `now`: the last snapshot while it is recent enough
@@ -70,9 +75,11 @@ final class TransitProvider {
     /// recent, a fetch is already running, or no service is set up (always
     /// so in the self-test build, see Config.transitService).
     func refreshIfStale(now: Date = Date()) {
-        guard task == nil, let station, let service = Config.transitService() else { return }
+        guard task == nil, let station else { return }
         if let snapshot, now.timeIntervalSince(snapshot.fetchedAt) < Config.transitCacheLifetime { return }
         if let failure, now.timeIntervalSince(failure.at) < Self.failureLifetime { return }
+        // Read last: it reads the settings files.
+        guard let service = Config.transitService() else { return }
         load(station, service: service)
     }
 
@@ -83,13 +90,22 @@ final class TransitProvider {
         return alerts
     }
 
-    /// Fetches the alerts unless the last answer is younger than `maxAge`,
-    /// a failure is recent, a fetch is already running, or no service is
-    /// set up. Never cancelled by `cancel()`: the menu bar icon waits on it.
-    func refreshAlertsIfStale(maxAge: TimeInterval = TransitProvider.alertsLifetime, now: Date = Date()) {
-        guard alertsTask == nil, let station, let service = Config.transitService() else { return }
-        if let alerts, now.timeIntervalSince(alerts.fetchedAt) < maxAge { return }
+    /// Whether the menu bar icon shows its dot at `now`: background checks
+    /// are on and an incident (not planned work) is in effect.
+    func marksIcon(now: Date = Date()) -> Bool {
+        Config.transitAlertCheckInterval != nil && !(currentAlerts(now: now)?.incidents.isEmpty ?? true)
+    }
+
+    /// Fetches the alerts unless the last answer is younger than
+    /// `alertsLifetime`, a failure is recent, a fetch is already running, or
+    /// no service is set up. Never cancelled by `cancel()`: the menu bar
+    /// icon waits on it.
+    func refreshAlertsIfStale(now: Date = Date()) {
+        guard alertsTask == nil, let station else { return }
+        if let alerts, now.timeIntervalSince(alerts.fetchedAt) < Self.alertsLifetime { return }
         if let alertsFailedAt, now.timeIntervalSince(alertsFailedAt) < Self.failureLifetime { return }
+        // Read last: it reads the settings files.
+        guard let service = Config.transitService() else { return }
         alertsTask = Task { [weak self] in
             let result: TransitAlerts?
             do {
@@ -112,7 +128,7 @@ final class TransitProvider {
             } else {
                 self.alertsFailedAt = Date()
             }
-            self.notify()
+            self.notify(.alerts)
         }
     }
 
@@ -146,7 +162,7 @@ final class TransitProvider {
                 UsageStats.shared.recordTransitFailure(error)
                 self.failure = (error.message, Date())
             }
-            self.notify()
+            self.notify(.trains)
         }
     }
 

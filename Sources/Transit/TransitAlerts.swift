@@ -27,6 +27,13 @@ struct TransitAlert: Sendable, Equatable {
     /// Plain text; the MTA writes routes in brackets ("[A][C] trains…").
     let header: String
     let routes: [TransitRoute]
+
+    /// What its first line in the menu says: the MTA's status, else what
+    /// kind of alert it is.
+    var categoryText: String {
+        if let category, !category.isEmpty { return category }
+        return planned ? "Planned work" : "Service alert"
+    }
 }
 
 /// The alerts at the station, as fetched.
@@ -73,14 +80,7 @@ enum TransitAlertsLoader {
 
     /// The URL of `station`'s alerts.
     static func url(for station: String, service: TransitService) -> URL? {
-        guard var components = URLComponents(
-            url: service.baseURL.appendingPathComponent("subway/alerts"), resolvingAgainstBaseURL: false
-        ) else { return nil }
-        components.queryItems = [URLQueryItem(name: "stop", value: station)]
-        // A station id joins its stops with "+", which a query reads as a space.
-        components.percentEncodedQuery = components.percentEncodedQuery?
-            .replacingOccurrences(of: "+", with: "%2B")
-        return components.url
+        TransitLoader.url(path: "subway/alerts", station: station, service: service)
     }
 
     /// Decodes an answer of the service. nil when it isn't one.
@@ -95,8 +95,8 @@ enum TransitAlertsLoader {
                 routes: alert.routes.map {
                     TransitRoute(
                         name: $0.name,
-                        color: TransitLoader.rgb($0.color) ?? 0x808183,
-                        textColor: TransitLoader.rgb($0.textColor) ?? 0xFFFFFF
+                        color: TransitLoader.routeColor($0.color),
+                        textColor: TransitLoader.routeTextColor($0.textColor)
                     )
                 }
             )

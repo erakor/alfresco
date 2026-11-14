@@ -10,6 +10,15 @@ import Cocoa
 final class TransitView: NSView {
     /// Height the launcher adds below its input row while this is shown.
     static let height: CGFloat = 240
+    /// Enough for the status line alone (loading, failed).
+    static let statusHeight: CGFloat = 52
+
+    /// The height `state` needs: the board's, or the status line's. The
+    /// launcher keeps `height` throughout; the menu bar item follows this.
+    static func preferredHeight(for state: TransitState) -> CGFloat {
+        if case .loaded = state { return height }
+        return statusHeight
+    }
 
     private let titleLabel = NSTextField.areaLabel(size: 13, color: .labelColor, weight: .semibold)
     private let footerLabel = NSTextField.areaLabel(size: 11, color: .tertiaryLabelColor)
@@ -218,7 +227,7 @@ final class RouteBullet: NSView {
         needsDisplay = true
     }
 
-    static func nsColor(_ rgb: UInt32) -> NSColor {
+    private static func nsColor(_ rgb: UInt32) -> NSColor {
         NSColor(
             srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
             green: CGFloat((rgb >> 8) & 0xFF) / 255,
