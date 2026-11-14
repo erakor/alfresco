@@ -19,6 +19,8 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
     private let menu = NSMenu()
     private let boardView = TransitMenuView(frame: .zero)
     private let boardItem = NSMenuItem()
+    /// The orange dot over the icon's hole, shown with an incident.
+    private let badge = TransitBadgeView(frame: .zero)
     private var redrawTimer: Timer?
     private var alertTimer: Timer?
     private var isMenuOpen = false
@@ -28,6 +30,8 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
 
     #if SELFTEST
     var showsAlertForSelfTest: Bool { showsAlert ?? false }
+    var badgeShownForSelfTest: Bool { !badge.isHidden && badge.superview != nil }
+    var buttonForSelfTest: NSStatusBarButton? { item.button }
     var toolTipForSelfTest: String? { item.button?.toolTip }
     var menuTitlesForSelfTest: [String] { menu.items.map(\.title) }
     var menuViewForSelfTest: TransitMenuView { boardView }
@@ -56,6 +60,8 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
         super.init()
         buildMenu()
         item.menu = menu
+        badge.isHidden = true
+        if let button = item.button { badge.place(in: button) }
         updateIcon()
         provider.addObserver { [weak self] in self?.providerDidUpdate() }
 
@@ -138,6 +144,7 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
         let alert = Config.transitAlertCheckInterval != nil && !incidents.isEmpty
         if showsAlert != alert {
             item.button?.image = TransitMenuBarIcon.make(alert: alert)
+            badge.isHidden = !alert
             showsAlert = alert
         }
         var toolTip = "Next trains"

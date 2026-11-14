@@ -235,11 +235,14 @@ enum TransitTests {
             check("icon \(name): the tram is drawn", drawn > 60, "\(drawn) pixels")
             let center = TransitMenuBarIcon.badgeCenter
             if alert {
-                check("icon with the dot: the dot", alpha(center.x, center.y) > 0.9, "alpha \(alpha(center.x, center.y))")
+                // The orange dot is a view over it (TransitBadgeView): the
+                // template image only has the hole.
                 let ring = TransitMenuBarIcon.badgeRadius + TransitMenuBarIcon.badgeGap / 2
+                let middle = alpha(center.x, center.y)
                 let left = alpha(center.x - ring, center.y)
                 let below = alpha(center.x, center.y + ring)
-                check("icon with the dot: a clear ring around it", left < 0.1 && below < 0.1, "alpha \(left), \(below)")
+                check("icon with the dot: a hole for the dot and its ring",
+                      middle < 0.1 && left < 0.1 && below < 0.1, "alpha \(middle), \(left), \(below)")
             }
         }
     }
@@ -277,6 +280,8 @@ enum TransitTests {
         check("menu bar: the board and the alerts fit", view.frame.height > TransitView.height + 60, "\(view.frame.height)")
         let expectsDot = Config.transitAlertCheckInterval != nil
         check("menu bar: an incident shows the dot", item.showsAlertForSelfTest == expectsDot)
+        check("menu bar: the orange dot is on the button", item.badgeShownForSelfTest == expectsDot)
+        if expectsDot { badgePosition(item) }
         check("menu bar: the tool tip names it",
               item.toolTipForSelfTest?.hasPrefix("Next trains · 1 service alert, 1 planned change\n") == true,
               item.toolTipForSelfTest ?? "nil")
@@ -284,7 +289,7 @@ enum TransitTests {
 
         provider.setAlertsForSelfTest(TransitAlerts(alerts: [alert("3", planned: true)], fetchedAt: Date()))
         item.providerDidUpdateForSelfTest()
-        check("menu bar: planned work alone shows no dot", !item.showsAlertForSelfTest)
+        check("menu bar: planned work alone shows no dot", !item.showsAlertForSelfTest && !item.badgeShownForSelfTest)
 
         provider.setAlertsForSelfTest(TransitAlerts(
             alerts: (1...6).map { alert("\($0)", planned: false) }, fetchedAt: Date()
@@ -307,6 +312,33 @@ enum TransitTests {
         check("menu bar: checks again on wake",
               item.isAlertTimerRunningForSelfTest == (Config.transitAlertCheckInterval != nil))
         item.closeForSelfTest()
+    }
+
+    /// The status button drawn off screen: the dot is orange and sits over
+    /// the icon's hole, up and right of the button's center.
+    private static func badgePosition(_ item: TransitStatusItem) {
+        guard let button = item.buttonForSelfTest else {
+            check("menu bar: the status button", false)
+            return
+        }
+        button.layoutSubtreeIfNeeded()
+        let bounds = button.bounds
+        guard bounds.width > 0, bounds.height > 0, let bitmap = button.bitmapImageRepForCachingDisplay(in: bounds) else {
+            check("menu bar: the status button draws", false, "\(bounds)")
+            return
+        }
+        button.cacheDisplay(in: bounds, to: bitmap)
+        let scale = CGFloat(bitmap.pixelsWide) / bounds.width
+        let icon = TransitMenuBarIcon.size
+        let center = TransitMenuBarIcon.badgeCenter
+        // From the top left, as NSBitmapImageRep counts rows.
+        let x = bounds.midX + center.x - icon.width / 2
+        let y = bounds.height / 2 + center.y - icon.height / 2
+        let color = bitmap.colorAt(x: Int(x * scale), y: Int(y * scale))?.usingColorSpace(.sRGB)
+        let red = color?.redComponent ?? 0, green = color?.greenComponent ?? 0, blue = color?.blueComponent ?? 1
+        check("menu bar: the dot is orange, over the hole",
+              red > 0.8 && green > 0.3 && green < 0.75 && blue < 0.35,
+              "rgb \(red), \(green), \(blue) at \(x), \(y) in \(bounds.size)")
     }
 
     // MARK: Renders

@@ -53,7 +53,8 @@ Trains are fetched only while the menu is open (the launcher and the menu
 share what was fetched, so opening one right after the other doesn't
 fetch again), and the countdowns follow the clock while it stays open.
 
-The tram shows a dot while an incident affects the station: delays,
+The tram shows an orange dot in its top-right corner while an incident
+affects the station: delays,
 suspensions, reroutes, anything the MTA hasn't planned. Planned work
 (weekend and night changes) is listed in the menu but never shows the dot,
 since there is some most nights. For the dot, the station's alerts are
@@ -140,7 +141,7 @@ Bus Time key and the static bus data (see the service's roadmap).
 | `TransitAlerts.swift` | `TransitAlertsLoader` asks the service for the station's alerts (`/subway/alerts?stop=`, signpost `transit.alerts`) and decodes them; `TransitAlerts.incidents` are the ones that show the dot. |
 | `TransitStatusItem.swift` | The menu bar item: fetches when its menu opens, redraws every 10 s while open, checks alerts in the background while the screens are awake. |
 | `TransitMenuView.swift` | The menu's content: the board, then the alerts. |
-| `TransitMenuBarIcon.swift` | The tram, with or without the dot, as a template image. |
+| `TransitMenuBarIcon.swift` | The tram as a template image (with a hole for the dot during an incident), and `TransitBadgeView`, the orange dot over it: a template image is one color, so the dot is a view on the status button. |
 
 The usage stats count snapshots loaded (`transit.loaded`), failures by kind
 (`transit.failed.offline`, `.token`, `.server`, `.badResponse`), alerts
