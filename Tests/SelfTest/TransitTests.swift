@@ -2,8 +2,10 @@
 //
 // `/transit`: an answer of the transit service decodes into a snapshot,
 // the board sorts, limits and counts down, and the real launcher shows it
-// while the input runs the transit workflow. Never fetches: the self-test
-// build has no transit service (Config.transitService).
+// while the input runs the transit workflow. The station's alerts decode,
+// and the menu bar item shows the board, lists the alerts and marks its
+// icon during an incident. Never fetches: the self-test build has no
+// transit service (Config.transitService).
 
 import AppKit
 
@@ -19,6 +21,9 @@ enum TransitTests {
         decoding()
         board()
         launcher()
+        alertsDecoding()
+        icon()
+        statusItem()
     }
 
     /// An answer of the transit service's /subway/arrivals, with fields the
@@ -109,8 +114,10 @@ enum TransitTests {
             check("the test workflows file is written", false, error.localizedDescription)
             return
         }
+        let provider = TransitProvider()
         let controller = LauncherController(
-            store: WorkflowStore(fileURL: url, createsMissingFile: false), internalURLHandler: { _ in true }
+            store: WorkflowStore(fileURL: url, createsMissingFile: false), transit: provider,
+            internalURLHandler: { _ in true }
         )
         for keyword in ["/transit", "/metro", "/metro "] {
             controller.typeForSelfTest(keyword)
@@ -127,10 +134,179 @@ enum TransitTests {
             snapshot([], fetchedAt: Date().addingTimeInterval(-TransitProvider.snapshotLifetime - 1))
         )
         check("a snapshot past its lifetime isn't shown", controller.transitBoardForSelfTest == nil)
+        // The menu bar item shares the provider: what it fetched is on the board.
+        provider.setSnapshotForSelfTest(snapshot([soon], fetchedAt: Date()))
+        controller.typeForSelfTest("/transit")
+        check("the board shows the shared provider's trains", controller.transitBoardForSelfTest?.north.map(\.route) == ["A"])
         for other in ["/bus", "/zz", "metro", "/", ""] {
             controller.typeForSelfTest(other)
             check("\"\(other)\" doesn't show it", !controller.showsTransitForSelfTest)
         }
+    }
+
+    // MARK: Alerts
+
+    /// An answer of the service's /subway/alerts?stop=, with fields the menu
+    /// doesn't read.
+    private static let alertsAnswer = #"""
+    {"stop": {"id": "A32+D20", "name": "W 4 St-Wash Sq", "stops": ["A32", "D20"]},
+     "updatedAt": 1793999990,
+     "alerts": [
+       {"id": "lmm:alert:1", "planned": false, "category": "Delays", "priority": 26,
+        "header": "  Downtown [A][C] trains are running with delays.\n", "description": "",
+        "routes": [{"id": "A", "name": "A", "color": "#0062CF", "textColor": "#FFFFFF"},
+                   {"id": "C", "name": "C", "color": "bad", "textColor": "#FFFFFF"}],
+        "stops": [], "start": 1793999000, "end": null},
+       {"id": "lmm:planned_work:2", "planned": true, "category": null, "priority": null,
+        "header": "No [F] trains between W 4 St and Jay St.", "description": "Take the [A].",
+        "routes": [], "stops": [{"id": "D20", "name": "W 4 St", "direction": "S"}],
+        "start": 1793990000, "end": 1794010000}
+     ]}
+    """#
+
+    private static func alertsDecoding() {
+        guard let alerts = TransitAlertsLoader.alerts(from: Data(alertsAnswer.utf8), fetchedAt: now) else {
+            check("alerts: the service's answer decodes", false)
+            return
+        }
+        check("alerts: both, in the service's order", alerts.alerts.map(\.id) == ["lmm:alert:1", "lmm:planned_work:2"])
+        check("alerts: the header is trimmed", alerts.alerts.first?.header == "Downtown [A][C] trains are running with delays.")
+        check("alerts: routes and colors, a bad one falls back",
+              alerts.alerts.first?.routes == [
+                  TransitRoute(name: "A", color: 0x0062CF, textColor: 0xFFFFFF),
+                  TransitRoute(name: "C", color: 0x808183, textColor: 0xFFFFFF),
+              ])
+        check("alerts: only the incident marks the icon", alerts.incidents.map(\.id) == ["lmm:alert:1"])
+        check("alerts: the summary", alerts.summary == "1 service alert, 1 planned change", alerts.summary)
+        check("alerts: none", TransitAlerts(alerts: [], fetchedAt: now).summary == "No service alerts")
+        check("alerts: a status, else the kind",
+              alerts.alerts.map { TransitMenuView.categoryText(of: $0) } == ["Delays", "Planned work"])
+        check("alerts: an error body isn't an answer",
+              TransitAlertsLoader.alerts(from: Data(#"{"error": "unknown stop"}"#.utf8), fetchedAt: now) == nil)
+
+        let service = TransitService(baseURL: URL(string: "https://transit.example.com")!, token: "t")
+        let url = TransitAlertsLoader.url(for: "A32+D20", service: service)?.absoluteString
+        check("alerts: the station's + is encoded",
+              url == "https://transit.example.com/subway/alerts?stop=A32%2BD20", url ?? "nil")
+    }
+
+    private static func alert(_ id: String, planned: Bool, category: String? = nil) -> TransitAlert {
+        TransitAlert(
+            id: id, planned: planned, category: category,
+            header: "Trains are running with delays while crews make repairs near this station.",
+            routes: [TransitRoute(name: "A", color: 0x0062CF, textColor: 0xFFFFFF)]
+        )
+    }
+
+    // MARK: Menu bar item
+
+    private static func icon() {
+        for alert in [false, true] {
+            let image = TransitMenuBarIcon.make(alert: alert)
+            let name = alert ? "with the dot" : "plain"
+            check("icon \(name): template image", image.isTemplate)
+            check("icon \(name): 18 pt square", image.size == TransitMenuBarIcon.size)
+            guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 36, pixelsHigh: 36,
+                                                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
+                check("icon \(name): bitmap for drawing", false)
+                continue
+            }
+            bitmap.size = image.size
+            guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+                check("icon \(name): bitmap for drawing", false)
+                continue
+            }
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            image.draw(in: NSRect(origin: .zero, size: image.size))
+            NSGraphicsContext.restoreGraphicsState()
+
+            // Points from the top left, as the icon draws them.
+            func alpha(_ x: CGFloat, _ y: CGFloat) -> Double {
+                Double(bitmap.colorAt(x: Int(x * 2), y: Int(y * 2))?.alphaComponent ?? -1)
+            }
+            var drawn = 0
+            for x in 0..<36 {
+                for y in 0..<36 where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 {
+                    drawn += 1
+                }
+            }
+            check("icon \(name): the tram is drawn", drawn > 60, "\(drawn) pixels")
+            let center = TransitMenuBarIcon.badgeCenter
+            if alert {
+                check("icon with the dot: the dot", alpha(center.x, center.y) > 0.9, "alpha \(alpha(center.x, center.y))")
+                let ring = TransitMenuBarIcon.badgeRadius + TransitMenuBarIcon.badgeGap / 2
+                let left = alpha(center.x - ring, center.y)
+                let below = alpha(center.x, center.y + ring)
+                check("icon with the dot: a clear ring around it", left < 0.1 && below < 0.1, "alpha \(left), \(below)")
+            }
+        }
+    }
+
+    private static func statusItem() {
+        let provider = TransitProvider()
+        let item = TransitStatusItem(provider: provider) {}
+        defer { item.removeForSelfTest() }
+
+        check("menu bar: no dot before any alert", !item.showsAlertForSelfTest)
+        check("menu bar: tool tip", item.toolTipForSelfTest == "Next trains", item.toolTipForSelfTest ?? "nil")
+        check("menu bar: alerts are checked in the background",
+              item.isAlertTimerRunningForSelfTest == (Config.transitAlertCheckInterval != nil))
+        let openTitle = "Open \(CommandInput.typed(Config.transitKeyword)) in Launcher"
+        check("menu bar: the menu", item.menuTitlesForSelfTest.contains(openTitle), item.menuTitlesForSelfTest.description)
+
+        let view = item.menuViewForSelfTest
+        item.openForSelfTest()
+        check("menu bar: without a service, no trains", view.boardForSelfTest == nil)
+        check("menu bar: no alerts section before an answer", view.alertsTitleForSelfTest == nil)
+        check("menu bar: a short board while there is only a status", view.frame.height < TransitView.height)
+        render(view, as: "transit-menu-setup")
+
+        provider.setSnapshotForSelfTest(sampleBoard())
+        provider.setAlertsForSelfTest(TransitAlerts(
+            alerts: [alert("1", planned: false, category: "Delays"), alert("2", planned: true, category: "Planned - Stops Skipped")],
+            fetchedAt: Date()
+        ))
+        item.providerDidUpdateForSelfTest()
+        check("menu bar: the board's trains", view.boardForSelfTest?.north.first?.route == "A")
+        check("menu bar: the alerts", view.alertRowsForSelfTest == ["Delays", "Planned - Stops Skipped"],
+              view.alertRowsForSelfTest.description)
+        check("menu bar: the alerts' title", view.alertsTitleForSelfTest == "1 SERVICE ALERT, 1 PLANNED CHANGE",
+              view.alertsTitleForSelfTest ?? "nil")
+        check("menu bar: the board and the alerts fit", view.frame.height > TransitView.height + 60, "\(view.frame.height)")
+        let expectsDot = Config.transitAlertCheckInterval != nil
+        check("menu bar: an incident shows the dot", item.showsAlertForSelfTest == expectsDot)
+        check("menu bar: the tool tip names it",
+              item.toolTipForSelfTest?.hasPrefix("Next trains · 1 service alert, 1 planned change\n") == true,
+              item.toolTipForSelfTest ?? "nil")
+        render(view, as: "transit-menu")
+
+        provider.setAlertsForSelfTest(TransitAlerts(alerts: [alert("3", planned: true)], fetchedAt: Date()))
+        item.providerDidUpdateForSelfTest()
+        check("menu bar: planned work alone shows no dot", !item.showsAlertForSelfTest)
+
+        provider.setAlertsForSelfTest(TransitAlerts(
+            alerts: (1...6).map { alert("\($0)", planned: false) }, fetchedAt: Date()
+        ))
+        item.providerDidUpdateForSelfTest()
+        check("menu bar: at most four alerts listed", view.alertRowsForSelfTest.count == TransitMenuView.maxAlerts)
+        check("menu bar: the rest counted", view.moreForSelfTest == "2 more alerts", view.moreForSelfTest ?? "nil")
+        check("menu bar: a row without a status says what it is", view.alertRowsForSelfTest.first == "Service alert")
+
+        provider.setAlertsForSelfTest(TransitAlerts(
+            alerts: [alert("4", planned: false)],
+            fetchedAt: Date().addingTimeInterval(-TransitProvider.alertsShownFor - 1)
+        ))
+        item.providerDidUpdateForSelfTest()
+        check("menu bar: alerts too old are dropped", !item.showsAlertForSelfTest && view.alertsTitleForSelfTest == nil)
+
+        item.screensDidSleepForSelfTest()
+        check("menu bar: no checks while the screens sleep", !item.isAlertTimerRunningForSelfTest)
+        item.screensDidWakeForSelfTest()
+        check("menu bar: checks again on wake",
+              item.isAlertTimerRunningForSelfTest == (Config.transitAlertCheckInterval != nil))
+        item.closeForSelfTest()
     }
 
     // MARK: Renders
@@ -155,6 +331,53 @@ enum TransitTests {
             fetchedAt: now,
             someLinesMissing: false
         )
+    }
+
+    /// Writes `view` as it lays out now to <name>-light.png and
+    /// <name>-dark.png in SELFTEST_RENDER_DIR, when it is set, on a flat
+    /// window background (a menu's is frosted).
+    private static func render(_ view: NSView, as name: String) {
+        guard let folder = ProcessInfo.processInfo.environment["SELFTEST_RENDER_DIR"], !folder.isEmpty else { return }
+        for (suffix, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            let file = URL(fileURLWithPath: folder).appendingPathComponent("\(name)-\(suffix).png")
+            let previous = view.appearance
+            let appearance = NSAppearance(named: appearanceName)
+            view.appearance = appearance
+            defer { view.appearance = previous }
+            view.layoutSubtreeIfNeeded()
+            let bounds = view.bounds
+            guard bounds.width > 0, bounds.height > 0,
+                  let content = view.bitmapImageRepForCachingDisplay(in: bounds),
+                  let rep = NSBitmapImageRep(
+                      bitmapDataPlanes: nil, pixelsWide: content.pixelsWide, pixelsHigh: content.pixelsHigh,
+                      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                      colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+                  )
+            else {
+                check("\(name) renders in \(suffix) mode", false)
+                continue
+            }
+            view.cacheDisplay(in: bounds, to: content)
+            rep.size = bounds.size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            appearance?.performAsCurrentDrawingAppearance {
+                NSColor.windowBackgroundColor.setFill()
+                bounds.fill()
+                content.draw(in: bounds)
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            do {
+                guard let png = rep.representation(using: .png, properties: [:]) else {
+                    check("\(name) renders in \(suffix) mode", false)
+                    continue
+                }
+                try png.write(to: file)
+                check("\(name) renders in \(suffix) mode", true)
+            } catch {
+                check("\(name) renders in \(suffix) mode", false, error.localizedDescription)
+            }
+        }
     }
 
     /// Writes the launcher panel as it is now to <name>-light.png and

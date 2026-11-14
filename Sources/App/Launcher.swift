@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     private var statusItem: NSStatusItem?
     private var pomodoro: PomodoroTimer?
     private var pomodoroStatusItem: PomodoroStatusItem?
+    private var transitStatusItem: TransitStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         HTTPSession.removeLegacyCache()
@@ -40,13 +41,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         self.pomodoro = pomodoro
         self.pomodoroStatusItem = pomodoroStatusItem
 
+        // One provider for the launcher's `/transit` and the menu bar item,
+        // so each shows what the other fetched.
+        let transit = TransitProvider()
         let launcher = LauncherController(
-            store: workflowStore, pomodoro: pomodoro,
+            store: workflowStore, pomodoro: pomodoro, transit: transit,
             snippets: { [weak self] in self?.clipboardStore?.items ?? [] }
         ) { [weak self] url in
             self?.handleInternalURL(url) ?? false
         }
         self.launcher = launcher
+        if Config.transitMenuBarItem, transit.station != nil {
+            transitStatusItem = TransitStatusItem(provider: transit) { [weak launcher] in
+                launcher?.show(prefill: CommandInput.typed(Config.transitKeyword))
+            }
+        }
 
         let store = ClipboardStore()
         let monitor = ClipboardMonitor(store: store)

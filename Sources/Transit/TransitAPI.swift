@@ -191,13 +191,24 @@ enum TransitLoader {
     /// The next trains at `station`. Throws TransitError, or
     /// CancellationError.
     static func load(_ station: String, limit: Int, service: TransitService) async throws -> TransitSnapshot {
+        guard let url = url(for: station, limit: limit, service: service) else { throw TransitError.badResponse }
+        return try await get(url, service: service, signpost: "transit.load") {
+            snapshot(from: $0, fetchedAt: Date())
+        }
+    }
+
+    /// One GET to the service with its token, timed by a `signpost`
+    /// interval, then `decode` (nil when the answer isn't one). Throws
+    /// TransitError, or CancellationError.
+    static func get<Value>(
+        _ url: URL, service: TransitService, signpost name: StaticString, decode: (Data) -> Value?
+    ) async throws -> Value {
         let signposter = Signposts.signposter
-        let signpost = signposter.beginInterval("transit.load", id: signposter.makeSignpostID())
+        let signpost = signposter.beginInterval(name, id: signposter.makeSignpostID())
         var outcome = Signposts.Kind.failed
         var bytes = 0
-        defer { Signposts.end("transit.load", signpost, outcome, bytes: bytes) }
+        defer { Signposts.end(name, signpost, outcome, bytes: bytes) }
 
-        guard let url = url(for: station, limit: limit, service: service) else { throw TransitError.badResponse }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         request.setValue(service.token, forHTTPHeaderField: TransitService.tokenHeader)
         let result: (Data, URLResponse)
@@ -221,8 +232,8 @@ enum TransitLoader {
         guard let http = response as? HTTPURLResponse else { throw TransitError.badResponse }
         if http.statusCode == 401 { throw TransitError.token }
         guard (200..<300).contains(http.statusCode) else { throw TransitError.server(http.statusCode) }
-        guard let snapshot = snapshot(from: data, fetchedAt: Date()) else { throw TransitError.badResponse }
+        guard let value = decode(data) else { throw TransitError.badResponse }
         outcome = .ok
-        return snapshot
+        return value
     }
 }

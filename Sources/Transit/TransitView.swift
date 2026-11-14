@@ -16,6 +16,13 @@ final class TransitView: NSView {
     private let columns = [DirectionColumn(frame: .zero), DirectionColumn(frame: .zero)]
     private let columnsStack = NSStackView()
     private let statusRow = StatusRow(frame: .zero)
+    private let separator = NSBox()
+
+    /// The line above the station's name, which sets the board off from the
+    /// launcher's input row. The menu bar item's board has none.
+    var showsSeparator = true {
+        didSet { separator.isHidden = !showsSeparator }
+    }
 
     #if SELFTEST
     /// The board last shown, nil while loading or failed.
@@ -70,7 +77,6 @@ final class TransitView: NSView {
     }
 
     private func build() {
-        let separator = NSBox()
         separator.boxType = .separator
 
         columnsStack.orientation = .horizontal
@@ -194,21 +200,25 @@ private final class DepartureRow: NSView {
 }
 
 /// The MTA's round line bullet: the line's color and letter, as the
-/// transit service gives them.
-private final class RouteBullet: NSView {
+/// transit service gives them. Also used by the menu bar item's alerts.
+final class RouteBullet: NSView {
     private var route = ""
     private var color: UInt32 = 0
     private var textColor: UInt32 = 0
 
     func show(_ departure: TransitDeparture) {
-        guard departure.route != route || departure.color != color || departure.textColor != textColor else { return }
-        route = departure.route
-        color = departure.color
-        textColor = departure.textColor
+        show(route: departure.route, color: departure.color, textColor: departure.textColor)
+    }
+
+    func show(route: String, color: UInt32, textColor: UInt32) {
+        guard route != self.route || color != self.color || textColor != self.textColor else { return }
+        self.route = route
+        self.color = color
+        self.textColor = textColor
         needsDisplay = true
     }
 
-    private static func nsColor(_ rgb: UInt32) -> NSColor {
+    static func nsColor(_ rgb: UInt32) -> NSColor {
         NSColor(
             srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
             green: CGFloat((rgb >> 8) & 0xFF) / 255,
