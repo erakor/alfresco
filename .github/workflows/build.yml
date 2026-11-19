@@ -28,7 +28,7 @@ jobs:
   # Style, from .swift-format (a copy of erakor/toolchain's). Strict: any finding fails the job.
   # Pinned to a commit on the toolchain's main.
   swift-format:
-    uses: erakor/toolchain/.github/workflows/swift-checks.yml@f932e1de2de8b7ab49f81be1b68339731d88b3d0
+    uses: erakor/toolchain/.github/workflows/swift-checks.yml@a43487e76663bd84ede121057887848f69e6016d # v1.4.0
     with:
       paths: Sources Tests
       strict: true
