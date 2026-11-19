@@ -1,0 +1,11 @@
+# Synced from erakor/toolchain (files/gitattributes). Change it there, not here.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.icns binary
+*.pdf binary
+
+# Lockfiles: collapsed in GitHub diffs.
+pnpm-lock.yaml linguist-generated=true -diff
+package-lock.json linguist-generated=true -diff

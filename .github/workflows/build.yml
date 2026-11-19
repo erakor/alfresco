@@ -1,6 +1,7 @@
 # Checks that the app still compiles in Swift 6 language mode, that build.sh
 # still produces the .app bundle, that workflows.json passes the app's own
-# check (Launcher --check), and that the self-test passes when the app runs.
+# check (Launcher --check), that swift-format finds no style problems, and that
+# the self-test passes when the app runs.
 # AppKit and Carbon only exist on macOS, hence the runner.
 name: Build
 
@@ -24,10 +25,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Style, from .swift-format (a copy of erakor/toolchain's). Not strict yet: the code has not
+  # been through swift-format, so this reports only. Set `strict: true` once the output is empty.
+  # Pinned to a toolchain commit.
+  swift-format:
+    uses: erakor/toolchain/.github/workflows/swift-checks.yml@822ecaf4610254a1e55074923f2c46f0d2b54a5b
+    with:
+      paths: Sources Tests
+      strict: false
+
   build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Show Swift version
         run: swiftc --version
@@ -57,7 +67,7 @@ jobs:
 
       - name: Upload self-test log, screenshot and renders
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: self-test
           path: |
