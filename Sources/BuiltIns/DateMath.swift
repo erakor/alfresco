@@ -190,7 +190,7 @@ extension DateMath {
                 return .incomplete(kind: .date, message: "Add days, weeks, months or years: \(prefix) today + 30 days")
             }
             switch duration(part.text) {
-            case .success(let (unitKind, amount))?:
+            case .success((let unitKind, let amount))?:
                 terms.append((part.sign, .duration(unitKind, amount)))
                 continue
             case .failure?:
