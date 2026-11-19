@@ -11,7 +11,7 @@ name: Build
 # hand (workflow_dispatch).
 on:
   push:
-    branches: [main]
+    branches: [main, claude/sharp-albattani-791ird]
   pull_request:
   workflow_dispatch:
 
