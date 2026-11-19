@@ -34,8 +34,8 @@ final class TransitView: NSView {
     }
 
     #if SELFTEST
-    /// The board last shown, nil while loading or failed.
-    private(set) var boardForSelfTest: TransitBoard?
+        /// The board last shown, nil while loading or failed.
+        private(set) var boardForSelfTest: TransitBoard?
     #endif
 
     override init(frame frameRect: NSRect) {
@@ -75,7 +75,7 @@ final class TransitView: NSView {
 
     private func setBoardForSelfTest(_ board: TransitBoard?) {
         #if SELFTEST
-        boardForSelfTest = board
+            boardForSelfTest = board
         #endif
     }
 
@@ -243,10 +243,12 @@ final class RouteBullet: NSView {
         NSBezierPath(ovalIn: circle).fill()
 
         let fontSize: CGFloat = route.count > 1 ? 8 : 12
-        let text = NSAttributedString(string: route, attributes: [
-            .font: NSFont.systemFont(ofSize: fontSize, weight: .bold),
-            .foregroundColor: Self.nsColor(textColor),
-        ])
+        let text = NSAttributedString(
+            string: route,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: fontSize, weight: .bold),
+                .foregroundColor: Self.nsColor(textColor),
+            ])
         let size = text.size()
         text.draw(at: NSPoint(x: circle.midX - size.width / 2, y: circle.midY - size.height / 2))
     }

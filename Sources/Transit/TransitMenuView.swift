@@ -22,14 +22,14 @@ final class TransitMenuView: NSView {
     private var shownLayout: Layout?
 
     #if SELFTEST
-    /// The board last shown, nil while loading or failed.
-    var boardForSelfTest: TransitBoard? { board.boardForSelfTest }
-    /// The alerts section's title, nil while hidden.
-    var alertsTitleForSelfTest: String? { alertsTitle.isHidden ? nil : alertsTitle.stringValue }
-    /// Each alert row's first line (its status).
-    var alertRowsForSelfTest: [String] { rows.filter { !$0.isHidden }.map(\.categoryText) }
-    /// The line counting alerts not listed, nil while hidden.
-    var moreForSelfTest: String? { moreLabel.isHidden ? nil : moreLabel.stringValue }
+        /// The board last shown, nil while loading or failed.
+        var boardForSelfTest: TransitBoard? { board.boardForSelfTest }
+        /// The alerts section's title, nil while hidden.
+        var alertsTitleForSelfTest: String? { alertsTitle.isHidden ? nil : alertsTitle.stringValue }
+        /// Each alert row's first line (its status).
+        var alertRowsForSelfTest: [String] { rows.filter { !$0.isHidden }.map(\.categoryText) }
+        /// The line counting alerts not listed, nil while hidden.
+        var moreForSelfTest: String? { moreLabel.isHidden ? nil : moreLabel.stringValue }
     #endif
 
     override var isFlipped: Bool { true }
@@ -118,7 +118,7 @@ private final class AlertRow: NSView {
     private let headerLabel = NSTextField(wrappingLabelWithString: "")
 
     #if SELFTEST
-    var categoryText: String { categoryLabel.stringValue }
+        var categoryText: String { categoryLabel.stringValue }
     #endif
 
     override var isFlipped: Bool { true }

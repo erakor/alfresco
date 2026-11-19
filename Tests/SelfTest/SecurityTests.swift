@@ -69,39 +69,57 @@ enum SecurityTests {
             URL(string: url).flatMap { PreviewRequest.make($0, service: service) }?
                 .value(forHTTPHeaderField: TransitService.tokenHeader)
         }
-        check("preview token: sent to the service's host", token("https://svc.example/preview/subway?q=x", service) == "secret")
-        check("preview token: host case and the default port don't matter",
-              token("https://SVC.example:443/preview/subway", service) == "secret")
+        check(
+            "preview token: sent to the service's host",
+            token("https://svc.example/preview/subway?q=x", service) == "secret")
+        check(
+            "preview token: host case and the default port don't matter",
+            token("https://SVC.example:443/preview/subway", service) == "secret")
         check("preview token: not sent to another host", token("https://wttr.in/paris", service) == nil)
-        check("preview token: not sent to a host ending like the service's", token("https://evil.svc.example/p", service) == nil)
-        check("preview token: not sent to a host starting like the service's", token("https://svc.example.evil.test/p", service) == nil)
-        check("preview token: not sent with the service's name as user info", token("https://svc.example@evil.test/p", service) == nil)
+        check(
+            "preview token: not sent to a host ending like the service's",
+            token("https://evil.svc.example/p", service) == nil)
+        check(
+            "preview token: not sent to a host starting like the service's",
+            token("https://svc.example.evil.test/p", service) == nil)
+        check(
+            "preview token: not sent with the service's name as user info",
+            token("https://svc.example@evil.test/p", service) == nil)
         check("preview token: not sent to another port", token("https://svc.example:8443/p", service) == nil)
         check("preview token: not sent without a service", token("https://svc.example/p", nil) == nil)
 
         // {service}/… in workflows.json: loaded, filled in with the service's
         // address and token, and nothing at all without a service.
         let set = decode(json([workflow("https://example.com/{query}", preview: "{service}/preview/subway?q={query}")]))
-        check("preview token: a {service}/ preview loads", set?.workflows.first?.preview != nil && set?.refused.isEmpty == true,
-              "\(set?.refused ?? [])")
+        check(
+            "preview token: a {service}/ preview loads",
+            set?.workflows.first?.preview != nil && set?.refused.isEmpty == true,
+            "\(set?.refused ?? [])")
         let preview = set.flatMap { CommandParser.parse("/kw bedford av", using: $0) }?.preview
-        check("preview token: a {service}/ preview is a service URL until it is sent",
-              preview?.absoluteString == "alfresco-service:/preview/subway?q=bedford%20av",
-              "\(String(describing: preview))")
+        check(
+            "preview token: a {service}/ preview is a service URL until it is sent",
+            preview?.absoluteString == "alfresco-service:/preview/subway?q=bedford%20av",
+            "\(String(describing: preview))")
         let request = preview.flatMap { PreviewRequest.make($0, service: service) }
-        check("preview token: a {service}/ preview goes to the service, with its token",
-              request?.url?.absoluteString == "https://svc.example/preview/subway?q=bedford%20av"
-                  && request?.value(forHTTPHeaderField: TransitService.tokenHeader) == "secret",
-              "\(String(describing: request?.url))")
+        check(
+            "preview token: a {service}/ preview goes to the service, with its token",
+            request?.url?.absoluteString == "https://svc.example/preview/subway?q=bedford%20av"
+                && request?.value(forHTTPHeaderField: TransitService.tokenHeader) == "secret",
+            "\(String(describing: request?.url))")
         let nested = TransitService(baseURL: URL(string: "https://svc.example/base")!, token: "secret")
-        check("preview token: a service address with a path keeps it",
-              preview.flatMap { PreviewRequest.resolve($0, service: nested) }?.absoluteString
-                  == "https://svc.example/base/preview/subway?q=bedford%20av")
-        check("preview token: a {service}/ preview without a service sends nothing",
-              preview.flatMap { PreviewRequest.make($0, service: nil) } == nil)
-        check("preview token: {service} must be followed by /", !loads("https://example.com/{query}", preview: "{service}.evil.test/{query}"))
-        check("preview token: {service} only counts at the start",
-              !loads("https://example.com/{query}", preview: "http://evil.test/{service}/{query}"))
+        check(
+            "preview token: a service address with a path keeps it",
+            preview.flatMap { PreviewRequest.resolve($0, service: nested) }?.absoluteString
+                == "https://svc.example/base/preview/subway?q=bedford%20av")
+        check(
+            "preview token: a {service}/ preview without a service sends nothing",
+            preview.flatMap { PreviewRequest.make($0, service: nil) } == nil)
+        check(
+            "preview token: {service} must be followed by /",
+            !loads("https://example.com/{query}", preview: "{service}.evil.test/{query}"))
+        check(
+            "preview token: {service} only counts at the start",
+            !loads("https://example.com/{query}", preview: "http://evil.test/{service}/{query}"))
 
         // Redirects: never to http, and with a token never to another origin.
         func redirect(_ from: String, _ to: String, token: Bool) -> Bool {
@@ -113,27 +131,37 @@ enum SecurityTests {
             }
             return HTTPSession.allowsRedirect(from: original, to: next)
         }
-        check("redirects: with a token, followed on the same origin",
-              redirect("https://svc.example/a", "https://svc.example/b", token: true))
-        check("redirects: with a token, not to another host",
-              !redirect("https://svc.example/a", "https://evil.test/b", token: true))
-        check("redirects: with a token, not to another port",
-              !redirect("https://svc.example/a", "https://svc.example:8443/b", token: true))
-        check("redirects: without a token, followed to another https host",
-              redirect("https://wttr.in/a", "https://example.com/b", token: false))
+        check(
+            "redirects: with a token, followed on the same origin",
+            redirect("https://svc.example/a", "https://svc.example/b", token: true))
+        check(
+            "redirects: with a token, not to another host",
+            !redirect("https://svc.example/a", "https://evil.test/b", token: true))
+        check(
+            "redirects: with a token, not to another port",
+            !redirect("https://svc.example/a", "https://svc.example:8443/b", token: true))
+        check(
+            "redirects: without a token, followed to another https host",
+            redirect("https://wttr.in/a", "https://example.com/b", token: false))
         check("redirects: never to http", !redirect("https://wttr.in/a", "http://wttr.in/b", token: false))
 
         // How long an answer is kept.
         let lifetime = PreviewRequest.lifetime(cacheControl:)
-        check("preview lifetime: max-age, not the CDN's s-maxage",
-              lifetime("public, max-age=20, s-maxage=20, stale-while-revalidate=40") == 20
-                  && lifetime("public, s-maxage=3, max-age=30") == 30)
-        check("preview lifetime: the longest without max-age",
-              lifetime(nil) == PreviewRequest.maxLifetime && lifetime("public, s-maxage=20") == PreviewRequest.maxLifetime)
+        check(
+            "preview lifetime: max-age, not the CDN's s-maxage",
+            lifetime("public, max-age=20, s-maxage=20, stale-while-revalidate=40") == 20
+                && lifetime("public, s-maxage=3, max-age=30") == 30)
+        check(
+            "preview lifetime: the longest without max-age",
+            lifetime(nil) == PreviewRequest.maxLifetime && lifetime("public, s-maxage=20") == PreviewRequest.maxLifetime
+        )
         check("preview lifetime: capped", lifetime("max-age=999999") == PreviewRequest.maxLifetime)
-        check("preview lifetime: a few seconds for max-age=0 or no-store",
-              lifetime("max-age=0") == PreviewRequest.minLifetime && lifetime("no-store") == PreviewRequest.minLifetime)
-        check("preview lifetime: an unreadable max-age is ignored", lifetime("max-age=soon") == PreviewRequest.maxLifetime)
+        check(
+            "preview lifetime: a few seconds for max-age=0 or no-store",
+            lifetime("max-age=0") == PreviewRequest.minLifetime && lifetime("no-store") == PreviewRequest.minLifetime)
+        check(
+            "preview lifetime: an unreadable max-age is ignored", lifetime("max-age=soon") == PreviewRequest.maxLifetime
+        )
     }
 
     private static func workflowSchemes(in root: URL) {
@@ -147,28 +175,35 @@ enum SecurityTests {
         check("workflows: {query} can't be the scheme", !loads("{query}://example.com"))
         check("workflows: {query} can't be part of the scheme", !loads("ht{query}:x"))
         check("workflows: a url without a scheme is refused", !loads("example.com/{query}"))
-        check("workflows: an https preview loads",
-              loads("https://example.com/{query}", preview: "https://example.com/p/{query}"))
+        check(
+            "workflows: an https preview loads",
+            loads("https://example.com/{query}", preview: "https://example.com/p/{query}"))
         // A refused preview goes alone: the keyword still runs its url,
         // rather than its input going to the fallback search.
-        let httpPreview = decode(json([workflow("https://example.com/{query}", preview: "http://example.com/p/{query}")]))
-        check("workflows: an http preview is left out, its workflow kept",
-              httpPreview?.workflows.count == 1 && httpPreview?.workflows.first?.preview == nil
-                  && httpPreview?.refused.first?.hasSuffix("(its preview is left out)") == true,
-              "\(httpPreview?.refused ?? [])")
+        let httpPreview = decode(
+            json([workflow("https://example.com/{query}", preview: "http://example.com/p/{query}")]))
+        check(
+            "workflows: an http preview is left out, its workflow kept",
+            httpPreview?.workflows.count == 1 && httpPreview?.workflows.first?.preview == nil
+                && httpPreview?.refused.first?.hasSuffix("(its preview is left out)") == true,
+            "\(httpPreview?.refused ?? [])")
         let command = httpPreview.flatMap { CommandParser.parse("/kw 12", using: $0) }
-        check("workflows: its keyword still runs its url, with no preview",
-              command?.url.absoluteString == "https://example.com/12" && command?.preview == nil,
-              command?.url.absoluteString ?? "nil")
+        check(
+            "workflows: its keyword still runs its url, with no preview",
+            command?.url.absoluteString == "https://example.com/12" && command?.preview == nil,
+            command?.url.absoluteString ?? "nil")
         let queryPreview = decode(json([workflow("https://example.com/", preview: "https://example.com/p/{query}")]))
-        check("workflows: a preview using {query} when url doesn't is left out, its workflow kept",
-              queryPreview?.workflows.count == 1 && queryPreview?.workflows.first?.preview == nil
-                  && queryPreview?.refused.count == 1,
-              "\(queryPreview.map { "\($0.refused)" } ?? "the file was refused")")
-        check("workflows: Workflow.scheme reads the scheme",
-              Workflow.scheme(of: "Mailto:{query}") == "mailto" && Workflow.scheme(of: "x-y.z+1://a") == "x-y.z+1")
-        check("workflows: Workflow.scheme has none before {query}",
-              Workflow.scheme(of: "{query}:x") == nil && Workflow.scheme(of: "no-colon") == nil)
+        check(
+            "workflows: a preview using {query} when url doesn't is left out, its workflow kept",
+            queryPreview?.workflows.count == 1 && queryPreview?.workflows.first?.preview == nil
+                && queryPreview?.refused.count == 1,
+            "\(queryPreview.map { "\($0.refused)" } ?? "the file was refused")")
+        check(
+            "workflows: Workflow.scheme reads the scheme",
+            Workflow.scheme(of: "Mailto:{query}") == "mailto" && Workflow.scheme(of: "x-y.z+1://a") == "x-y.z+1")
+        check(
+            "workflows: Workflow.scheme has none before {query}",
+            Workflow.scheme(of: "{query}:x") == nil && Workflow.scheme(of: "no-colon") == nil)
         check("workflows: the built-in fallback still loads", WorkflowSet.builtIn.fallback?.takesArgument == true)
 
         // One refused workflow costs only itself.
@@ -177,31 +212,37 @@ enum SecurityTests {
             fallback: ["title": "Search", "url": "file:///tmp/{query}"]
         )
         let set = try? JSONDecoder().decode(WorkflowSet.self, from: mixed)
-        check("workflows: a refused workflow is left out, the others load",
-              set?.workflows.map(\.url) == ["https://example.com/{query}"], "\(String(describing: set?.workflows.count))")
+        check(
+            "workflows: a refused workflow is left out, the others load",
+            set?.workflows.map(\.url) == ["https://example.com/{query}"], "\(String(describing: set?.workflows.count))")
         check("workflows: a refused fallback is not replaced by another search", set != nil && set?.fallback == nil)
         if let set {
-            check("workflows: with no fallback, input no keyword takes runs nothing",
-                  CommandParser.parse("secret search", using: set) == nil
-                      && CommandParser.isUnmatched("secret search", using: set))
-            check("workflows: with no fallback, keywords still run",
-                  CommandParser.parse("/kw 12", using: set)?.url.absoluteString == "https://example.com/12"
-                      && !CommandParser.isUnmatched("/kw 12", using: set))
+            check(
+                "workflows: with no fallback, input no keyword takes runs nothing",
+                CommandParser.parse("secret search", using: set) == nil
+                    && CommandParser.isUnmatched("secret search", using: set))
+            check(
+                "workflows: with no fallback, keywords still run",
+                CommandParser.parse("/kw 12", using: set)?.url.absoluteString == "https://example.com/12"
+                    && !CommandParser.isUnmatched("/kw 12", using: set))
         }
         let noFallback = decode(json([workflow("https://example.com/{query}")]))
-        check("workflows: a file without a fallback uses the built-in one",
-              noFallback?.fallback?.url == WorkflowSet.builtIn.fallback?.url && noFallback?.refused.isEmpty == true)
-        check("workflows: each refusal is reported",
-              set?.refused.count == 2 && set?.refused.first?.hasPrefix("\"Notes\": url must start with") == true,
-              "\(set?.refused ?? [])")
+        check(
+            "workflows: a file without a fallback uses the built-in one",
+            noFallback?.fallback?.url == WorkflowSet.builtIn.fallback?.url && noFallback?.refused.isEmpty == true)
+        check(
+            "workflows: each refusal is reported",
+            set?.refused.count == 2 && set?.refused.first?.hasPrefix("\"Notes\": url must start with") == true,
+            "\(set?.refused ?? [])")
         check("workflows: keywords only lists usable workflows", set?.keywords == ["kw"])
 
         let file = root.appendingPathComponent("workflows.json")
         try? mixed.write(to: file)
         let store = WorkflowStore(fileURL: file, createsMissingFile: false)
-        check("workflows: the store uses the file and reports what it left out",
-              store.current.workflows.count == 1 && store.loadError?.hasPrefix("left out \"Notes\"") == true,
-              store.loadError ?? "no error")
+        check(
+            "workflows: the store uses the file and reports what it left out",
+            store.current.workflows.count == 1 && store.loadError?.hasPrefix("left out \"Notes\"") == true,
+            store.loadError ?? "no error")
     }
 
     // MARK: Usage stats
@@ -214,9 +255,10 @@ enum SecurityTests {
         check("usage: a long keyword with two typos is kept", word("waethr paris") == "waethr")
         check("usage: a keyword used where it takes no argument is kept", word("cal tomorrow") == "cal")
         check("usage: a short keyword typed exactly is kept", word("pr 12") == "pr")
-        check("usage: a word a typo away from a short keyword is not kept",
-              word("pa taxes") == nil && word("cv template") == nil && word("or tools") == nil,
-              "\(String(describing: word("pa taxes"))) \(String(describing: word("cv template")))")
+        check(
+            "usage: a word a typo away from a short keyword is not kept",
+            word("pa taxes") == nil && word("cv template") == nil && word("or tools") == nil,
+            "\(String(describing: word("pa taxes"))) \(String(describing: word("cv template")))")
         check("usage: a word a typo away from a one-letter keyword is not kept", word("a lawyer") == nil)
         check("usage: a 3-letter keyword with a typo is not kept", word("cla tomorrow") == nil)
         check("usage: a searched word is not kept", word("divorce lawyer") == nil)
@@ -249,8 +291,9 @@ enum SecurityTests {
         check("files: a file is owner-only as soon as it is written (umask)", mode(file) == 0o600, octal(file))
 
         ClipImageFile.makePrivate(root.appendingPathComponent("missing", isDirectory: true))
-        check("files: making a missing folder private creates nothing",
-              !FileManager.default.fileExists(atPath: root.appendingPathComponent("missing").path))
+        check(
+            "files: making a missing folder private creates nothing",
+            !FileManager.default.fileExists(atPath: root.appendingPathComponent("missing").path))
 
         // The modes the code sets itself, under the usual umask (022) rather
         // than the app's 077, so these pass only if the code sets them.
@@ -272,8 +315,9 @@ enum SecurityTests {
             let images = folder.appendingPathComponent("clipboard-images", isDirectory: true)
             let image = ClipImageFile.save(pdf(width: 20, height: 10), type: .pdf, in: images)
             let imageFile = images.appendingPathComponent(image?.fileName ?? "missing")
-            check("files: under umask 022, a saved image and its folder are owner-only",
-                  mode(imageFile) == 0o600 && mode(images) == 0o700, "\(octal(imageFile)), folder \(octal(images))")
+            check(
+                "files: under umask 022, a saved image and its folder are owner-only",
+                mode(imageFile) == 0o600 && mode(images) == 0o700, "\(octal(imageFile)), folder \(octal(images))")
         }
     }
 
@@ -281,20 +325,23 @@ enum SecurityTests {
 
     private static func clipboardMonitor(in root: URL) {
         let types = ClipboardMonitor.imageTypesForSelfTest.map(\.rawValue)
-        check("clipboard: images are read as PNG and TIFF first, and as PDF",
-              types.prefix(2) == [NSPasteboard.PasteboardType.png.rawValue, NSPasteboard.PasteboardType.tiff.rawValue]
-                  && types.contains("com.adobe.pdf"), "\(types)")
+        check(
+            "clipboard: images are read as PNG and TIFF first, and as PDF",
+            types.prefix(2) == [NSPasteboard.PasteboardType.png.rawValue, NSPasteboard.PasteboardType.tiff.rawValue]
+                && types.contains("com.adobe.pdf"), "\(types)")
         // NSImage lists more (EPS on older macOS): those copies keep their
         // text or files rather than becoming an image that can't be saved.
         let saveable = Set((CGImageSourceCopyTypeIdentifiers() as? [String]) ?? []).union(["com.adobe.pdf"])
         let unsaveable = types.filter { !saveable.contains($0) }
         check("clipboard: only types that can be saved are read as images", unsaveable.isEmpty, "\(unsaveable)")
 
-        check("clipboard: copies in Passwords are ignored",
-              ClipboardMonitor.isIgnoredForSelfTest(ClipSource(name: "Passwords", bundleID: "com.apple.Passwords")))
-        check("clipboard: copies in other apps are not",
-              !ClipboardMonitor.isIgnoredForSelfTest(ClipSource(name: "TextEdit", bundleID: "com.apple.TextEdit"))
-                  && !ClipboardMonitor.isIgnoredForSelfTest(ClipSource(name: nil, bundleID: nil)))
+        check(
+            "clipboard: copies in Passwords are ignored",
+            ClipboardMonitor.isIgnoredForSelfTest(ClipSource(name: "Passwords", bundleID: "com.apple.Passwords")))
+        check(
+            "clipboard: copies in other apps are not",
+            !ClipboardMonitor.isIgnoredForSelfTest(ClipSource(name: "TextEdit", bundleID: "com.apple.TextEdit"))
+                && !ClipboardMonitor.isIgnoredForSelfTest(ClipSource(name: nil, bundleID: nil)))
 
         // A pasteboard of its own, so the real clipboard is never touched.
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("local.launcher.selftest.\(UUID().uuidString)"))
@@ -317,15 +364,16 @@ enum SecurityTests {
         copy("hunter3", marker: "com.agilebits.onepassword")
         check("clipboard: a copy with an older password manager marker is not recorded", store.items.isEmpty)
         copy("hello")
-        check("clipboard: an unmarked copy is recorded", store.items.first?.content == ClipContent.text("hello"),
-              "\(store.items.count) items")
+        check(
+            "clipboard: an unmarked copy is recorded", store.items.first?.content == ClipContent.text("hello"),
+            "\(store.items.count) items")
     }
 
     private static func pdf(width: CGFloat, height: CGFloat) -> Data {
         let data = NSMutableData()
         var box = CGRect(x: 0, y: 0, width: width, height: height)
         guard let consumer = CGDataConsumer(data: data as CFMutableData),
-              let context = CGContext(consumer: consumer, mediaBox: &box, nil)
+            let context = CGContext(consumer: consumer, mediaBox: &box, nil)
         else { return Data() }
         context.beginPDFPage(nil)
         context.setFillColor(CGColor(red: 0.8, green: 0.2, blue: 0.2, alpha: 1))
@@ -338,9 +386,10 @@ enum SecurityTests {
     private static func pdfSize(in root: URL) {
         let directory = root.appendingPathComponent("pdf-images", isDirectory: true)
         let small = ClipImageFile.save(pdf(width: 200, height: 100), type: .pdf, in: directory)
-        check("clipboard: a PDF is recorded at one pixel per point, whatever the screen's scale",
-              small?.pixelWidth == 200 && small?.pixelHeight == 100,
-              "\(String(describing: small?.pixelWidth)) x \(String(describing: small?.pixelHeight))")
+        check(
+            "clipboard: a PDF is recorded at one pixel per point, whatever the screen's scale",
+            small?.pixelWidth == 200 && small?.pixelHeight == 100,
+            "\(String(describing: small?.pixelWidth)) x \(String(describing: small?.pixelHeight))")
         let huge = ClipImageFile.save(pdf(width: 10_000, height: 10_000), type: .pdf, in: directory)
         check("clipboard: a PDF page over the pixel limit is turned down", huge == nil)
     }

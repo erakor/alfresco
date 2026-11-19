@@ -166,16 +166,16 @@ final class TransitProvider {
     }
 
     #if SELFTEST
-    /// Stands in for a fetch.
-    func setSnapshotForSelfTest(_ snapshot: TransitSnapshot?) {
-        self.snapshot = snapshot
-        failure = nil
-    }
+        /// Stands in for a fetch.
+        func setSnapshotForSelfTest(_ snapshot: TransitSnapshot?) {
+            self.snapshot = snapshot
+            failure = nil
+        }
 
-    /// Stands in for an alerts fetch.
-    func setAlertsForSelfTest(_ alerts: TransitAlerts?) {
-        self.alerts = alerts
-        alertsFailedAt = nil
-    }
+        /// Stands in for an alerts fetch.
+        func setAlertsForSelfTest(_ alerts: TransitAlerts?) {
+            self.alerts = alerts
+            alertsFailedAt = nil
+        }
     #endif
 }

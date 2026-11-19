@@ -329,7 +329,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         updateSuggestions()
         if let selected { suggestionList.select(selected) }
         updateHint()
-        updateWeather() // resizes the panel to the new list
+        updateWeather()  // resizes the panel to the new list
     }
 
     /// The installed app or System Settings pane the input names (an `.app`
@@ -443,7 +443,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         }
         let input = textField.stringValue
         // ⌘↩ on `/r/swift`: searched for as typed, which Enter never does.
-        let parsed = searchOnly && CommandInput.isCommand(input)
+        let parsed =
+            searchOnly && CommandInput.isCommand(input)
             ? CommandParser.fallbackCommand(input, using: store.current)
             : enterCommand(for: input, query: calendarQuery(for: input))
         guard let command = parsed else {
@@ -498,7 +499,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     private func complete(with completion: String) {
         if let editor = textField.currentEditor() as? NSTextView {
             editor.breakUndoCoalescing()
-            editor.insertText(completion, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
+            editor.insertText(
+                completion, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
             editor.breakUndoCoalescing()
         } else {
             textField.stringValue = completion
@@ -647,7 +649,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
             hintLabel.stringValue = builtIn.hint
             hintLabel.toolTip = builtIn.detail
         } else if let result {
-            hintLabel.stringValue = "↩ Open \(result.completion)" + (store.current.fallback.map { "  ⌘↩ \($0.title)" } ?? "")
+            hintLabel.stringValue =
+                "↩ Open \(result.completion)" + (store.current.fallback.map { "  ⌘↩ \($0.title)" } ?? "")
             switch result {
             case .app(let app): hintLabel.toolTip = app.url.path
             case .settingsPane(let pane): hintLabel.toolTip = "\(SettingsPanes.appName) › \(pane.title)"
@@ -678,14 +681,16 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         } else if store.current.listsAllCommands(textField.stringValue) {
             // Command hints come before a workflows.json error, which then
             // stays in the tooltip: a refused entry leaves the rest usable.
-            hintLabel.stringValue = suggestionList.items.isEmpty ? "No commands in workflows.json" : "↓ to pick a command, ⇥ to complete"
+            hintLabel.stringValue =
+                suggestionList.items.isEmpty ? "No commands in workflows.json" : "↓ to pick a command, ⇥ to complete"
             hintLabel.toolTip = loadErrorTooltip()
         } else if CommandInput.isCommand(textField.stringValue) {
             let typed = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             let list = CommandInput.typed(Config.commandListKeyword)
             // ⌘↩ still searches for it (a pasted `/r/swift` or a path).
             let search = store.current.fallback.map { "  ⌘↩ \($0.title)" } ?? ""
-            hintLabel.stringValue = (suggestionList.items.isEmpty ? "No command \(typed), \(list) lists them" : "⇥ to complete") + search
+            hintLabel.stringValue =
+                (suggestionList.items.isEmpty ? "No command \(typed), \(list) lists them" : "⇥ to complete") + search
             hintLabel.toolTip = loadErrorTooltip()
         } else if let error = store.loadError {
             hintLabel.stringValue = "⚠ workflows.json: \(error)"
@@ -880,7 +885,7 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     /// or any workflow pointing there), while there is a timer to show.
     private func pomodoroURL(for command: Command?) -> URL? {
         guard pomodoro != nil, let url = command?.url,
-              InternalURL.feature(of: url) == PomodoroCommand.feature
+            InternalURL.feature(of: url) == PomodoroCommand.feature
         else { return nil }
         return url
     }
@@ -944,7 +949,8 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         if let url = command?.url, InternalURL.feature(of: url) == SnippetCommand.feature {
             return KeywordInput(command: input)?.argument ?? ""
         }
-        if let workflow = store.current.workflowAwaitingArgument(input), SnippetCommand.isSnippetTemplate(workflow.url) {
+        if let workflow = store.current.workflowAwaitingArgument(input), SnippetCommand.isSnippetTemplate(workflow.url)
+        {
             return ""
         }
         return nil
@@ -1093,66 +1099,66 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
     }
 
     #if SELFTEST
-    /// Puts `text` in the input as typing it would.
-    func typeForSelfTest(_ text: String) {
-        textField.stringValue = text
-        inputDidChange()
-    }
+        /// Puts `text` in the input as typing it would.
+        func typeForSelfTest(_ text: String) {
+            textField.stringValue = text
+            inputDidChange()
+        }
 
-    /// The command cards' keywords while they are shown, else nil.
-    var cardKeywordsForSelfTest: [String]? { cardsView.isHidden ? nil : cardsView.keywordsForSelfTest }
+        /// The command cards' keywords while they are shown, else nil.
+        var cardKeywordsForSelfTest: [String]? { cardsView.isHidden ? nil : cardsView.keywordsForSelfTest }
 
-    /// Clicks the card at `index`.
-    func clickCardForSelfTest(_ index: Int) { cardsView.clickForSelfTest(index) }
+        /// Clicks the card at `index`.
+        func clickCardForSelfTest(_ index: Int) { cardsView.clickForSelfTest(index) }
 
-    /// Clicks the weather strip (hidden in the test build, which has no
-    /// WeatherAPI key, but its click still goes through).
-    func clickWeatherStripForSelfTest() { weatherStrip.clickForSelfTest() }
+        /// Clicks the weather strip (hidden in the test build, which has no
+        /// WeatherAPI key, but its click still goes through).
+        func clickWeatherStripForSelfTest() { weatherStrip.clickForSelfTest() }
 
-    /// Clicks the next meeting (hidden in the test build, which has no
-    /// calendar access, but its click still goes through).
-    func clickMeetingStripForSelfTest() { meetingStrip.clickForSelfTest() }
+        /// Clicks the next meeting (hidden in the test build, which has no
+        /// calendar access, but its click still goes through).
+        func clickMeetingStripForSelfTest() { meetingStrip.clickForSelfTest() }
 
-    /// Works out the next meeting as opening the panel does.
-    func updateMeetingStripForSelfTest() { updateMeetingStrip() }
+        /// Works out the next meeting as opening the panel does.
+        func updateMeetingStripForSelfTest() { updateMeetingStrip() }
 
-    /// What the next meeting reads while it is shown, else nil.
-    var meetingStripForSelfTest: String? { meetingStrip.isHidden ? nil : meetingStrip.textForSelfTest }
+        /// What the next meeting reads while it is shown, else nil.
+        var meetingStripForSelfTest: String? { meetingStrip.isHidden ? nil : meetingStrip.textForSelfTest }
 
-    /// What the input reads.
-    var inputForSelfTest: String { textField.stringValue }
+        /// What the input reads.
+        var inputForSelfTest: String { textField.stringValue }
 
-    /// The hint line, right of the input.
-    var hintForSelfTest: String { hintLabel.stringValue }
+        /// The hint line, right of the input.
+        var hintForSelfTest: String { hintLabel.stringValue }
 
-    /// The departure board while it shows trains, else nil.
-    var transitBoardForSelfTest: TransitBoard? { transitView.isHidden ? nil : transitView.boardForSelfTest }
+        /// The departure board while it shows trains, else nil.
+        var transitBoardForSelfTest: TransitBoard? { transitView.isHidden ? nil : transitView.boardForSelfTest }
 
-    /// Whether the departure board is shown (loading, failed or loaded).
-    var showsTransitForSelfTest: Bool { !transitView.isHidden }
+        /// Whether the departure board is shown (loading, failed or loaded).
+        var showsTransitForSelfTest: Bool { !transitView.isHidden }
 
-    /// Stands in for a fetch, then redraws the board (shown or not, since
-    /// the test never opens the panel).
-    func setTransitSnapshotForSelfTest(_ snapshot: TransitSnapshot?) {
-        transit.setSnapshotForSelfTest(snapshot)
-        updateTransit()
-    }
+        /// Stands in for a fetch, then redraws the board (shown or not, since
+        /// the test never opens the panel).
+        func setTransitSnapshotForSelfTest(_ snapshot: TransitSnapshot?) {
+            transit.setSnapshotForSelfTest(snapshot)
+            updateTransit()
+        }
 
-    /// The usage report while it is shown, else nil.
-    var statsForSelfTest: UsageReport? { statsView.isHidden ? nil : statsView.reportForSelfTest }
+        /// The usage report while it is shown, else nil.
+        var statsForSelfTest: UsageReport? { statsView.isHidden ? nil : statsView.reportForSelfTest }
 
-    /// What the snippets area shows, nil while it is hidden.
-    var snippetsForSelfTest: SnippetsViewContent? {
-        snippetsView.isHidden ? nil : snippetsView.contentForSelfTest
-    }
+        /// What the snippets area shows, nil while it is hidden.
+        var snippetsForSelfTest: SnippetsViewContent? {
+            snippetsView.isHidden ? nil : snippetsView.contentForSelfTest
+        }
 
-    /// What the pomodoro view shows while it is shown, else nil.
-    var pomodoroForSelfTest: PomodoroViewContent? {
-        pomodoroView.isHidden ? nil : pomodoroView.contentForSelfTest
-    }
+        /// What the pomodoro view shows while it is shown, else nil.
+        var pomodoroForSelfTest: PomodoroViewContent? {
+            pomodoroView.isHidden ? nil : pomodoroView.contentForSelfTest
+        }
 
-    /// The installed apps found so far (0 until the first scan finishes).
-    var appCountForSelfTest: Int { apps.apps.count }
+        /// The installed apps found so far (0 until the first scan finishes).
+        var appCountForSelfTest: Int { apps.apps.count }
     #endif
 
     // MARK: Setup
@@ -1187,11 +1193,13 @@ final class LauncherController: FloatingPanelController, NSTextFieldDelegate {
         NSLayoutConstraint.activate([
             meetingStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
             meetingStrip.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: stripInset),
-            meetingStrip.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -stripInset),
+            meetingStrip.trailingAnchor.constraint(
+                lessThanOrEqualTo: contentView.trailingAnchor, constant: -stripInset),
             meetingStrip.heightAnchor.constraint(equalToConstant: StripButton.stripHeight),
 
             weatherStrip.topAnchor.constraint(equalTo: contentView.topAnchor),
-            weatherStrip.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: stripInset),
+            weatherStrip.leadingAnchor.constraint(
+                greaterThanOrEqualTo: contentView.leadingAnchor, constant: stripInset),
             weatherStrip.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -stripInset),
             weatherStrip.heightAnchor.constraint(equalToConstant: StripButton.stripHeight),
 

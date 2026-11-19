@@ -30,8 +30,9 @@ enum MenuBarIconTests {
         ]
         for (name, x, y, filled) in points {
             let value = alpha(x, y)
-            SelfTest.check("menu bar icon: \(name) is \(filled ? "drawn" : "clear")",
-                           filled ? value > 0.9 : value >= 0 && value < 0.1, "alpha \(value)")
+            SelfTest.check(
+                "menu bar icon: \(name) is \(filled ? "drawn" : "clear")",
+                filled ? value > 0.9 : value >= 0 && value < 0.1, "alpha \(value)")
         }
     }
 }

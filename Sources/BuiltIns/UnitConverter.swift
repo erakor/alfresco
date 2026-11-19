@@ -47,10 +47,22 @@ enum UnitConverter {
     private static let units: [String: Unit] = {
         let table: [([String], Unit)] = [
             // Length (metre)
-            (["mm", "millimeter", "millimeters", "millimetre", "millimetres"], Unit(symbol: "mm", quantity: .length, factor: 0.001)),
-            (["cm", "centimeter", "centimeters", "centimetre", "centimetres"], Unit(symbol: "cm", quantity: .length, factor: 0.01)),
-            (["m", "meter", "meters", "metre", "metres", "mètre", "mètres"], Unit(symbol: "m", quantity: .length, factor: 1)),
-            (["km", "kilometer", "kilometers", "kilometre", "kilometres", "kilomètre", "kilomètres"], Unit(symbol: "km", quantity: .length, factor: 1000)),
+            (
+                ["mm", "millimeter", "millimeters", "millimetre", "millimetres"],
+                Unit(symbol: "mm", quantity: .length, factor: 0.001)
+            ),
+            (
+                ["cm", "centimeter", "centimeters", "centimetre", "centimetres"],
+                Unit(symbol: "cm", quantity: .length, factor: 0.01)
+            ),
+            (
+                ["m", "meter", "meters", "metre", "metres", "mètre", "mètres"],
+                Unit(symbol: "m", quantity: .length, factor: 1)
+            ),
+            (
+                ["km", "kilometer", "kilometers", "kilometre", "kilometres", "kilomètre", "kilomètres"],
+                Unit(symbol: "km", quantity: .length, factor: 1000)
+            ),
             (["in", "inch", "inches", "pouce", "pouces"], Unit(symbol: "in", quantity: .length, factor: 0.0254)),
             (["ft", "foot", "feet", "pied", "pieds"], Unit(symbol: "ft", quantity: .length, factor: 0.3048)),
             (["yd", "yard", "yards"], Unit(symbol: "yd", quantity: .length, factor: 0.9144)),
@@ -80,20 +92,29 @@ enum UnitConverter {
             // Mass (kilogram)
             (["mg"], Unit(symbol: "mg", quantity: .mass, factor: 0.000001)),
             (["g", "gram", "grams", "gramme", "grammes"], Unit(symbol: "g", quantity: .mass, factor: 0.001)),
-            (["kg", "kilo", "kilos", "kilogram", "kilograms", "kilogramme", "kilogrammes"], Unit(symbol: "kg", quantity: .mass, factor: 1)),
+            (
+                ["kg", "kilo", "kilos", "kilogram", "kilograms", "kilogramme", "kilogrammes"],
+                Unit(symbol: "kg", quantity: .mass, factor: 1)
+            ),
             (["t", "tonne", "tonnes"], Unit(symbol: "t", quantity: .mass, factor: 1000)),
             (["oz", "ounce", "ounces"], Unit(symbol: "oz", quantity: .mass, factor: 0.028349523125)),
             (["lb", "lbs", "pound", "pounds"], Unit(symbol: "lb", quantity: .mass, factor: 0.45359237)),
             (["st", "stone", "stones"], Unit(symbol: "st", quantity: .mass, factor: 6.35029318)),
             // Temperature (kelvin)
             (["c", "°c", "celsius"], Unit(symbol: "°C", quantity: .temperature, factor: 1, offset: 273.15)),
-            (["f", "°f", "fahrenheit"], Unit(symbol: "°F", quantity: .temperature, factor: 5.0 / 9, offset: 459.67 * 5 / 9)),
+            (
+                ["f", "°f", "fahrenheit"],
+                Unit(symbol: "°F", quantity: .temperature, factor: 5.0 / 9, offset: 459.67 * 5 / 9)
+            ),
             (["k", "kelvin"], Unit(symbol: "K", quantity: .temperature, factor: 1)),
             // Speed (metre per second)
             (["m/s"], Unit(symbol: "m/s", quantity: .speed, factor: 1)),
             (["km/h", "kmh", "kph"], Unit(symbol: "km/h", quantity: .speed, factor: 1 / 3.6)),
             (["mph"], Unit(symbol: "mph", quantity: .speed, factor: 0.44704)),
-            (["kn", "kt", "knot", "knots", "noeud", "noeuds", "nœud", "nœuds"], Unit(symbol: "kn", quantity: .speed, factor: 1852.0 / 3600)),
+            (
+                ["kn", "kt", "knot", "knots", "noeud", "noeuds", "nœud", "nœuds"],
+                Unit(symbol: "kn", quantity: .speed, factor: 1852.0 / 3600)
+            ),
             // Data (byte); "o", "ko", "Mo"… are the French names.
             (["b", "byte", "bytes", "o", "octet", "octets"], Unit(symbol: "B", quantity: .data, factor: 1)),
             (["kb", "ko"], Unit(symbol: "kB", quantity: .data, factor: 1e3)),
@@ -112,9 +133,15 @@ enum UnitConverter {
             (["tbit", "tbits"], Unit(symbol: "Tbit", quantity: .data, factor: 125_000_000_000)),
             // Duration (second)
             (["ms"], Unit(symbol: "ms", quantity: .duration, factor: 0.001)),
-            (["s", "sec", "secs", "second", "seconds", "seconde", "secondes"], Unit(symbol: "s", quantity: .duration, factor: 1)),
+            (
+                ["s", "sec", "secs", "second", "seconds", "seconde", "secondes"],
+                Unit(symbol: "s", quantity: .duration, factor: 1)
+            ),
             (["min", "mins", "minute", "minutes"], Unit(symbol: "min", quantity: .duration, factor: 60)),
-            (["h", "hr", "hrs", "hour", "hours", "heure", "heures"], Unit(symbol: "h", quantity: .duration, factor: 3600)),
+            (
+                ["h", "hr", "hrs", "hour", "hours", "heure", "heures"],
+                Unit(symbol: "h", quantity: .duration, factor: 3600)
+            ),
             (["d", "day", "days", "j", "jour", "jours"], Unit(symbol: "d", quantity: .duration, factor: 86400)),
             (["wk", "week", "weeks", "semaine", "semaines"], Unit(symbol: "wk", quantity: .duration, factor: 604_800)),
         ]

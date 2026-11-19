@@ -33,10 +33,12 @@ enum SettingsPaneTests {
             }
         }
         check("no name finds two panes", shared.isEmpty, shared.joined(separator: ", "))
-        check("every pane has an English and a French name",
-              panes.allSatisfy { !$0.english.isEmpty && !$0.french.isEmpty })
-        check("every URL is x-apple.systempreferences:<id>",
-              panes.allSatisfy { $0.url.scheme == SettingsPanes.scheme && $0.url.absoluteString.hasSuffix($0.id) })
+        check(
+            "every pane has an English and a French name",
+            panes.allSatisfy { !$0.english.isEmpty && !$0.french.isEmpty })
+        check(
+            "every URL is x-apple.systempreferences:<id>",
+            panes.allSatisfy { $0.url.scheme == SettingsPanes.scheme && $0.url.absoluteString.hasSuffix($0.id) })
     }
 
     /// Panes a Mac can lack without the ID having moved: GitHub's macOS
@@ -58,10 +60,12 @@ enum SettingsPaneTests {
         let missingPanes = SettingsPanes.all.filter { !installedIDs.contains($0.id) }
         let missing = missingPanes.filter { !mayBeAbsent.contains($0.id) }.map { "\($0.english) (\($0.id))" }
         let version = ProcessInfo.processInfo.operatingSystemVersionString
-        check("every pane in the table is on this macOS (\(version))", missing.isEmpty,
-              "missing: " + missing.joined(separator: ", "))
-        check("installed() keeps the panes this Mac has",
-              SettingsPanes.installed().count == SettingsPanes.all.count - missingPanes.count)
+        check(
+            "every pane in the table is on this macOS (\(version))", missing.isEmpty,
+            "missing: " + missing.joined(separator: ", "))
+        check(
+            "installed() keeps the panes this Mac has",
+            SettingsPanes.installed().count == SettingsPanes.all.count - missingPanes.count)
         let empty = SelfTest.scratchFile("no-extensions").deletingLastPathComponent()
         check("a folder without extensions gives no panes", SettingsPanes.installed(in: empty).isEmpty)
         let handler = SettingsPanes.all.first.flatMap { NSWorkspace.shared.urlForApplication(toOpen: $0.url) }
@@ -91,8 +95,9 @@ enum SettingsPaneTests {
             }
         }
 
-        check("bluetooth: the pane, an exact name, before the app it starts",
-              top("bluetooth") == "pane Bluetooth", top("bluetooth"))
+        check(
+            "bluetooth: the pane, an exact name, before the app it starts",
+            top("bluetooth") == "pane Bluetooth", top("bluetooth"))
         check("wifi finds Wi-Fi", top("wifi") == "pane Wi-Fi", top("wifi"))
         check("wi-fi finds Wi-Fi", top("wi-fi") == "pane Wi-Fi", top("wi-fi"))
         check("display finds Displays", top("display") == "pane Displays", top("display"))
@@ -102,8 +107,9 @@ enum SettingsPaneTests {
         check("a word of the name (dock)", top("dock") == "pane Desktop & Dock", top("dock"))
         check("an app keeps its exact name", top("safari") == "app Safari", top("safari"))
         check("an exact pane name beats an app it starts (sound)", top("sound") == "pane Sound", top("sound"))
-        check("an app comes before a pane matched the same way (sou)",
-              top("sou") == "app Sound Studio", top("sou"))
+        check(
+            "an app comes before a pane matched the same way (sou)",
+            top("sou") == "app Sound Studio", top("sou"))
         check("a closer pane name beats an app's word (trac)", top("trac") == "pane Trackpad", top("trac"))
         let used = top("trac", openCounts: ["x.tracker": 1000])
         check("a much-used app moves up past a pane", used == "app Super Tracker", used)
@@ -112,12 +118,15 @@ enum SettingsPaneTests {
         let pickedExact = top("sound", picks: ["x.sound": 8])
         check("an exact pane name still beats a picked app", pickedExact == "pane Sound", pickedExact)
         check("nothing matches zzq", top("zzq") == "nothing", top("zzq"))
-        check("ranked leaves panes out", AppIndex.ranked(apps, for: "bluetooth", limit: 9).map(\.name)
-              == ["Bluetooth File Exchange"])
+        check(
+            "ranked leaves panes out",
+            AppIndex.ranked(apps, for: "bluetooth", limit: 9).map(\.name)
+                == ["Bluetooth File Exchange"])
 
         let (limited, matched) = AppIndex.rankedResults(apps, panes: panes, for: "s", limit: 3)
-        check("the limit counts apps and panes together", limited.count == 3 && matched > 3,
-              "\(limited.count) of \(matched)")
+        check(
+            "the limit counts apps and panes together", limited.count == 3 && matched > 3,
+            "\(limited.count) of \(matched)")
 
         let wifi = LauncherItem.settingsPane(panes[0])
         check("Tab completes a pane's name", wifi.completion == panes[0].title)

@@ -68,7 +68,7 @@ enum CalendarQuery: Equatable {
     /// workflow `/cal` is an unknown command and beeps.
     static func make(input: String, command: Command?, context: BuiltInContext = .current) -> CalendarQuery? {
         guard case .workflow(let keyword, let withArgument)? = command?.source,
-              keyword == Config.calendarKeyword
+            keyword == Config.calendarKeyword
         else { return nil }
         return make(argument: withArgument ? KeywordInput(command: input)?.argument : nil, context: context)
     }
@@ -79,7 +79,7 @@ enum CalendarQuery: Equatable {
     /// stats still count `cal …`; else `command` itself.
     static func enterCommand(_ command: Command?, query: CalendarQuery?, using workflows: WorkflowSet) -> Command? {
         guard case .day? = query, let typed = command,
-              let calendar = CommandParser.parse(CommandInput.typed(Config.calendarKeyword), using: workflows)
+            let calendar = CommandParser.parse(CommandInput.typed(Config.calendarKeyword), using: workflows)
         else { return command }
         return Command(url: calendar.url, label: calendar.label, source: typed.source, preview: nil)
     }
@@ -223,13 +223,13 @@ final class CalendarProvider {
     }
 
     #if SELFTEST
-    /// `fetchRange` for the self-test: "window <days>" or "day".
-    static func fetchRangeForSelfTest(_ query: CalendarQuery, today: Date) -> String {
-        switch fetchRange(for: query, today: today) {
-        case .window(_, let days): return "window \(days)"
-        case .day: return "day"
+        /// `fetchRange` for the self-test: "window <days>" or "day".
+        static func fetchRangeForSelfTest(_ query: CalendarQuery, today: Date) -> String {
+            switch fetchRange(for: query, today: today) {
+            case .window(_, let days): return "window \(days)"
+            case .day: return "day"
+            }
         }
-    }
     #endif
 
     /// The events of `day` (any part of it), in order. Past `limit`, the
@@ -421,7 +421,8 @@ final class CalendarProvider {
     nonisolated private static func makeEvent(_ event: EKEvent) -> CalendarEvent? {
         guard let start = event.startDate, let end = event.endDate else { return nil }
         if Config.calendarHidesDeclined,
-           event.attendees?.contains(where: { $0.isCurrentUser && $0.participantStatus == .declined }) == true {
+            event.attendees?.contains(where: { $0.isCurrentUser && $0.participantStatus == .declined }) == true
+        {
             return nil
         }
         let rawTitle = (event.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

@@ -74,11 +74,13 @@ enum SelfTest {
     /// `image` drawn into a bitmap at 2x, like a Retina menu bar. Read it
     /// with `alpha(in:_:_:)`, in points from the top left.
     static func drawAt2x(_ image: NSImage) -> NSBitmapImageRep? {
-        guard let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: Int(image.size.width * 2), pixelsHigh: Int(image.size.height * 2),
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-        ) else { return nil }
+        guard
+            let bitmap = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: Int(image.size.width * 2), pixelsHigh: Int(image.size.height * 2),
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+            )
+        else { return nil }
         // Two pixels a point; without this the bitmap is twice the size in
         // points and the image fills only a quarter of it. Set before the
         // context is made from the bitmap, which keeps the size it sees then.

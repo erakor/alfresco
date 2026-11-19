@@ -44,7 +44,7 @@ enum PasteKeystroke {
             return nil
         }
         guard let front = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-              front != ProcessInfo.processInfo.processIdentifier
+            front != ProcessInfo.processInfo.processIdentifier
         else { return nil }
         return Target(app: front, changeCount: NSPasteboard.general.changeCount)
     }
@@ -64,8 +64,9 @@ enum PasteKeystroke {
             }
             let panelOpen = NSApp.windows.contains { $0 is LauncherPanel && $0.isVisible }
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.app,
-                  NSPasteboard.general.changeCount == target.changeCount,
-                  !panelOpen else { return }
+                NSPasteboard.general.changeCount == target.changeCount,
+                !panelOpen
+            else { return }
             post()
         }
     }
@@ -90,7 +91,7 @@ enum PasteKeystroke {
     /// lands on "V" in layouts like Dvorak where it isn't the ANSI V key.
     private static func keyCode(typing character: Character) -> CGKeyCode? {
         guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
-              let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+            let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
         else { return nil }
         let layoutData = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue() as Data
         let target = Array(String(character).utf16)

@@ -73,7 +73,8 @@ final class WeatherView: NSView {
         icon.image = Self.symbol(for: forecast.condition, pointSize: 40)
         temperatureLabel.stringValue = Self.degrees(forecast.temperature)
         descriptionLabel.stringValue = forecast.description.prefix(1).uppercased() + forecast.description.dropFirst()
-        placeLabel.stringValue = forecast.isApproximate
+        placeLabel.stringValue =
+            forecast.isApproximate
             ? "\(forecast.place) · position approximative"
             : forecast.place
 

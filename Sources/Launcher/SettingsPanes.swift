@@ -50,34 +50,60 @@ enum SettingsPanes {
         SettingsPane("com.apple.Network-Settings.extension", "Network", "Réseau", aliases: ["ethernet", "proxy"]),
         SettingsPane("com.apple.Notifications-Settings.extension", "Notifications", "Notifications"),
         SettingsPane("com.apple.Sound-Settings.extension", "Sound", "Son", aliases: ["audio", "volume"]),
-        SettingsPane("com.apple.Focus-Settings.extension", "Focus", "Concentration", aliases: ["do not disturb", "ne pas déranger"]),
-        SettingsPane("com.apple.Screen-Time-Settings.extension", "Screen Time", "Temps d’écran", aliases: ["temps d'ecran"]),
-        SettingsPane("com.apple.Appearance-Settings.extension", "Appearance", "Apparence", aliases: ["dark mode", "mode sombre"]),
+        SettingsPane(
+            "com.apple.Focus-Settings.extension", "Focus", "Concentration",
+            aliases: ["do not disturb", "ne pas déranger"]),
+        SettingsPane(
+            "com.apple.Screen-Time-Settings.extension", "Screen Time", "Temps d’écran", aliases: ["temps d'ecran"]),
+        SettingsPane(
+            "com.apple.Appearance-Settings.extension", "Appearance", "Apparence", aliases: ["dark mode", "mode sombre"]),
         SettingsPane("com.apple.Accessibility-Settings.extension", "Accessibility", "Accessibilité"),
-        SettingsPane("com.apple.ControlCenter-Settings.extension", "Control Center", "Centre de contrôle", aliases: ["menu bar", "barre des menus"]),
+        SettingsPane(
+            "com.apple.ControlCenter-Settings.extension", "Control Center", "Centre de contrôle",
+            aliases: ["menu bar", "barre des menus"]),
         SettingsPane("com.apple.Siri-Settings.extension", "Siri", "Siri"),
-        SettingsPane("com.apple.settings.PrivacySecurity.extension", "Privacy & Security", "Confidentialité et sécurité", aliases: ["privacy", "security", "permissions"]),
-        SettingsPane("com.apple.Desktop-Settings.extension", "Desktop & Dock", "Bureau et Dock", aliases: ["dock", "mission control", "hot corners", "coins actifs"]),
-        SettingsPane("com.apple.Displays-Settings.extension", "Displays", "Moniteurs", aliases: ["display", "écrans", "écran", "resolution", "résolution", "night shift"]),
+        SettingsPane(
+            "com.apple.settings.PrivacySecurity.extension", "Privacy & Security", "Confidentialité et sécurité",
+            aliases: ["privacy", "security", "permissions"]),
+        SettingsPane(
+            "com.apple.Desktop-Settings.extension", "Desktop & Dock", "Bureau et Dock",
+            aliases: ["dock", "mission control", "hot corners", "coins actifs"]),
+        SettingsPane(
+            "com.apple.Displays-Settings.extension", "Displays", "Moniteurs",
+            aliases: ["display", "écrans", "écran", "resolution", "résolution", "night shift"]),
         SettingsPane("com.apple.Wallpaper-Settings.extension", "Wallpaper", "Fond d’écran", aliases: ["fond d'ecran"]),
-        SettingsPane("com.apple.ScreenSaver-Settings.extension", "Screen Saver", "Économiseur d’écran", aliases: ["economiseur d'ecran"]),
+        SettingsPane(
+            "com.apple.ScreenSaver-Settings.extension", "Screen Saver", "Économiseur d’écran",
+            aliases: ["economiseur d'ecran"]),
         SettingsPane("com.apple.Battery-Settings.extension", "Battery", "Batterie", aliases: ["energy", "énergie"]),
         SettingsPane("com.apple.Lock-Screen-Settings.extension", "Lock Screen", "Écran verrouillé"),
         SettingsPane("com.apple.Touch-ID-Settings.extension", "Touch ID & Password", "Touch ID et mot de passe"),
-        SettingsPane("com.apple.Users-Groups-Settings.extension", "Users & Groups", "Utilisateurs et groupes", aliases: ["users", "utilisateurs"]),
+        SettingsPane(
+            "com.apple.Users-Groups-Settings.extension", "Users & Groups", "Utilisateurs et groupes",
+            aliases: ["users", "utilisateurs"]),
         SettingsPane("com.apple.Internet-Accounts-Settings.extension", "Internet Accounts", "Comptes Internet"),
-        SettingsPane("com.apple.Keyboard-Settings.extension", "Keyboard", "Clavier", aliases: ["shortcuts", "raccourcis"]),
+        SettingsPane(
+            "com.apple.Keyboard-Settings.extension", "Keyboard", "Clavier", aliases: ["shortcuts", "raccourcis"]),
         SettingsPane("com.apple.Mouse-Settings.extension", "Mouse", "Souris"),
         SettingsPane("com.apple.Trackpad-Settings.extension", "Trackpad", "Trackpad"),
-        SettingsPane("com.apple.Print-Scanner-Settings.extension", "Printers & Scanners", "Imprimantes et scanners", aliases: ["printer", "imprimante"]),
-        SettingsPane("com.apple.Software-Update-Settings.extension", "Software Update", "Mise à jour de logiciels", aliases: ["update", "mise à jour"]),
+        SettingsPane(
+            "com.apple.Print-Scanner-Settings.extension", "Printers & Scanners", "Imprimantes et scanners",
+            aliases: ["printer", "imprimante"]),
+        SettingsPane(
+            "com.apple.Software-Update-Settings.extension", "Software Update", "Mise à jour de logiciels",
+            aliases: ["update", "mise à jour"]),
         SettingsPane("com.apple.settings.Storage", "Storage", "Stockage", aliases: ["disk space", "espace disque"]),
         SettingsPane("com.apple.AirDrop-Handoff-Settings.extension", "AirDrop & Handoff", "AirDrop et Handoff"),
-        SettingsPane("com.apple.LoginItems-Settings.extension", "Login Items", "Ouverture", aliases: ["éléments de connexion"]),
+        SettingsPane(
+            "com.apple.LoginItems-Settings.extension", "Login Items", "Ouverture", aliases: ["éléments de connexion"]),
         SettingsPane("com.apple.Localization-Settings.extension", "Language & Region", "Langue et région"),
         SettingsPane("com.apple.Date-Time-Settings.extension", "Date & Time", "Date et heure"),
-        SettingsPane("com.apple.Sharing-Settings.extension", "Sharing", "Partage", aliases: ["screen sharing", "partage d'écran"]),
-        SettingsPane("com.apple.Time-Machine-Settings.extension", "Time Machine", "Time Machine", aliases: ["backup", "sauvegarde"]),
+        SettingsPane(
+            "com.apple.Sharing-Settings.extension", "Sharing", "Partage",
+            aliases: ["screen sharing", "partage d'écran"]),
+        SettingsPane(
+            "com.apple.Time-Machine-Settings.extension", "Time Machine", "Time Machine",
+            aliases: ["backup", "sauvegarde"]),
     ]
 
     /// Where macOS 13+ keeps the panes, one .appex per pane.
@@ -101,9 +127,10 @@ enum SettingsPanes {
 
     /// The bundle IDs of the extensions in `folder`.
     static func installedIDs(in folder: URL = extensionsFolder) -> Set<String> {
-        let items = (try? FileManager.default.contentsOfDirectory(
-            at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-        )) ?? []
+        let items =
+            (try? FileManager.default.contentsOfDirectory(
+                at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+            )) ?? []
         return Set(items.filter { $0.pathExtension == "appex" }.compactMap { Bundle(url: $0)?.bundleIdentifier })
     }
 

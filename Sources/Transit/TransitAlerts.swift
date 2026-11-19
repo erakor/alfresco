@@ -52,7 +52,9 @@ struct TransitAlerts: Sendable, Equatable {
         let incidentCount = incidents.count
         let plannedCount = alerts.count - incidentCount
         var parts: [String] = []
-        if incidentCount > 0 { parts.append(incidentCount == 1 ? "1 service alert" : "\(incidentCount) service alerts") }
+        if incidentCount > 0 {
+            parts.append(incidentCount == 1 ? "1 service alert" : "\(incidentCount) service alerts")
+        }
         if plannedCount > 0 { parts.append(plannedCount == 1 ? "1 planned change" : "\(plannedCount) planned changes") }
         return parts.isEmpty ? "No service alerts" : parts.joined(separator: ", ")
     }

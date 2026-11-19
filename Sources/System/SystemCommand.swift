@@ -80,12 +80,13 @@ enum SystemCommand: Equatable, Sendable {
     @MainActor private static let lockScreen: LockFunction? = {
         let path = "/System/Library/PrivateFrameworks/login.framework/Versions/Current/login"
         guard let handle = dlopen(path, RTLD_LAZY),
-              let symbol = dlsym(handle, "SACLockScreenImmediate") else { return nil }
+            let symbol = dlsym(handle, "SACLockScreenImmediate")
+        else { return nil }
         return unsafeBitCast(symbol, to: LockFunction.self)
     }()
 
     #if SELFTEST
-    /// Whether `lock` can run on this macOS, without locking.
-    @MainActor static var lockAvailableForSelfTest: Bool { lockScreen != nil }
+        /// Whether `lock` can run on this macOS, without locking.
+        @MainActor static var lockAvailableForSelfTest: Bool { lockScreen != nil }
     #endif
 }

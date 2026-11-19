@@ -177,7 +177,8 @@ final class CalendarView: NSView {
     /// "10:00 – 10:30", or "22:00 – dim. 9, 09:00" when it ends on a later
     /// day.
     static func cardTimeText(for event: CalendarEvent) -> String {
-        let end = Calendar.current.isDate(event.end, inSameDayAs: event.start)
+        let end =
+            Calendar.current.isDate(event.end, inSameDayAs: event.start)
             ? clock(event.end)
             : "\(shortDay(event.end)), \(clock(event.end))"
         return "\(clock(event.start)) – \(end)"
@@ -514,7 +515,8 @@ private final class NextCard: NSView {
             unit = "min"
         } else {
             big = CalendarView.clock(event.start)
-            unit = CalendarView.relativeWord(calendar.startOfDay(for: event.start), today: today)
+            unit =
+                CalendarView.relativeWord(calendar.startOfDay(for: event.start), today: today)
                 ?? CalendarView.shortDay(event.start)
         }
         let bigLabel = NSTextField(labelWithString: big)

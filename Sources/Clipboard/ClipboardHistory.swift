@@ -110,7 +110,8 @@ struct ClipImage: Codable, Equatable, Sendable {
         pixelWidth = try container.decode(Int.self, forKey: .pixelWidth)
         pixelHeight = try container.decode(Int.self, forKey: .pixelHeight)
         guard Self.isValidSize(width: pixelWidth, height: pixelHeight) else {
-            throw DecodingError.dataCorruptedError(forKey: .pixelWidth, in: container, debugDescription: "Bad image size")
+            throw DecodingError.dataCorruptedError(
+                forKey: .pixelWidth, in: container, debugDescription: "Bad image size")
         }
         byteCount = try container.decode(Int.self, forKey: .byteCount)
     }
@@ -277,12 +278,13 @@ final class ClipboardStore: NSObject {
     /// keeps a second copy of the launcher from running (see LauncherApp).
     static let directory: URL = {
         #if SELFTEST
-        // The self-test keeps its files out of the real support folder.
-        if let path = ProcessInfo.processInfo.environment["ALFRESCO_SUPPORT_DIR"], !path.isEmpty {
-            return URL(fileURLWithPath: path, isDirectory: true)
-        }
+            // The self-test keeps its files out of the real support folder.
+            if let path = ProcessInfo.processInfo.environment["ALFRESCO_SUPPORT_DIR"], !path.isEmpty {
+                return URL(fileURLWithPath: path, isDirectory: true)
+            }
         #endif
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let support =
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         return support.appendingPathComponent("Launcher", isDirectory: true)
     }()
@@ -459,18 +461,18 @@ final class ClipboardStore: NSObject {
     }
 
     #if SELFTEST
-    /// Puts back a list read from `items` earlier, without saving: the perf
-    /// suite keeps its seeded history whole between runs.
-    func replaceItemsForSelfTest(_ items: [ClipItem]) { self.items = items }
+        /// Puts back a list read from `items` earlier, without saving: the perf
+        /// suite keeps its seeded history whole between runs.
+        func replaceItemsForSelfTest(_ items: [ClipItem]) { self.items = items }
 
-    /// Stops the timers, which hold on to the store, so one made only to be
-    /// measured is freed.
-    func stopTimersForSelfTest() {
-        pruneTimer?.invalidate()
-        pruneTimer = nil
-        saveTimer?.invalidate()
-        saveTimer = nil
-    }
+        /// Stops the timers, which hold on to the store, so one made only to be
+        /// measured is freed.
+        func stopTimersForSelfTest() {
+            pruneTimer?.invalidate()
+            pruneTimer = nil
+            saveTimer?.invalidate()
+            saveTimer = nil
+        }
     #endif
 
     /// Deletes unpinned items past their retention period, from memory and
@@ -515,7 +517,8 @@ final class ClipboardStore: NSObject {
     private func scheduleSave() {
         guard canSave else { return }
         saveTimer?.invalidate()
-        let timer = Timer(timeInterval: 1, target: self, selector: #selector(saveTimerFired), userInfo: nil, repeats: false)
+        let timer = Timer(
+            timeInterval: 1, target: self, selector: #selector(saveTimerFired), userInfo: nil, repeats: false)
         RunLoop.main.add(timer, forMode: .common)
         saveTimer = timer
     }
@@ -624,7 +627,8 @@ final class ClipboardStore: NSObject {
         var bytes = 0
         defer {
             signposter.endInterval(
-                "clipboard.load", signpost, "bytes=\(bytes, privacy: .public) items=\(self.items.count, privacy: .public)"
+                "clipboard.load", signpost,
+                "bytes=\(bytes, privacy: .public) items=\(self.items.count, privacy: .public)"
             )
         }
         let data: Data
@@ -640,7 +644,9 @@ final class ClipboardStore: NSObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
-            let loaded = try signposter.withIntervalSignpost("clipboard.load.decode", "bytes=\(data.count, privacy: .public)") {
+            let loaded = try signposter.withIntervalSignpost(
+                "clipboard.load.decode", "bytes=\(data.count, privacy: .public)"
+            ) {
                 try decoder.decode(StoredHistory.self, from: data).items
             }
             // Pinned first, whatever the file says, so pinnedCount holds.
@@ -696,16 +702,17 @@ final class ClipboardMonitor: NSObject {
     /// one-off transient data, and auto-generated content.
     /// See http://nspasteboard.org. The last ones are the older, app-specific
     /// markers that came before it and that some apps still use.
-    private static let ignoredTypes: Set<NSPasteboard.PasteboardType> = Set([
-        "org.nspasteboard.ConcealedType",
-        "org.nspasteboard.TransientType",
-        "org.nspasteboard.AutoGeneratedType",
-        "com.agilebits.onepassword",
-        "de.petermaurer.TransientPasteboardType",
-        "Pasteboard generator type",
-        "com.typeit4me.clipping",
-        "net.antelle.keeweb",
-    ].map { NSPasteboard.PasteboardType($0) })
+    private static let ignoredTypes: Set<NSPasteboard.PasteboardType> = Set(
+        [
+            "org.nspasteboard.ConcealedType",
+            "org.nspasteboard.TransientType",
+            "org.nspasteboard.AutoGeneratedType",
+            "com.agilebits.onepassword",
+            "de.petermaurer.TransientPasteboardType",
+            "Pasteboard generator type",
+            "com.typeit4me.clipping",
+            "net.antelle.keeweb",
+        ].map { NSPasteboard.PasteboardType($0) })
 
     private let store: ClipboardStore
     private let pasteboard: NSPasteboard
@@ -754,7 +761,7 @@ final class ClipboardMonitor: NSObject {
     }()
 
     #if SELFTEST
-    static var imageTypesForSelfTest: [NSPasteboard.PasteboardType] { imageTypes }
+        static var imageTypesForSelfTest: [NSPasteboard.PasteboardType] { imageTypes }
     #endif
 
     /// Only reads the clipboard's contents when its change counter moved.
@@ -827,10 +834,11 @@ final class ClipboardMonitor: NSObject {
     }
 
     private func readFilePaths() -> [String]? {
-        let urls = pasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]
-        ) as? [URL]
+        let urls =
+            pasteboard.readObjects(
+                forClasses: [NSURL.self],
+                options: [.urlReadingFileURLsOnly: true]
+            ) as? [URL]
         guard let urls, !urls.isEmpty else { return nil }
         return urls.map { $0.standardizedFileURL.path }
     }
@@ -852,7 +860,7 @@ final class ClipboardMonitor: NSObject {
     }
 
     #if SELFTEST
-    static func isRecordableForSelfTest(_ text: String) -> Bool { isRecordable(text) }
+        static func isRecordableForSelfTest(_ text: String) -> Bool { isRecordable(text) }
     #endif
 
     /// Reads the image's bytes here (the clipboard is read on the main
@@ -892,8 +900,8 @@ final class ClipboardMonitor: NSObject {
     }
 
     #if SELFTEST
-    func pollForSelfTest() { poll() }
-    static func isIgnoredForSelfTest(_ source: ClipSource) -> Bool { isIgnored(source) }
+        func pollForSelfTest() { poll() }
+        static func isIgnoredForSelfTest(_ source: ClipSource) -> Bool { isIgnored(source) }
     #endif
 
     /// Temporary or cache locations, where apps put throwaway copies.
@@ -907,7 +915,7 @@ final class ClipboardMonitor: NSObject {
     private static func isLink(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.contains(where: \.isWhitespace),
-              let scheme = URL(string: trimmed)?.scheme?.lowercased()
+            let scheme = URL(string: trimmed)?.scheme?.lowercased()
         else { return false }
         return scheme == "http" || scheme == "https"
     }
@@ -922,9 +930,9 @@ enum ClipImageFile {
     /// formats ImageIO can't read (PDF).
     static func pixelSize(of data: Data) -> (width: Int, height: Int)? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-              let height = properties[kCGImagePropertyPixelHeight] as? Int
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int,
+            let height = properties[kCGImagePropertyPixelHeight] as? Int
         else { return nil }
         return (width, height)
     }
@@ -953,14 +961,16 @@ enum ClipImageFile {
         return image
     }
 
-    private static func convertAndWrite(_ data: Data, type: NSPasteboard.PasteboardType, in directory: URL) -> ClipImage? {
+    private static func convertAndWrite(
+        _ data: Data, type: NSPasteboard.PasteboardType, in directory: URL
+    ) -> ClipImage? {
         // recordImage checked this already; repeated so no caller can have a
         // huge image decoded. A PNG is kept as is and checked just below.
         if type != .png, let size = pixelSize(of: data), !isAcceptable(size) { return nil }
         guard let png = pngData(from: data, type: type),
-              png.count <= Config.clipboardMaxImageBytes,
-              let size = pixelSize(of: png),
-              isAcceptable(size)
+            png.count <= Config.clipboardMaxImageBytes,
+            let size = pixelSize(of: png),
+            isAcceptable(size)
         else { return nil }
 
         let hash = SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined()
@@ -1012,8 +1022,9 @@ enum ClipImageFile {
     private static func pngData(from data: Data, type: NSPasteboard.PasteboardType) -> Data? {
         if type == .png { return data }
         if let source = CGImageSourceCreateWithData(data as CFData, nil),
-           CGImageSourceGetCount(source) > 0,
-           let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+            CGImageSourceGetCount(source) > 0,
+            let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        {
             return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
         }
         // ImageIO can't read it: a PDF (the only other type the monitor
@@ -1028,8 +1039,8 @@ enum ClipImageFile {
     /// down instead of taking gigabytes.
     private static func pdfPNGData(from data: Data) -> Data? {
         guard let provider = CGDataProvider(data: data as CFData),
-              let document = CGPDFDocument(provider),
-              let page = document.page(at: 1)
+            let document = CGPDFDocument(provider),
+            let page = document.page(at: 1)
         else { return nil }
         var box = page.getBoxRect(.cropBox).size
         if page.rotationAngle % 180 != 0 { box = CGSize(width: box.height, height: box.width) }
@@ -1038,10 +1049,10 @@ enum ClipImageFile {
         guard width >= 1, height >= 1, width <= 100_000, height <= 100_000 else { return nil }
         let size = (width: Int(width), height: Int(height))
         guard isAcceptable(size),
-              let context = CGContext(
-                  data: nil, width: size.width, height: size.height, bitsPerComponent: 8, bytesPerRow: 0,
-                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              )
+            let context = CGContext(
+                data: nil, width: size.width, height: size.height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
         else { return nil }
         let bounds = CGRect(x: 0, y: 0, width: size.width, height: size.height)
         context.concatenate(page.getDrawingTransform(.cropBox, rect: bounds, rotate: 0, preserveAspectRatio: true))

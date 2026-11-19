@@ -39,7 +39,7 @@ struct ClipFilter {
             return texts(of: item).contains { Self.contains($0, folded) }
         }
         #if SELFTEST
-        lastSearchedCount = candidates.count
+            lastSearchedCount = candidates.count
         #endif
         last = (folded, matching)
         return matching
@@ -83,10 +83,10 @@ struct ClipFilter {
     }
 
     #if SELFTEST
-    /// How many items the last search looked through.
-    private(set) var lastSearchedCount = 0
-    /// How many items have folded texts kept.
-    var foldedCountForSelfTest: Int { searchTexts.count }
+        /// How many items the last search looked through.
+        private(set) var lastSearchedCount = 0
+        /// How many items have folded texts kept.
+        var foldedCountForSelfTest: Int { searchTexts.count }
     #endif
 }
 

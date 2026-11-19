@@ -117,8 +117,9 @@ enum PreviewRequest {
                 .map { $0.trimmingCharacters(in: .whitespaces) }
             if parts[0] == "no-store" || parts[0] == "no-cache" { return minLifetime }
             if parts.count == 2, parts[0] == "max-age",
-               let seconds = Double(parts[1].trimmingCharacters(in: CharacterSet(charactersIn: "\""))),
-               seconds.isFinite {
+                let seconds = Double(parts[1].trimmingCharacters(in: CharacterSet(charactersIn: "\""))),
+                seconds.isFinite
+            {
                 return min(max(seconds, minLifetime), maxLifetime)
             }
         }
@@ -160,7 +161,8 @@ private enum PreviewLoader {
         }
         bytes = data.count
         let text = String(decoding: data, as: UTF8.self)
-        let line = text.split(whereSeparator: \.isNewline)
+        let line =
+            text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty } ?? ""
         guard !line.isEmpty, !line.hasPrefix("<") else { throw URLError(.cannotParseResponse) }

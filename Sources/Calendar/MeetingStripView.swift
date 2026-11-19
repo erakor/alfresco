@@ -75,7 +75,8 @@ final class MeetingStripView: StripView {
         dot.layer?.backgroundColor = event.color.cgColor
         titleLabel.stringValue = event.title
         titleLabel.textColor = .secondaryLabelColor
-        button.toolTip = CalendarView.tooltip(for: event) + "\n" + CalendarView.cardTimeText(for: event)
+        button.toolTip =
+            CalendarView.tooltip(for: event) + "\n" + CalendarView.cardTimeText(for: event)
             + "\nCliquez ou tapez \(CommandInput.typed(Config.calendarKeyword)) pour l'agenda"
     }
 
@@ -105,7 +106,7 @@ final class MeetingStripView: StripView {
     }
 
     #if SELFTEST
-    /// What the strip reads: the title, then when.
-    var textForSelfTest: String { "\(titleLabel.stringValue) \(whenLabel.stringValue)" }
+        /// What the strip reads: the title, then when.
+        var textForSelfTest: String { "\(titleLabel.stringValue) \(whenLabel.stringValue)" }
     #endif
 }

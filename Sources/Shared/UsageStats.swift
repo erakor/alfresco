@@ -181,8 +181,9 @@ final class UsageStats {
     private static let maxFallbackWordsPerDay = 50
 
     private convenience init() {
-        self.init(fileURL: ClipboardStore.directory.appendingPathComponent("usage.json"),
-                  now: { Date() }, calendar: .autoupdatingCurrent)
+        self.init(
+            fileURL: ClipboardStore.directory.appendingPathComponent("usage.json"),
+            now: { Date() }, calendar: .autoupdatingCurrent)
     }
 
     /// Private, so `shared` is the only instance on usage.json: two would
@@ -262,7 +263,8 @@ final class UsageStats {
 
     private static func addFallbackWord(in input: String, keywords: Set<String>, to day: inout UsageDay) {
         guard Config.usageTrackFallbackWords, let word = fallbackWord(in: input, keywords: keywords) else { return }
-        let key = day.fallbackWords[word] != nil || day.fallbackWords.count < maxFallbackWordsPerDay
+        let key =
+            day.fallbackWords[word] != nil || day.fallbackWords.count < maxFallbackWordsPerDay
             ? word : "(other)"
         day.fallbackWords[key, default: 0] += 1
     }
@@ -325,7 +327,7 @@ final class UsageStats {
         guard parts.count == 2 else { return nil }
         let word = parts[0].lowercased()
         guard word.count <= maxFallbackWordLength,
-              word.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })
+            word.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })
         else { return nil }
         let isNearKeyword = keywords.contains { keyword in
             typoDistance(word, keyword) <= Self.allowedTypos(for: keyword)
@@ -360,9 +362,9 @@ final class UsageStats {
     }
 
     #if SELFTEST
-    static func fallbackWordForSelfTest(in input: String, keywords: Set<String>) -> String? {
-        fallbackWord(in: input, keywords: keywords)
-    }
+        static func fallbackWordForSelfTest(in input: String, keywords: Set<String>) -> String? {
+            fallbackWord(in: input, keywords: keywords)
+        }
     #endif
 
     // MARK: Totals
@@ -402,7 +404,7 @@ final class UsageStats {
         guard oldest > firstDayKey(keeping: days) else { return nil }
         let parts = oldest.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3,
-              let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+            let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
         else { return today }
         return date
     }
@@ -422,9 +424,11 @@ final class UsageStats {
             return lines.isEmpty ? "  (none)" : lines.joined(separator: "\n")
         }
 
-        let builtIns: Int = count(.builtInCalculation) + count(.builtInConversion) + count(.builtInTime)
+        let builtIns: Int =
+            count(.builtInCalculation) + count(.builtInConversion) + count(.builtInTime)
             + count(.builtInUUID) + count(.builtInTimestamp) + count(.builtInDate) + count(.builtInWeek)
-        let launched: Int = total.keywords.values.reduce(0, +) + count(.launcherFallback) + count(.launcherOpenedApp)
+        let launched: Int =
+            total.keywords.values.reduce(0, +) + count(.launcherFallback) + count(.launcherOpenedApp)
             + count(.launcherOpenedSettingsPane) + builtIns
         let closed = count(.launcherClosedEmpty) + count(.launcherClosedTyped)
         let failurePrefix = "weather.failed."
@@ -436,7 +440,8 @@ final class UsageStats {
         for (id, value) in total.appsOpened {
             appsOpened[Self.appName(for: id), default: 0] += value
         }
-        let skipped = count(.clipboardSkippedMarked) + count(.clipboardSkippedApp)
+        let skipped =
+            count(.clipboardSkippedMarked) + count(.clipboardSkippedApp)
             + count(.clipboardSkippedText) + count(.clipboardSkippedImage)
         // Spelled out step by step: as one chain it is too slow to type-check.
         let appIDs: Set<String> = Set(total.clipboardCopies.keys).union(total.clipboardRestores.keys)
@@ -452,7 +457,8 @@ final class UsageStats {
             apps.append("  \(Self.appName(for: id)): \(copies) copied, \(restores) restored")
         }
 
-        let builtInKinds: String = "\(count(.builtInCalculation)) calculations, "
+        let builtInKinds: String =
+            "\(count(.builtInCalculation)) calculations, "
             + "\(count(.builtInConversion)) conversions, \(count(.builtInTime)) times, "
             + "\(count(.builtInUUID)) UUIDs, \(count(.builtInTimestamp)) timestamps, "
             + "\(count(.builtInDate)) dates, \(count(.builtInWeek)) weeks"
@@ -480,7 +486,8 @@ final class UsageStats {
         if !weatherFailures.isEmpty { lines.append(top(weatherFailures, 10)) }
         lines.append("Calendar: shown \(count(.calendarShown))")
         lines.append("Pomodoro: \(count(.pomodoroFocusCompleted)) focus sessions finished")
-        let copied = "\(count(.clipboardCopiedText)) text, \(count(.clipboardCopiedImage)) images, "
+        let copied =
+            "\(count(.clipboardCopiedText)) text, \(count(.clipboardCopiedImage)) images, "
             + "\(count(.clipboardCopiedFiles)) files"
         lines += [
             "Clipboard: \(copied) copied",
@@ -495,7 +502,7 @@ final class UsageStats {
     /// The app's name as Finder shows it, else the bundle ID itself.
     static func appName(for bundleID: String) -> String {
         guard bundleID != "unknown",
-              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
         else { return bundleID }
         return FileManager.default.displayName(atPath: url.path)
             .replacingOccurrences(of: ".app", with: "")
@@ -514,13 +521,15 @@ final class UsageStats {
     }
 
     #if SELFTEST
-    static func makeForSelfTest(fileURL: URL, now: @escaping @MainActor () -> Date, calendar: Calendar) -> UsageStats {
-        UsageStats(fileURL: fileURL, now: now, calendar: calendar)
-    }
+        static func makeForSelfTest(
+            fileURL: URL, now: @escaping @MainActor () -> Date, calendar: Calendar
+        ) -> UsageStats {
+            UsageStats(fileURL: fileURL, now: now, calendar: calendar)
+        }
 
-    /// The days that have counters, oldest first.
-    var dayKeys: [String] { stored.days.keys.sorted() }
-    func firstDayKeyForSelfTest(keeping days: Int) -> String { firstDayKey(keeping: days) }
+        /// The days that have counters, oldest first.
+        var dayKeys: [String] { stored.days.keys.sorted() }
+        func firstDayKeyForSelfTest(keeping days: Int) -> String { firstDayKey(keeping: days) }
     #endif
 
     /// Keeps the last Config.usageRetentionDays days, today included.

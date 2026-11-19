@@ -46,8 +46,8 @@ class StripView: NSView {
     func clearHover() { button.clearHover() }
 
     #if SELFTEST
-    /// Clicks the content as the mouse would.
-    func clickForSelfTest() { _ = button.accessibilityPerformPress() }
+        /// Clicks the content as the mouse would.
+        func clickForSelfTest() { _ = button.accessibilityPerformPress() }
     #endif
 }
 
@@ -111,10 +111,11 @@ final class StripButton: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas { removeTrackingArea(area) }
-        addTrackingArea(NSTrackingArea(
-            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self, userInfo: nil
-        ))
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self, userInfo: nil
+            ))
     }
 
     override func mouseEntered(with event: NSEvent) {

@@ -50,8 +50,9 @@ final class TypedAppPicks {
     nonisolated static let minWeight = 0.25
 
     private convenience init() {
-        self.init(fileURL: ClipboardStore.directory.appendingPathComponent("typed-picks.json"),
-                  now: { Date() }, calendar: .autoupdatingCurrent)
+        self.init(
+            fileURL: ClipboardStore.directory.appendingPathComponent("typed-picks.json"),
+            now: { Date() }, calendar: .autoupdatingCurrent)
     }
 
     /// Private, so `shared` is the only instance on the file. The self-test
@@ -61,7 +62,8 @@ final class TypedAppPicks {
         self.now = now
         self.calendar = calendar
         guard Config.learnTypedAppPicks else { return }
-        stored = file.load(StoredTypedPicks.self, currentVersion: StoredTypedPicks.currentVersion)
+        stored =
+            file.load(StoredTypedPicks.self, currentVersion: StoredTypedPicks.currentVersion)
             ?? StoredTypedPicks()
         prune()
     }
@@ -81,7 +83,7 @@ final class TypedAppPicks {
     /// prune drops it (a long-running app prunes only when it records).
     func picks(for input: String) -> [String: Double] {
         guard Config.learnTypedAppPicks, let key = Self.key(for: input),
-              let entry = stored.inputs[key], entry.lastUsed >= retentionCutoff()
+            let entry = stored.inputs[key], entry.lastUsed >= retentionCutoff()
         else { return [:] }
         return entry.apps
     }
@@ -141,11 +143,13 @@ final class TypedAppPicks {
     }
 
     #if SELFTEST
-    static func makeForSelfTest(fileURL: URL, now: @escaping @MainActor () -> Date, calendar: Calendar) -> TypedAppPicks {
-        TypedAppPicks(fileURL: fileURL, now: now, calendar: calendar)
-    }
+        static func makeForSelfTest(
+            fileURL: URL, now: @escaping @MainActor () -> Date, calendar: Calendar
+        ) -> TypedAppPicks {
+            TypedAppPicks(fileURL: fileURL, now: now, calendar: calendar)
+        }
 
-    /// The stored inputs, sorted.
-    var inputsForSelfTest: [String] { stored.inputs.keys.sorted() }
+        /// The stored inputs, sorted.
+        var inputsForSelfTest: [String] { stored.inputs.keys.sorted() }
     #endif
 }

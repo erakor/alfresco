@@ -30,13 +30,16 @@ enum TransitMenuBarIcon {
                 let scale = min(1, bounds.width / symbol.size.width, bounds.height / symbol.size.height)
                 let width = symbol.size.width * scale
                 let height = symbol.size.height * scale
-                let rect = NSRect(x: (bounds.width - width) / 2, y: (bounds.height - height) / 2, width: width, height: height)
-                symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                let rect = NSRect(
+                    x: (bounds.width - width) / 2, y: (bounds.height - height) / 2, width: width, height: height)
+                symbol.draw(
+                    in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             }
             guard alert, let cg = NSGraphicsContext.current?.cgContext else { return true }
             let hole = holeRadius
             cg.setBlendMode(.clear)
-            cg.fillEllipse(in: CGRect(x: badgeCenter.x - hole, y: badgeCenter.y - hole, width: hole * 2, height: hole * 2))
+            cg.fillEllipse(
+                in: CGRect(x: badgeCenter.x - hole, y: badgeCenter.y - hole, width: hole * 2, height: hole * 2))
             cg.setBlendMode(.normal)
             return true
         }

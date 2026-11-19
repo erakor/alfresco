@@ -20,7 +20,7 @@ enum BuiltInTests {
 
     static func run() {
         guard Config.calculatorPrefix == "=", Config.timeKeyword == "time",
-              Config.uuidKeyword == "uuid", Config.timestampKeyword == "now"
+            Config.uuidKeyword == "uuid", Config.timestampKeyword == "now"
         else {
             check("built-ins: Config changes their keywords, nothing to test", true)
             return
@@ -101,20 +101,26 @@ enum BuiltInTests {
         check("built-ins: 1234,567 is a decimal", (try? Calculator.evaluate("1234,567")) == 1234.567)
         check("built-ins: 1,25 is a decimal", (try? Calculator.evaluate("1,25")) == 1.25)
         // Thousands of levels would overflow the main thread's stack.
-        check("built-ins: 5000 ( are refused, not a crash",
-              failure(String(repeating: "(", count: 5000) + "1") == .tooDeep)
-        check("built-ins: 5000 - are refused, not a crash",
-              failure(String(repeating: "-", count: 5000) + "1") == .tooDeep)
-        check("built-ins: 5000 sqrt are refused, not a crash",
-              failure(String(repeating: "sqrt ", count: 5000) + "1") == .tooDeep)
-        check("built-ins: 50 nested ( still work",
-              (try? Calculator.evaluate(String(repeating: "(", count: 50) + "1" + String(repeating: ")", count: 50))) == 1)
+        check(
+            "built-ins: 5000 ( are refused, not a crash",
+            failure(String(repeating: "(", count: 5000) + "1") == .tooDeep)
+        check(
+            "built-ins: 5000 - are refused, not a crash",
+            failure(String(repeating: "-", count: 5000) + "1") == .tooDeep)
+        check(
+            "built-ins: 5000 sqrt are refused, not a crash",
+            failure(String(repeating: "sqrt ", count: 5000) + "1") == .tooDeep)
+        check(
+            "built-ins: 50 nested ( still work",
+            (try? Calculator.evaluate(String(repeating: "(", count: 50) + "1" + String(repeating: ")", count: 50))) == 1
+        )
 
         // Input that is the calculator's but has no answer keeps the bar open.
         for input in ["=", "= 3*", "= 1/0", "= hello", "= 1,000 * 3"] {
             let answer = ask(input)
-            check("built-ins: \(input) is incomplete (Enter beeps)",
-                  answer != nil && answer?.value == nil, "got \(String(describing: answer))")
+            check(
+                "built-ins: \(input) is incomplete (Enter beeps)",
+                answer != nil && answer?.value == nil, "got \(String(describing: answer))")
         }
     }
 
@@ -167,12 +173,14 @@ enum BuiltInTests {
         ]
         for (input, message) in failures {
             let answer = ask(input)
-            check("built-ins: \(input) says \(message)",
-                  answer?.value == nil && answer?.hint == message, "got \(String(describing: answer))")
+            check(
+                "built-ins: \(input) says \(message)",
+                answer?.value == nil && answer?.hint == message, "got \(String(describing: answer))")
         }
         let bare = ask("= 10 km")
-        check("built-ins: = 10 km asks for a unit to convert to",
-              bare?.value == nil && bare?.kind == .conversion, "got \(String(describing: bare))")
+        check(
+            "built-ins: = 10 km asks for a unit to convert to",
+            bare?.value == nil && bare?.kind == .conversion, "got \(String(describing: bare))")
         // A unit name right after a letter is not a unit: "2 pim" is not 2π m.
         check("built-ins: = 2 pim in cm is no conversion", value("= 2 pim in cm") == nil)
     }
@@ -213,12 +221,14 @@ enum BuiltInTests {
         }
 
         let nextDay = ask("time 11pm sf in paris")
-        check("built-ins: 11pm in San Francisco is 08:00 the next day in Paris",
-              nextDay?.value == "08:00" && nextDay?.hint.contains("(+1 day)") == true,
-              "got \(String(describing: nextDay))")
+        check(
+            "built-ins: 11pm in San Francisco is 08:00 the next day in Paris",
+            nextDay?.value == "08:00" && nextDay?.hint.contains("(+1 day)") == true,
+            "got \(String(describing: nextDay))")
         let sameDay = ask("time 15:00 tokyo")
-        check("built-ins: a time on the same day says no day",
-              sameDay?.hint.contains("day)") == false, "got \(String(describing: sameDay))")
+        check(
+            "built-ins: a time on the same day says no day",
+            sameDay?.hint.contains("day)") == false, "got \(String(describing: sameDay))")
 
         // Not a place, or nothing to convert: left to apps and the search.
         let notTimes = [
@@ -236,33 +246,42 @@ enum BuiltInTests {
         var american = context
         american.locale = Locale(identifier: "en_US")
         let usTime = BuiltIns.answer(for: "time tokyo", context: american)
-        check("built-ins: a US Mac shows 10:05 PM but copies 22:05",
-              usTime?.value == "22:05" && usTime?.hint.contains("PM") == true, "got \(String(describing: usTime))")
+        check(
+            "built-ins: a US Mac shows 10:05 PM but copies 22:05",
+            usTime?.value == "22:05" && usTime?.hint.contains("PM") == true, "got \(String(describing: usTime))")
         let usConversion = BuiltIns.answer(for: "time 9am new york in paris", context: american)
-        check("built-ins: a US Mac copies a converted time as 15:00",
-              usConversion?.value == "15:00", "got \(String(describing: usConversion))")
+        check(
+            "built-ins: a US Mac copies a converted time as 15:00",
+            usConversion?.value == "15:00", "got \(String(describing: usConversion))")
 
         let clock = WorldClock.parseClock("9:30 pm london")
-        check("built-ins: 9:30 pm reads as 21:30", clock.clock?.hour == 21 && clock.clock?.minute == 30 && clock.rest == "london")
+        check(
+            "built-ins: 9:30 pm reads as 21:30",
+            clock.clock?.hour == 21 && clock.clock?.minute == 30 && clock.rest == "london")
         check("built-ins: 12pm reads as 12:00", WorldClock.parseClock("12pm").clock?.hour == 12)
         check("built-ins: 1530 is not a time", WorldClock.parseClock("1530").clock == nil)
         check("built-ins: 9 amsterdam is not a time", WorldClock.parseClock("9 amsterdam").clock == nil)
-        check("built-ins: UTC+5:30 is named so",
-              WorldClock.offsetName(TimeZone(secondsFromGMT: 19800)!, at: context.now) == "UTC+5:30")
-        check("built-ins: UTC-3 is named so",
-              WorldClock.offsetName(TimeZone(secondsFromGMT: -10800)!, at: context.now) == "UTC-3")
+        check(
+            "built-ins: UTC+5:30 is named so",
+            WorldClock.offsetName(TimeZone(secondsFromGMT: 19800)!, at: context.now) == "UTC+5:30")
+        check(
+            "built-ins: UTC-3 is named so",
+            WorldClock.offsetName(TimeZone(secondsFromGMT: -10800)!, at: context.now) == "UTC-3")
     }
 
     // MARK: uuid, now
 
     private static func uuidAndNow() {
         let uuid = ask("uuid")
-        check("built-ins: uuid copies a new lowercase UUID",
-              uuid?.value == "e621e1f8-c36c-495a-93fc-0c247a3e6e5f" && uuid?.kind == .uuid,
-              "got \(String(describing: uuid))")
+        check(
+            "built-ins: uuid copies a new lowercase UUID",
+            uuid?.value == "e621e1f8-c36c-495a-93fc-0c247a3e6e5f" && uuid?.kind == .uuid,
+            "got \(String(describing: uuid))")
         check("built-ins: uuid with an argument is not the built-in", ask("uuid generator") == nil)
-        check("built-ins: a real UUID is new each time",
-              BuiltIns.answer(for: "uuid", context: .current)?.value != BuiltIns.answer(for: "uuid", context: .current)?.value)
+        check(
+            "built-ins: a real UUID is new each time",
+            BuiltIns.answer(for: "uuid", context: .current)?.value
+                != BuiltIns.answer(for: "uuid", context: .current)?.value)
 
         let cases: [(String, String)] = [
             ("now", "2026-11-03T14:05:09+01:00"),
@@ -317,16 +336,20 @@ enum BuiltInTests {
             check("built-ins: \(input) is \(expected)", answer?.value == expected, "got \(String(describing: answer))")
             check("built-ins: \(input) counts as a date", answer?.kind == .date)
         }
-        check("built-ins: days 25/12 says until", ask("days 25/12")?.hint.contains("52 days until") == true,
-              "got \(String(describing: ask("days 25/12")))")
-        check("built-ins: days 1/11 says since", ask("days 1/11")?.hint.contains("2 days since") == true,
-              "got \(String(describing: ask("days 1/11")))")
-        check("built-ins: a past date after until says since",
-              ask("days until 2020-01-01")?.hint.contains("since") == true)
+        check(
+            "built-ins: days 25/12 says until", ask("days 25/12")?.hint.contains("52 days until") == true,
+            "got \(String(describing: ask("days 25/12")))")
+        check(
+            "built-ins: days 1/11 says since", ask("days 1/11")?.hint.contains("2 days since") == true,
+            "got \(String(describing: ask("days 1/11")))")
+        check(
+            "built-ins: a past date after until says since",
+            ask("days until 2020-01-01")?.hint.contains("since") == true)
         for input in ["days until", "days until soon", "days until 31/2", "days from 1/1", "days from 1/1 to never"] {
             let answer = ask(input)
-            check("built-ins: \(input) is an incomplete date (Enter beeps)",
-                  answer != nil && answer?.value == nil && answer?.kind == .date, "got \(String(describing: answer))")
+            check(
+                "built-ins: \(input) is an incomplete date (Enter beeps)",
+                answer != nil && answer?.value == nil && answer?.kind == .date, "got \(String(describing: answer))")
         }
         for input in ["days", "days gone by", "days of thunder", "days 1/13"] {
             check("built-ins: \(input) is not a date", ask(input) == nil, "got \(String(describing: ask(input)))")
@@ -363,13 +386,15 @@ enum BuiltInTests {
         ]
         for (input, expected, kind) in stillCalculations {
             let answer = ask(input)
-            check("built-ins: \(input) is still \(expected), not a date",
-                  answer?.value == expected && answer?.kind == kind, "got \(String(describing: answer))")
+            check(
+                "built-ins: \(input) is still \(expected), not a date",
+                answer?.value == expected && answer?.kind == kind, "got \(String(describing: answer))")
         }
         for input in ["= today +", "= today + 30", "= today + soon"] {
             let answer = ask(input)
-            check("built-ins: \(input) is an incomplete date (Enter beeps)",
-                  answer != nil && answer?.value == nil && answer?.kind == .date, "got \(String(describing: answer))")
+            check(
+                "built-ins: \(input) is an incomplete date (Enter beeps)",
+                answer != nil && answer?.value == nil && answer?.kind == .date, "got \(String(describing: answer))")
         }
 
         let weeks: [(String, String)] = [
@@ -386,13 +411,15 @@ enum BuiltInTests {
             check("built-ins: \(input) is \(expected)", answer?.value == expected, "got \(String(describing: answer))")
             check("built-ins: \(input) counts as a week", answer?.kind == .week)
         }
-        check("built-ins: 1 Jan 2027 is in week 53 of 2026",
-              ask("week 1/1/2027")?.hint.contains("Week 53 of 2026") == true,
-              "got \(String(describing: ask("week 1/1/2027")))")
+        check(
+            "built-ins: 1 Jan 2027 is in week 53 of 2026",
+            ask("week 1/1/2027")?.hint.contains("Week 53 of 2026") == true,
+            "got \(String(describing: ask("week 1/1/2027")))")
         for input in ["week 53 2027", "week 60"] {
             let answer = ask(input)
-            check("built-ins: \(input) has no such week (Enter beeps)",
-                  answer != nil && answer?.value == nil && answer?.kind == .week, "got \(String(describing: answer))")
+            check(
+                "built-ins: \(input) has no such week (Enter beeps)",
+                answer != nil && answer?.value == nil && answer?.kind == .week, "got \(String(describing: answer))")
         }
         for input in ["week end", "week planning", "weekly"] {
             check("built-ins: \(input) is not a week", ask(input) == nil, "got \(String(describing: ask(input)))")
@@ -402,15 +429,18 @@ enum BuiltInTests {
         // context's: 03:05 on 4 November in Kiritimati (UTC+14).
         var american = context
         american.locale = Locale(identifier: "en_US")
-        check("built-ins: a US Mac still reads 25/12 day first",
-              BuiltIns.answer(for: "days until 25/12", context: american)?.value == "52")
+        check(
+            "built-ins: a US Mac still reads 25/12 day first",
+            BuiltIns.answer(for: "days until 25/12", context: american)?.value == "52")
         var kiritimati = context
         kiritimati.timeZone = TimeZone(identifier: "Pacific/Kiritimati")!
-        check("built-ins: days count from today in the context's time zone",
-              BuiltIns.answer(for: "days until 25/12", context: kiritimati)?.value == "51")
-        check("built-ins: a date is counted under builtin.date",
-              BuiltInKind.date.usageCounter.rawValue == "builtin.date"
-                  && BuiltInKind.week.usageCounter.rawValue == "builtin.week")
+        check(
+            "built-ins: days count from today in the context's time zone",
+            BuiltIns.answer(for: "days until 25/12", context: kiritimati)?.value == "51")
+        check(
+            "built-ins: a date is counted under builtin.date",
+            BuiltInKind.date.usageCounter.rawValue == "builtin.date"
+                && BuiltInKind.week.usageCounter.rawValue == "builtin.week")
     }
 
     // MARK: Precedence
@@ -422,32 +452,42 @@ enum BuiltInTests {
     }
 
     private static func precedence() {
-        guard let set = workflows([
-            ["keywords": ["uuid"], "title": "UUID site", "url": "https://example.com/uuid"],
-            ["keywords": ["time"], "title": "Time search", "url": "https://example.com/time?q={query}"],
-            ["keywords": ["now"], "title": "Now search", "url": "https://example.com/now?q={query}"],
-        ]) else {
+        guard
+            let set = workflows([
+                ["keywords": ["uuid"], "title": "UUID site", "url": "https://example.com/uuid"],
+                ["keywords": ["time"], "title": "Time search", "url": "https://example.com/time?q={query}"],
+                ["keywords": ["now"], "title": "Now search", "url": "https://example.com/now?q={query}"],
+            ])
+        else {
             check("built-ins: precedence test workflows decode", false)
             return
         }
         // Workflow keywords are typed after Config.commandPrefix, so the
         // built-ins keep their bare words even when a keyword is the same.
-        check("built-ins: a uuid workflow doesn't take bare uuid",
-              BuiltIns.answer(for: "uuid", workflows: set, context: context)?.kind == .uuid)
-        check("built-ins: /uuid runs the workflow, not the built-in",
-              BuiltIns.answer(for: "/uuid", workflows: set, context: context) == nil)
-        check("built-ins: a time workflow with an argument wins after the prefix",
-              BuiltIns.answer(for: "/time tokyo", workflows: set, context: context) == nil
-                  && BuiltIns.answer(for: "time tokyo", workflows: set, context: context)?.kind == .time)
-        check("built-ins: a keyword waiting for its argument wins after the prefix",
-              BuiltIns.answer(for: "/now", workflows: set, context: context) == nil)
-        check("built-ins: an unknown command is no built-in's",
-              BuiltIns.answer(for: "/= 1+1", workflows: set, context: context) == nil)
-        check("built-ins: input no workflow takes still gets an answer",
-              BuiltIns.answer(for: "= 1+1", workflows: set, context: context)?.value == "2")
-        check("built-ins: the built-in workflows leave = 1+1 to the calculator",
-              BuiltIns.answer(for: "= 1+1", workflows: WorkflowSet.builtIn, context: context)?.value == "2")
-        check("built-ins: a calculation is counted under builtin.calculation",
-              BuiltInKind.calculation.usageCounter.rawValue == "builtin.calculation")
+        check(
+            "built-ins: a uuid workflow doesn't take bare uuid",
+            BuiltIns.answer(for: "uuid", workflows: set, context: context)?.kind == .uuid)
+        check(
+            "built-ins: /uuid runs the workflow, not the built-in",
+            BuiltIns.answer(for: "/uuid", workflows: set, context: context) == nil)
+        check(
+            "built-ins: a time workflow with an argument wins after the prefix",
+            BuiltIns.answer(for: "/time tokyo", workflows: set, context: context) == nil
+                && BuiltIns.answer(for: "time tokyo", workflows: set, context: context)?.kind == .time)
+        check(
+            "built-ins: a keyword waiting for its argument wins after the prefix",
+            BuiltIns.answer(for: "/now", workflows: set, context: context) == nil)
+        check(
+            "built-ins: an unknown command is no built-in's",
+            BuiltIns.answer(for: "/= 1+1", workflows: set, context: context) == nil)
+        check(
+            "built-ins: input no workflow takes still gets an answer",
+            BuiltIns.answer(for: "= 1+1", workflows: set, context: context)?.value == "2")
+        check(
+            "built-ins: the built-in workflows leave = 1+1 to the calculator",
+            BuiltIns.answer(for: "= 1+1", workflows: WorkflowSet.builtIn, context: context)?.value == "2")
+        check(
+            "built-ins: a calculation is counted under builtin.calculation",
+            BuiltInKind.calculation.usageCounter.rawValue == "builtin.calculation")
     }
 }

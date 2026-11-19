@@ -44,14 +44,17 @@ struct WorkflowCard: Sendable {
             let bare = set.workflow(for: keyword, withArgument: false)
             let withArgument = set.workflow(for: keyword, withArgument: true)
             guard let shown = bare ?? withArgument else { continue }
-            let bareRuns = bare?.keywords.first.map { usage.keywords[UsageStats.keywordKey($0, withArgument: false)] ?? 0 } ?? 0
-            let argumentRuns = withArgument?.keywords.first.map {
-                usage.keywords[UsageStats.keywordKey($0, withArgument: true)] ?? 0
-            } ?? 0
-            cards.append(WorkflowCard(
-                keyword: keyword, title: shown.title, help: shown.help, workflow: shown,
-                takesArgument: withArgument != nil, runs: bareRuns + argumentRuns
-            ))
+            let bareRuns =
+                bare?.keywords.first.map { usage.keywords[UsageStats.keywordKey($0, withArgument: false)] ?? 0 } ?? 0
+            let argumentRuns =
+                withArgument?.keywords.first.map {
+                    usage.keywords[UsageStats.keywordKey($0, withArgument: true)] ?? 0
+                } ?? 0
+            cards.append(
+                WorkflowCard(
+                    keyword: keyword, title: shown.title, help: shown.help, workflow: shown,
+                    takesArgument: withArgument != nil, runs: bareRuns + argumentRuns
+                ))
         }
         let sorted = cards.enumerated().sorted { lhs, rhs in
             if lhs.element.runs != rhs.element.runs { return lhs.element.runs > rhs.element.runs }
@@ -152,13 +155,13 @@ final class WorkflowCardsView: NSView {
     }
 
     #if SELFTEST
-    /// The cards' keywords, in the order shown.
-    var keywordsForSelfTest: [String] { cards.map(\.keyword) }
+        /// The cards' keywords, in the order shown.
+        var keywordsForSelfTest: [String] { cards.map(\.keyword) }
 
-    /// Clicks the card at `index`.
-    func clickForSelfTest(_ index: Int) {
-        cardViews[index].onClick?()
-    }
+        /// Clicks the card at `index`.
+        func clickForSelfTest(_ index: Int) {
+            cardViews[index].onClick?()
+        }
     #endif
 }
 
@@ -246,10 +249,11 @@ private final class WorkflowCardView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas { removeTrackingArea(area) }
-        addTrackingArea(NSTrackingArea(
-            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self, userInfo: nil
-        ))
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self, userInfo: nil
+            ))
     }
 
     override func mouseEntered(with event: NSEvent) {

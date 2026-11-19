@@ -36,9 +36,10 @@ final class LauncherPanel: NSPanel {
             return true
         }
         if event.shortcutModifiers == .command,
-           let key = event.charactersIgnoringModifiers?.lowercased(),
-           let action = Self.editActions[key],
-           NSApp.sendAction(action, to: nil, from: self) {
+            let key = event.charactersIgnoringModifiers?.lowercased(),
+            let action = Self.editActions[key],
+            NSApp.sendAction(action, to: nil, from: self)
+        {
             return true
         }
         return super.performKeyEquivalent(with: event)
@@ -76,7 +77,7 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
     /// The current size; subclasses change the height with setHeight(_:).
     private var size: NSSize
     #if SELFTEST
-    var currentSizeForSelfTest: NSSize { size }
+        var currentSizeForSelfTest: NSSize { size }
     #endif
     /// The size the panel was created with. Its top edge fixes where the
     /// panel sits, so a taller panel grows downward.
@@ -160,13 +161,15 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
         guard panel.isVisible, !isHiding else { return }
         isHiding = true
 
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.1
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            panel.animator().alphaValue = 0
-        }, completionHandler: {
-            Task { @MainActor in self.finishHide() }
-        })
+        NSAnimationContext.runAnimationGroup(
+            { context in
+                context.duration = 0.1
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                panel.animator().alphaValue = 0
+            },
+            completionHandler: {
+                Task { @MainActor in self.finishHide() }
+            })
     }
 
     private func finishHide() {
@@ -302,52 +305,54 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
 }
 
 #if SELFTEST
-extension FloatingPanelController {
-    /// The panel's content as it lays out now, drawn off screen into a PNG
-    /// in `appearance`, for the self-test's renders. The frosted background
-    /// samples what is behind the window, so it is replaced by a flat
-    /// window background; everything on it is drawn as in the app.
-    func renderForSelfTest(appearance: NSAppearance.Name) -> Data? {
-        panel.setContentSize(currentSizeForSelfTest)
-        return contentView.renderForSelfTest(appearance: appearance, cornerRadius: Self.cornerRadius)
-    }
-}
-
-extension NSView {
-    /// The view as it lays out now, drawn off screen at the screen's scale.
-    func bitmapForSelfTest() -> NSBitmapImageRep? {
-        layoutSubtreeIfNeeded()
-        guard bounds.width > 0, bounds.height > 0, let bitmap = bitmapImageRepForCachingDisplay(in: bounds) else {
-            return nil
+    extension FloatingPanelController {
+        /// The panel's content as it lays out now, drawn off screen into a PNG
+        /// in `appearance`, for the self-test's renders. The frosted background
+        /// samples what is behind the window, so it is replaced by a flat
+        /// window background; everything on it is drawn as in the app.
+        func renderForSelfTest(appearance: NSAppearance.Name) -> Data? {
+            panel.setContentSize(currentSizeForSelfTest)
+            return contentView.renderForSelfTest(appearance: appearance, cornerRadius: Self.cornerRadius)
         }
-        cacheDisplay(in: bounds, to: bitmap)
-        return bitmap
     }
 
-    /// The view drawn off screen into a PNG in `appearance`, on a flat
-    /// window background (rounded by `cornerRadius`): a panel's or a menu's
-    /// frosted one samples what is behind the window.
-    func renderForSelfTest(appearance: NSAppearance.Name, cornerRadius: CGFloat = 0) -> Data? {
-        let previous = self.appearance
-        let drawing = NSAppearance(named: appearance)
-        self.appearance = drawing
-        defer { self.appearance = previous }
-        guard let content = bitmapForSelfTest(), let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: content.pixelsWide, pixelsHigh: content.pixelsHigh,
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-        ) else { return nil }
-        let bounds = self.bounds
-        rep.size = bounds.size
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        drawing?.performAsCurrentDrawingAppearance {
-            NSColor.windowBackgroundColor.setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius).fill()
-            content.draw(in: bounds)
+    extension NSView {
+        /// The view as it lays out now, drawn off screen at the screen's scale.
+        func bitmapForSelfTest() -> NSBitmapImageRep? {
+            layoutSubtreeIfNeeded()
+            guard bounds.width > 0, bounds.height > 0, let bitmap = bitmapImageRepForCachingDisplay(in: bounds) else {
+                return nil
+            }
+            cacheDisplay(in: bounds, to: bitmap)
+            return bitmap
         }
-        NSGraphicsContext.restoreGraphicsState()
-        return rep.representation(using: .png, properties: [:])
+
+        /// The view drawn off screen into a PNG in `appearance`, on a flat
+        /// window background (rounded by `cornerRadius`): a panel's or a menu's
+        /// frosted one samples what is behind the window.
+        func renderForSelfTest(appearance: NSAppearance.Name, cornerRadius: CGFloat = 0) -> Data? {
+            let previous = self.appearance
+            let drawing = NSAppearance(named: appearance)
+            self.appearance = drawing
+            defer { self.appearance = previous }
+            guard let content = bitmapForSelfTest(),
+                let rep = NSBitmapImageRep(
+                    bitmapDataPlanes: nil, pixelsWide: content.pixelsWide, pixelsHigh: content.pixelsHigh,
+                    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                    colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+                )
+            else { return nil }
+            let bounds = self.bounds
+            rep.size = bounds.size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            drawing?.performAsCurrentDrawingAppearance {
+                NSColor.windowBackgroundColor.setFill()
+                NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius).fill()
+                content.draw(in: bounds)
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            return rep.representation(using: .png, properties: [:])
+        }
     }
-}
 #endif

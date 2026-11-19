@@ -59,11 +59,13 @@ extension DateMath {
         let today = calendar.startOfDay(for: context.now)
 
         // Two dates.
-        for (lead, separators) in [("from ", [" to ", " until ", " -> ", " → "]), ("between ", [" and "]),
-                                   ("du ", [" au "]), ("entre ", [" et "])] where text.hasPrefix(lead) {
+        for (lead, separators) in [
+            ("from ", [" to ", " until ", " -> ", " → "]), ("between ", [" and "]),
+            ("du ", [" au "]), ("entre ", [" et "]),
+        ] where text.hasPrefix(lead) {
             let rest = String(text.dropFirst(lead.count))
             guard let separator = separators.first(where: { rest.contains($0) }),
-                  let range = rest.range(of: separator, options: .backwards)
+                let range = rest.range(of: separator, options: .backwards)
             else { return .incomplete(kind: .date, message: "Type two dates: days from 1/1 to 25/12") }
             let firstText = String(rest[..<range.lowerBound]), secondText = String(rest[range.upperBound...])
             guard let first = parseDate(firstText, yearless: .thisYear, context: context) else {
@@ -174,7 +176,7 @@ extension DateMath {
     static func calculate(_ text: String, context: BuiltInContext) -> BuiltInAnswer? {
         let parts = split(normalize(text))
         guard let first = parts.first,
-              let start = parseDate(first.text, yearless: .thisYear, context: context)
+            let start = parseDate(first.text, yearless: .thisYear, context: context)
         else { return nil }
         // A word date makes the input ours, even while it is unfinished.
         let ours = hasWords(first.text)
@@ -215,13 +217,14 @@ extension DateMath {
                 return .incomplete(kind: .date, message: "Subtract one date from another, without durations")
             }
             let count = days(from: other, to: start, calendar: calendar)
-            return .result(kind: .date, hint: "\(dayCount(count))  ↩ Copy", value: String(count), detail: inWeeks(count))
+            return .result(
+                kind: .date, hint: "\(dayCount(count))  ↩ Copy", value: String(count), detail: inWeeks(count))
         }
 
         var date = start
         for (sign, term) in terms {
             guard case .duration(let unitKind, let amount) = term,
-                  let moved = calendar.date(byAdding: unitKind.component, value: sign * amount, to: date)
+                let moved = calendar.date(byAdding: unitKind.component, value: sign * amount, to: date)
             else { return .incomplete(kind: .date, message: "No such date") }
             date = moved
         }
@@ -246,7 +249,8 @@ extension DateMath {
         var current = ""
         for (index, character) in characters.enumerated() {
             let isMinus = character == "-" || character == "−"
-            let betweenDigits = index > 0 && index + 1 < characters.count
+            let betweenDigits =
+                index > 0 && index + 1 < characters.count
                 && characters[index - 1].isNumber && characters[index + 1].isNumber
             if character == "+" || (isMinus && !betweenDigits) {
                 parts.append((sign, current.trimmingCharacters(in: .whitespaces)))
@@ -272,19 +276,26 @@ extension DateMath {
 
         // A week number, and maybe its year (`week 25 dec` is a date).
         if let first = words.first, let weekNumber = Self.number(first, digits: 1...2),
-           words.count == 1 || (words.count == 2 && words[1].count == 4 && Self.number(words[1]) != nil) {
-            let year = words.count == 2 ? Self.number(words[1]) ?? 0 : calendar.component(.yearForWeekOfYear, from: context.now)
-            guard let monday = calendar.date(from: DateComponents(weekday: 2, weekOfYear: weekNumber, yearForWeekOfYear: year)),
-                  calendar.component(.weekOfYear, from: monday) == weekNumber,
-                  calendar.component(.yearForWeekOfYear, from: monday) == year,
-                  let sunday = calendar.date(byAdding: .day, value: 6, to: monday)
+            words.count == 1 || (words.count == 2 && words[1].count == 4 && Self.number(words[1]) != nil)
+        {
+            let year =
+                words.count == 2
+                ? Self.number(words[1]) ?? 0 : calendar.component(.yearForWeekOfYear, from: context.now)
+            guard
+                let monday = calendar.date(
+                    from: DateComponents(weekday: 2, weekOfYear: weekNumber, yearForWeekOfYear: year)),
+                calendar.component(.weekOfYear, from: monday) == weekNumber,
+                calendar.component(.yearForWeekOfYear, from: monday) == year,
+                let sunday = calendar.date(byAdding: .day, value: 6, to: monday)
             else {
                 return .incomplete(kind: .week, message: "\(year) has no week \(weekNumber)")
             }
             return .result(
                 kind: .week,
-                hint: "Week \(weekNumber): \(display(monday, context: context)) – \(display(sunday, context: context))  ↩ Copy",
-                value: iso(monday, context: context), detail: "ISO week \(weekNumber) of \(year); Enter copies its Monday"
+                hint:
+                    "Week \(weekNumber): \(display(monday, context: context)) – \(display(sunday, context: context))  ↩ Copy",
+                value: iso(monday, context: context),
+                detail: "ISO week \(weekNumber) of \(year); Enter copies its Monday"
             )
         }
 
@@ -305,7 +316,8 @@ extension DateMath {
         let ofYear = year == calendar.component(.year, from: day) ? "" : " of \(year)"
         return .result(
             kind: .week,
-            hint: "Week \(weekNumber)\(ofYear): \(display(monday, context: context)) – \(display(sunday, context: context))  ↩ Copy",
+            hint:
+                "Week \(weekNumber)\(ofYear): \(display(monday, context: context)) – \(display(sunday, context: context))  ↩ Copy",
             value: String(weekNumber), detail: "ISO week \(weekNumber) of \(year)"
         )
     }

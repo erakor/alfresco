@@ -67,7 +67,7 @@ final class AppIndex {
         let input = Self.normalize(raw)
         guard !input.isEmpty else { return [] }
         #if SELFTEST
-        Self.matchCallsForSelfTest += 1
+            Self.matchCallsForSelfTest += 1
         #endif
 
         let signposter = Signposts.signposter
@@ -122,8 +122,10 @@ final class AppIndex {
             let opens = app.bundleID.flatMap { openCounts[$0] } ?? 0
             let weight = app.bundleID.flatMap { picks[$0] } ?? 0
             // Picked apps (weight > 0) sort before the rest: -weight < 0.
-            return (rank == 0 ? 0 : 1, -weight, Self.score(rank: rank, opens: opens), 0,
-                    app.name.count, app.name, .app(app))
+            return (
+                rank == 0 ? 0 : 1, -weight, Self.score(rank: rank, opens: opens), 0,
+                app.name.count, app.name, .app(app)
+            )
         }
         let rankedPanes = panes.compactMap { pane -> Ranked? in
             guard let rank = pane.searchNames.compactMap({ Self.rank(input, in: $0) }).min() else { return nil }
@@ -131,7 +133,8 @@ final class AppIndex {
             return (rank == 0 ? 0 : 1, 0, Self.score(rank: rank, opens: 0), 1, title.count, title, .settingsPane(pane))
         }
         let ranked = rankedApps + rankedPanes
-        let best = ranked
+        let best =
+            ranked
             .sorted {
                 ($0.exact, $0.weight, $0.score, $0.isPane, $0.length, $0.name)
                     < ($1.exact, $1.weight, $1.score, $1.isPane, $1.length, $1.name)
@@ -148,8 +151,8 @@ final class AppIndex {
     }
 
     #if SELFTEST
-    /// How many times `results` ranked the apps, for the perf suite.
-    static var matchCallsForSelfTest = 0
+        /// How many times `results` ranked the apps, for the perf suite.
+        static var matchCallsForSelfTest = 0
     #endif
 
     /// Opens worth one tier: about 31 opens lift an app one tier, about

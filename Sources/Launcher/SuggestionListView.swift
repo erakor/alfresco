@@ -188,7 +188,8 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = tableView.makeView(withIdentifier: SuggestionCellView.identifier, owner: self) as? SuggestionCellView
+        let cell =
+            tableView.makeView(withIdentifier: SuggestionCellView.identifier, owner: self) as? SuggestionCellView
             ?? SuggestionCellView(frame: .zero)
         let item = items[row]
         switch item {
@@ -247,10 +248,11 @@ final class SuggestionListView: NSView, NSTableViewDataSource, NSTableViewDelega
         // is inactive; .inVisibleRect follows the view's size by itself.
         // Moves only, no enter / exit: a list growing under a resting
         // pointer must not pick a row.
-        addTrackingArea(NSTrackingArea(
-            rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect],
-            owner: self, userInfo: nil
-        ))
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect],
+                owner: self, userInfo: nil
+            ))
 
         // Gives way while the list is hidden at height 0.
         let scrollBottom = scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.padding)
@@ -357,20 +359,20 @@ private final class SuggestionCellView: NSTableCellView {
 }
 
 #if SELFTEST
-extension SuggestionListView {
-    var selectedRowForSelfTest: Int? { selectedIndex }
+    extension SuggestionListView {
+        var selectedRowForSelfTest: Int? { selectedIndex }
 
-    /// Moves the pointer, as far as the list knows, to the middle of `row`,
-    /// or above the list for nil.
-    func moveMouseForSelfTest(toRow row: Int?) {
-        let point: NSPoint
-        if let row {
-            let rect = tableView.rect(ofRow: row)
-            point = tableView.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
-        } else {
-            point = convert(NSPoint(x: bounds.midX, y: isFlipped ? bounds.minY - 50 : bounds.maxY + 50), to: nil)
+        /// Moves the pointer, as far as the list knows, to the middle of `row`,
+        /// or above the list for nil.
+        func moveMouseForSelfTest(toRow row: Int?) {
+            let point: NSPoint
+            if let row {
+                let rect = tableView.rect(ofRow: row)
+                point = tableView.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+            } else {
+                point = convert(NSPoint(x: bounds.midX, y: isFlipped ? bounds.minY - 50 : bounds.maxY + 50), to: nil)
+            }
+            hover(at: point)
         }
-        hover(at: point)
     }
-}
 #endif

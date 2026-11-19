@@ -146,16 +146,20 @@ enum TransitLoader {
     /// The URL of `station`'s arrivals, `limit` trains per line and
     /// direction (the service allows 1 to 10).
     static func url(for station: String, limit: Int, service: TransitService) -> URL? {
-        url(path: "subway/arrivals", station: station, service: service, extra: [
-            URLQueryItem(name: "limit", value: String(min(max(limit, 1), 10))),
-        ])
+        url(
+            path: "subway/arrivals", station: station, service: service,
+            extra: [
+                URLQueryItem(name: "limit", value: String(min(max(limit, 1), 10)))
+            ])
     }
 
     /// `path` on the service for `station` (its `stop` parameter), then `extra`.
     static func url(path: String, station: String, service: TransitService, extra: [URLQueryItem] = []) -> URL? {
-        guard var components = URLComponents(
-            url: service.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false
-        ) else { return nil }
+        guard
+            var components = URLComponents(
+                url: service.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false
+            )
+        else { return nil }
         components.queryItems = [URLQueryItem(name: "stop", value: station)] + extra
         // A station id joins its stops with "+", which a query reads as a space.
         components.percentEncodedQuery = components.percentEncodedQuery?

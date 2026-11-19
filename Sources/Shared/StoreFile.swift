@@ -69,7 +69,9 @@ final class StoreFile {
                 // A newer build's file: left where it is, so that build keeps
                 // what it saved when it runs again. This run saves nothing.
                 canSave = false
-                NSLog("Launcher: \(url.lastPathComponent) is version \(version), from a newer build; \(name) won't be saved this run")
+                NSLog(
+                    "Launcher: \(url.lastPathComponent) is version \(version), from a newer build; \(name) won't be saved this run"
+                )
                 return nil
             }
             guard version == currentVersion else { throw UnsupportedStoreFileVersion(version: version) }

@@ -23,7 +23,7 @@ enum SnippetName {
     static func normalize(_ raw: String) -> String? {
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !name.isEmpty, name.count <= maxLength,
-              !name.contains(where: { $0.isWhitespace || $0.isNewline || "/?#%".contains($0) })
+            !name.contains(where: { $0.isWhitespace || $0.isNewline || "/?#%".contains($0) })
         else { return nil }
         return name
     }

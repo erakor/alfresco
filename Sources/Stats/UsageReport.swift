@@ -107,7 +107,8 @@ struct UsageReport: Equatable, Sendable {
 
     /// The line under the lists: which commands never ran, over
     /// `retentionDays` or since `since` (the day counting started, as shown).
-    static func unusedLine(_ unused: [String], since: String?, retentionDays: Int = Config.usageRetentionDays) -> String {
+    static func unusedLine(_ unused: [String], since: String?, retentionDays: Int = Config.usageRetentionDays) -> String
+    {
         let period = since.map { "since \($0)" } ?? "in \(retentionDays) days"
         if unused.isEmpty { return "Every command ran \(period)" }
         let what = unused.count == 1 ? "Never run" : "\(unused.count) never run"
