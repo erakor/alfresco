@@ -27,26 +27,26 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
     private var isMenuOpen = false
 
     #if SELFTEST
-    var badgeShownForSelfTest: Bool { !badge.isHidden && badge.superview != nil }
-    var buttonForSelfTest: NSStatusBarButton? { item.button }
-    var toolTipForSelfTest: String? { item.button?.toolTip }
-    var menuTitlesForSelfTest: [String] { menu.items.map(\.title) }
-    var menuViewForSelfTest: TransitMenuView { boardView }
-    var isAlertTimerRunningForSelfTest: Bool { alertTimer != nil }
-    /// Opens the menu's content as opening the menu does, without tracking it.
-    func openForSelfTest() { menuWillOpen(menu) }
-    func closeForSelfTest() { menuDidClose(menu) }
-    /// Redraws the icon and an open menu as a finished alerts fetch does.
-    func providerDidUpdateForSelfTest() { providerDidUpdate(.alerts) }
-    func screensDidSleepForSelfTest() { screensDidSleep() }
-    func screensDidWakeForSelfTest() { screensDidWake() }
-    /// Takes the item out of the menu bar and stops its timers.
-    func removeForSelfTest() {
-        menuDidClose(menu)
-        screensDidSleep()
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
-        NSStatusBar.system.removeStatusItem(item)
-    }
+        var badgeShownForSelfTest: Bool { !badge.isHidden && badge.superview != nil }
+        var buttonForSelfTest: NSStatusBarButton? { item.button }
+        var toolTipForSelfTest: String? { item.button?.toolTip }
+        var menuTitlesForSelfTest: [String] { menu.items.map(\.title) }
+        var menuViewForSelfTest: TransitMenuView { boardView }
+        var isAlertTimerRunningForSelfTest: Bool { alertTimer != nil }
+        /// Opens the menu's content as opening the menu does, without tracking it.
+        func openForSelfTest() { menuWillOpen(menu) }
+        func closeForSelfTest() { menuDidClose(menu) }
+        /// Redraws the icon and an open menu as a finished alerts fetch does.
+        func providerDidUpdateForSelfTest() { providerDidUpdate(.alerts) }
+        func screensDidSleepForSelfTest() { screensDidSleep() }
+        func screensDidWakeForSelfTest() { screensDidWake() }
+        /// Takes the item out of the menu bar and stops its timers.
+        func removeForSelfTest() {
+            menuDidClose(menu)
+            screensDidSleep()
+            NSWorkspace.shared.notificationCenter.removeObserver(self)
+            NSStatusBar.system.removeStatusItem(item)
+        }
     #endif
 
     /// `openLauncher` opens the launcher on `/transit`.
@@ -63,11 +63,17 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
         provider.addObserver { [weak self] in self?.providerDidUpdate($0) }
 
         let workspace = NSWorkspace.shared.notificationCenter
-        workspace.addObserver(self, selector: #selector(screensDidSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
-        workspace.addObserver(self, selector: #selector(screensDidWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
+        workspace.addObserver(
+            self, selector: #selector(screensDidSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
+        workspace.addObserver(
+            self, selector: #selector(screensDidWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
         // Nobody sees this menu bar while another user's session is in front.
-        workspace.addObserver(self, selector: #selector(screensDidSleep), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
-        workspace.addObserver(self, selector: #selector(screensDidWake), name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+        workspace.addObserver(
+            self, selector: #selector(screensDidSleep), name: NSWorkspace.sessionDidResignActiveNotification,
+            object: nil)
+        workspace.addObserver(
+            self, selector: #selector(screensDidWake), name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil
+        )
         startAlertTimer()
         checkAlerts()
     }
@@ -118,7 +124,9 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
     private func startRedrawTimer() {
         guard redrawTimer == nil else { return }
         // .common, so it also fires while the menu is tracking.
-        let timer = Timer(timeInterval: Self.redrawInterval, target: self, selector: #selector(redrawTimerFired), userInfo: nil, repeats: true)
+        let timer = Timer(
+            timeInterval: Self.redrawInterval, target: self, selector: #selector(redrawTimerFired), userInfo: nil,
+            repeats: true)
         timer.tolerance = 2
         RunLoop.main.add(timer, forMode: .common)
         redrawTimer = timer
@@ -153,7 +161,8 @@ final class TransitStatusItem: NSObject, NSMenuDelegate {
 
     private func startAlertTimer() {
         guard alertTimer == nil, let interval = Config.transitAlertCheckInterval else { return }
-        let timer = Timer(timeInterval: interval, target: self, selector: #selector(alertTimerFired), userInfo: nil, repeats: true)
+        let timer = Timer(
+            timeInterval: interval, target: self, selector: #selector(alertTimerFired), userInfo: nil, repeats: true)
         timer.tolerance = min(60, interval / 5)
         RunLoop.main.add(timer, forMode: .common)
         alertTimer = timer

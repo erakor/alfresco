@@ -81,7 +81,7 @@ enum Calculator {
     /// else up to 12 significant digits, "." as the decimal separator and no
     /// grouping, so it pastes into code and spreadsheets alike.
     static func format(_ value: Double) -> String {
-        if value == 0 { return "0" } // -0 too
+        if value == 0 { return "0" }  // -0 too
         if value.rounded() == value, abs(value) < 1e15 { return String(Int64(value)) }
         return String(format: "%.12g", value)
     }
@@ -246,10 +246,12 @@ enum Calculator {
                 throw CalculatorError.unexpected(characters[index - 1])
             }
             if separator == ",", fractionDigits.count == 3, (1...3).contains(integerDigits.count),
-               integerDigits.first != "0" {
+                integerDigits.first != "0"
+            {
                 throw CalculatorError.ambiguousComma("\(integerDigits),\(fractionDigits)")
             }
-            var text = (integerDigits.isEmpty ? "0" : integerDigits)
+            var text =
+                (integerDigits.isEmpty ? "0" : integerDigits)
                 + (separator == nil ? "" : "." + (fractionDigits.isEmpty ? "0" : fractionDigits))
             if index < characters.count, characters[index] == "e" || characters[index] == "E" {
                 var lookahead = index + 1
@@ -276,7 +278,8 @@ enum Calculator {
         mutating func parseName() -> String {
             var name = ""
             while index < characters.count,
-                  characters[index].isLetter || (!name.isEmpty && Self.isDigit(characters[index])) {
+                characters[index].isLetter || (!name.isEmpty && Self.isDigit(characters[index]))
+            {
                 name.append(characters[index])
                 index += 1
             }

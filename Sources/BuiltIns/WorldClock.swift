@@ -139,7 +139,8 @@ enum WorldClock {
             var value = 0
             var digits = 0
             while index < characters.count, digits < maxDigits,
-                  characters[index].isASCII, let digit = characters[index].wholeNumberValue {
+                characters[index].isASCII, let digit = characters[index].wholeNumberValue
+            {
                 value = value * 10 + digit
                 digits += 1
                 index += 1
@@ -167,9 +168,10 @@ enum WorldClock {
         var afterSpaces = index
         while afterSpaces < characters.count, characters[afterSpaces] == " " { afterSpaces += 1 }
         if afterSpaces + 1 < characters.count,
-           characters[afterSpaces] == "a" || characters[afterSpaces] == "p",
-           characters[afterSpaces + 1] == "m",
-           afterSpaces + 2 == characters.count || characters[afterSpaces + 2] == " " {
+            characters[afterSpaces] == "a" || characters[afterSpaces] == "p",
+            characters[afterSpaces + 1] == "m",
+            afterSpaces + 2 == characters.count || characters[afterSpaces + 2] == " "
+        {
             guard (1...12).contains(hour) else { return notAClock }
             let pm = characters[afterSpaces] == "p"
             hour = hour % 12 + (pm ? 12 : 0)
@@ -177,7 +179,7 @@ enum WorldClock {
             marked = true
         }
         guard marked, hour < 24, minute < 60,
-              index == characters.count || characters[index] == " "
+            index == characters.count || characters[index] == " "
         else { return notAClock }
         let rest = String(characters[index...]).trimmingCharacters(in: .whitespaces)
         return (clock: (hour: hour, minute: minute), rest: rest)
@@ -252,7 +254,7 @@ enum WorldClock {
             minutes = Int(digits.suffix(2)) ?? 99
         }
         guard hours <= 14, minutes < 60,
-              let zone = TimeZone(secondsFromGMT: (sign == "-" ? -1 : 1) * (hours * 3600 + minutes * 60))
+            let zone = TimeZone(secondsFromGMT: (sign == "-" ? -1 : 1) * (hours * 3600 + minutes * 60))
         else { return nil }
         return Place(name: offsetName(zone, at: Date()), timeZone: zone)
     }
@@ -283,7 +285,9 @@ enum WorldClock {
         for identifier in TimeZone.knownTimeZoneIdentifiers where !identifier.hasPrefix("Etc/") {
             var keys = [normalize(identifier)]
             let city = normalize(cityName(of: identifier))
-            if !wordRegions.contains(where: { identifier.hasPrefix($0) }), !wordCities.contains(city) { keys.append(city) }
+            if !wordRegions.contains(where: { identifier.hasPrefix($0) }), !wordCities.contains(city) {
+                keys.append(city)
+            }
             for key in keys where index[key] == nil { index[key] = identifier }
         }
         return index
@@ -292,14 +296,29 @@ enum WorldClock {
     /// Cities that have no time zone of their own, and French names.
     private static let cities: [String: (identifier: String, name: String)] = {
         let table: [(String, String, [String])] = [
-            ("America/New_York", "New York", ["nyc", "ny", "boston", "washington", "dc", "miami", "atlanta", "philadelphia"]),
+            (
+                "America/New_York", "New York",
+                ["nyc", "ny", "boston", "washington", "dc", "miami", "atlanta", "philadelphia"]
+            ),
             ("America/Chicago", "Chicago", ["dallas", "houston", "austin"]),
-            ("America/Los_Angeles", "Los Angeles", ["la", "sf", "san francisco", "seattle", "portland", "las vegas", "san diego"]),
+            (
+                "America/Los_Angeles", "Los Angeles",
+                ["la", "sf", "san francisco", "seattle", "portland", "las vegas", "san diego"]
+            ),
             ("America/Toronto", "Toronto", ["montreal", "ottawa", "quebec"]),
             ("America/Sao_Paulo", "São Paulo", ["rio", "rio de janeiro"]),
             ("Europe/London", "London", ["londres", "manchester", "edinburgh", "edimbourg"]),
-            ("Europe/Paris", "Paris", ["lyon", "marseille", "toulouse", "bordeaux", "nantes", "lille", "nice", "strasbourg", "rennes", "montpellier"]),
-            ("Europe/Berlin", "Berlin", ["munich", "munchen", "hamburg", "hambourg", "frankfurt", "francfort", "cologne"]),
+            (
+                "Europe/Paris", "Paris",
+                [
+                    "lyon", "marseille", "toulouse", "bordeaux", "nantes", "lille", "nice", "strasbourg", "rennes",
+                    "montpellier",
+                ]
+            ),
+            (
+                "Europe/Berlin", "Berlin",
+                ["munich", "munchen", "hamburg", "hambourg", "frankfurt", "francfort", "cologne"]
+            ),
             ("Europe/Madrid", "Madrid", ["barcelona", "barcelone", "seville", "valencia", "valence"]),
             ("Europe/Rome", "Rome", ["milan", "milano", "naples", "florence", "venise", "venice"]),
             ("Europe/Zurich", "Zurich", ["geneva", "geneve", "bern", "berne"]),
@@ -313,7 +332,10 @@ enum WorldClock {
             ("Africa/Cairo", "Cairo", ["le caire"]),
             ("Asia/Jerusalem", "Jerusalem", ["tel aviv", "jerusalem"]),
             ("Asia/Dubai", "Dubai", ["abu dhabi", "dubai"]),
-            ("Asia/Kolkata", "India", ["india", "inde", "mumbai", "bombay", "delhi", "new delhi", "bangalore", "bengaluru", "chennai"]),
+            (
+                "Asia/Kolkata", "India",
+                ["india", "inde", "mumbai", "bombay", "delhi", "new delhi", "bangalore", "bengaluru", "chennai"]
+            ),
             ("Asia/Shanghai", "China", ["china", "chine", "beijing", "pekin", "shenzhen", "guangzhou"]),
             ("Asia/Tokyo", "Tokyo", ["japan", "japon", "osaka", "kyoto"]),
             ("Asia/Seoul", "Seoul", ["seoul", "korea", "coree"]),

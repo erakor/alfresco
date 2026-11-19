@@ -24,7 +24,9 @@ import ImageIO
 @available(macOS 13, *)
 @MainActor
 enum PerfTests {
-    static let scenarios = ["load", "save", "imagesave", "open", "filter", "type", "select", "decode", "restore", "launcher"]
+    static let scenarios = [
+        "load", "save", "imagesave", "open", "filter", "type", "select", "decode", "restore", "launcher",
+    ]
 
     private static let clock = ContinuousClock()
     private static var runs = 20
@@ -103,7 +105,7 @@ enum PerfTests {
             if let image { images.append(image) }
         }
         guard images.count == 20,
-              let smallImage = ClipImageFile.save(small, type: .png, in: store.imagesDirectory)
+            let smallImage = ClipImageFile.save(small, type: .png, in: store.imagesDirectory)
         else {
             check("perf: test screenshots saved", false)
             return nil
@@ -148,22 +150,27 @@ enum PerfTests {
         ]
         let now = Date()
         for (index, content) in contents.enumerated().reversed() {
-            store.add(content, source: sources[index % sources.count], copiedAt: now.addingTimeInterval(-120 * Double(index)))
+            store.add(
+                content, source: sources[index % sources.count], copiedAt: now.addingTimeInterval(-120 * Double(index)))
         }
         store.saveNow()
 
         let historyBytes = fileSize(ClipboardStore.directory.appendingPathComponent("clipboard-history.json"))
-        check("perf: seeded history has \(Config.clipboardMaxItems) items, 20 of them screenshots",
-              store.items.count == Config.clipboardMaxItems && bigTexts.count == bigTextCount,
-              "\(store.items.count) items, \(bigTexts.count) big texts")
+        check(
+            "perf: seeded history has \(Config.clipboardMaxItems) items, 20 of them screenshots",
+            store.items.count == Config.clipboardMaxItems && bigTexts.count == bigTextCount,
+            "\(store.items.count) items, \(bigTexts.count) big texts")
         let pngSizes = images.map(\.byteCount)
-        SelfTest.log(String(
-            format: "PERF seed: history file %.1f MB; screenshots %.1f to %.1f MB each; seeded in %.1f s",
-            Double(historyBytes) / 1_048_576,
-            Double(pngSizes.min() ?? 0) / 1_048_576, Double(pngSizes.max() ?? 0) / 1_048_576,
-            milliseconds(clock.now - started) / 1000
-        ))
-        return Seed(store: store, screenshots: images, smallImage: smallImage, bigText: bigTexts.first ?? bigText(&random), imageSaveTimes: saveTimes)
+        SelfTest.log(
+            String(
+                format: "PERF seed: history file %.1f MB; screenshots %.1f to %.1f MB each; seeded in %.1f s",
+                Double(historyBytes) / 1_048_576,
+                Double(pngSizes.min() ?? 0) / 1_048_576, Double(pngSizes.max() ?? 0) / 1_048_576,
+                milliseconds(clock.now - started) / 1000
+            ))
+        return Seed(
+            store: store, screenshots: images, smallImage: smallImage, bigText: bigTexts.first ?? bigText(&random),
+            imageSaveTimes: saveTimes)
     }
 
     private static let words = [
@@ -218,10 +225,12 @@ enum PerfTests {
     /// file is a few MB like a real 5K screenshot rather than a few KB.
     nonisolated private static func screenshotPNG(width: Int, height: Int, seed: UInt64) -> Data? {
         var random = SplitMix64(seed: seed)
-        guard let context = CGContext(
-            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
+        guard
+            let context = CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        else { return nil }
         context.setFillColor(CGColor(red: 0.30, green: 0.45, blue: 0.62, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
@@ -265,7 +274,9 @@ enum PerfTests {
 
         guard let image = context.makeImage() else { return nil }
         let data = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else { return nil }
+        guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else {
+            return nil
+        }
         CGImageDestinationAddImage(destination, image, nil)
         guard CGImageDestinationFinalize(destination) else { return nil }
         return data as Data
@@ -300,8 +311,9 @@ enum PerfTests {
             seed.store.replaceItemsForSelfTest(seeded)
         }
         seed.store.saveNow()
-        check("perf: the save scenario left every screenshot in place",
-              seed.screenshots.allSatisfy { FileManager.default.fileExists(atPath: seed.store.imageURL(for: $0).path) })
+        check(
+            "perf: the save scenario left every screenshot in place",
+            seed.screenshots.allSatisfy { FileManager.default.fileExists(atPath: seed.store.imageURL(for: $0).path) })
         report("store.add, one text into 500 items", adds, .main)
         report("saveNow after one add", saves, .main)
     }
@@ -311,7 +323,7 @@ enum PerfTests {
         // A copy that arrives as TIFF (some apps put only TIFF on the
         // clipboard) is converted to PNG first.
         guard let png = seed.store.imageData(for: seed.screenshots[0]),
-              let tiff = NSBitmapImageRep(data: png)?.tiffRepresentation
+            let tiff = NSBitmapImageRep(data: png)?.tiffRepresentation
         else {
             check("perf: TIFF test copy made", false)
             return
@@ -332,10 +344,11 @@ enum PerfTests {
         var samples: [Duration] = []
         // One more run than asked: the first opening is reported apart.
         for _ in 0...runs {
-            samples.append(clock.measure {
-                controller.show()
-                draw(controller.panel)
-            })
+            samples.append(
+                clock.measure {
+                    controller.show()
+                    draw(controller.panel)
+                })
             await hide(controller)
             if samples.count == 1 {
                 // Lets the first opening's thumbnails finish, as they would
@@ -353,7 +366,8 @@ enum PerfTests {
         var matches = 0
         for _ in 0..<runs {
             var filter = ClipFilter()
-            samples.append(clock.measure { matches = filter.items(matching: String(query.prefix(1)), in: seed.store.items).count })
+            samples.append(
+                clock.measure { matches = filter.items(matching: String(query.prefix(1)), in: seed.store.items).count })
         }
         report("search, first keystroke since launch (folds all)", samples, .main, note: "\(matches) matches")
     }
@@ -385,8 +399,9 @@ enum PerfTests {
         }
         report("typing \"\(query)\": keystroke 1 (all 500 items)", first, .main)
         report("typing \"\(query)\": keystrokes 2-6 (narrowed)", later, .main)
-        report("typing \"\(query)\": all 6 keystrokes", whole, .main,
-               note: "\(matches) matches" + interruptedNote(interrupted))
+        report(
+            "typing \"\(query)\": all 6 keystrokes", whole, .main,
+            note: "\(matches) matches" + interruptedNote(interrupted))
     }
 
     private static func select(_ controller: ClipboardController) async {
@@ -431,8 +446,9 @@ enum PerfTests {
         }
         await hide(controller)
         report("select an image row (preview), main thread", sync, .main, note: interruptedNote(interrupted))
-        report("select an image row, until the picture shows", shown, .background,
-               note: (timedOut > 0 ? "\(timedOut) timed out" : "") + interruptedNote(interrupted))
+        report(
+            "select an image row, until the picture shows", shown, .background,
+            note: (timedOut > 0 ? "\(timedOut) timed out" : "") + interruptedNote(interrupted))
     }
 
     /// The thumbnail loaders alone: one decode each, from request to result.
@@ -455,10 +471,12 @@ enum PerfTests {
                 // A file that didn't decode would time a failure, not a decode.
                 if loader.cachedImageForSelfTest(url) != nil { samples.append(elapsed) } else { failed += 1 }
             }
-            report("thumbnail decode, 5K PNG to \(size) px", samples, .background,
-                   note: timedOut > 0 ? "\(timedOut) timed out" : "")
-            check("perf: every \(size) px decode gave a picture", failed == 0 && timedOut == 0,
-                  "\(failed) failed, \(timedOut) timed out")
+            report(
+                "thumbnail decode, 5K PNG to \(size) px", samples, .background,
+                note: timedOut > 0 ? "\(timedOut) timed out" : "")
+            check(
+                "perf: every \(size) px decode gave a picture", failed == 0 && timedOut == 0,
+                "\(failed) failed, \(timedOut) timed out")
         }
     }
 
@@ -522,9 +540,10 @@ enum PerfTests {
                 done += 1
             }
             for length in [1, 3, 10] {
-                report("launcher inputDidChange, \(length) char\(length == 1 ? "" : "s") (\(label))",
-                       samples[length] ?? [], .main,
-                       note: "apps.match ×\(matchCalls[length] ?? 0)" + interruptedNote(interrupted))
+                report(
+                    "launcher inputDidChange, \(length) char\(length == 1 ? "" : "s") (\(label))",
+                    samples[length] ?? [], .main,
+                    note: "apps.match ×\(matchCalls[length] ?? 0)" + interruptedNote(interrupted))
             }
         }
         launcher.typeForSelfTest("")
@@ -579,8 +598,10 @@ enum PerfTests {
         let median = count % 2 == 1 ? sorted[count / 2] : (sorted[count / 2 - 1] + sorted[count / 2]) / 2
         let p95 = sorted[min(count - 1, Int((0.95 * Double(count)).rounded(.up)) - 1)]
         let padded = name.padding(toLength: max(52, name.count), withPad: " ", startingAt: 0)
-        SelfTest.log(String(format: "PERF %@ median %9.3f ms  p95 %9.3f ms  n=%-3d %@%@",
-                            padded, median, p95, count, "[\(thread.rawValue)]", note.isEmpty ? "" : "  \(note)"))
+        SelfTest.log(
+            String(
+                format: "PERF %@ median %9.3f ms  p95 %9.3f ms  n=%-3d %@%@",
+                padded, median, p95, count, "[\(thread.rawValue)]", note.isEmpty ? "" : "  \(note)"))
     }
 
     private static func fileSize(_ url: URL) -> Int {
@@ -594,11 +615,12 @@ enum PerfTests {
         sysctlbyname("machdep.cpu.brand_string", &brand, &size, nil, 0)
         let cpu = brand.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
         let info = ProcessInfo.processInfo
-        SelfTest.log(String(
-            format: "PERF machine: %@, %d cores, %.0f GB; %@; %d runs per scenario",
-            cpu, info.processorCount, Double(info.physicalMemory) / 1_073_741_824,
-            info.operatingSystemVersionString, runs
-        ))
+        SelfTest.log(
+            String(
+                format: "PERF machine: %@, %d cores, %.0f GB; %@; %d runs per scenario",
+                cpu, info.processorCount, Double(info.physicalMemory) / 1_073_741_824,
+                info.operatingSystemVersionString, runs
+            ))
     }
 }
 

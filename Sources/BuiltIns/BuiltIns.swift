@@ -91,9 +91,10 @@ enum BuiltIns {
     /// The answer for launcher input, or nil when no built-in takes it.
     /// Input a workflow takes (or a keyword waiting for its argument) is
     /// never a built-in's, so `workflows` always wins.
-    static func answer(for input: String, workflows: WorkflowSet, context: BuiltInContext = .current) -> BuiltInAnswer? {
+    static func answer(for input: String, workflows: WorkflowSet, context: BuiltInContext = .current) -> BuiltInAnswer?
+    {
         guard workflows.workflowAwaitingArgument(input) == nil,
-              CommandParser.isUnmatched(input, using: workflows)
+            CommandParser.isUnmatched(input, using: workflows)
         else { return nil }
         return answer(for: input, context: context)
     }
@@ -134,7 +135,8 @@ enum BuiltIns {
         let text = text.trimmingCharacters(in: .whitespaces)
         let prefix = Config.calculatorPrefix ?? ""
         guard !text.isEmpty else {
-            return .incomplete(kind: .calculation, message: "Calculate (\(prefix) 3*14) or convert (\(prefix) 10 km in mi)")
+            return .incomplete(
+                kind: .calculation, message: "Calculate (\(prefix) 3*14) or convert (\(prefix) 10 km in mi)")
         }
         // `today + 30 days`; digits alone (`25/12`) stay a division.
         if let date = DateMath.calculate(text, context: context) {
@@ -146,7 +148,8 @@ enum BuiltIns {
                 let value = Calculator.format(conversion.value)
                 return .result(
                     kind: .conversion, hint: "\(value) \(conversion.to.symbol)  ↩ Copy", value: value,
-                    detail: "\(Calculator.format(conversion.amount)) \(conversion.from.symbol) = \(value) \(conversion.to.symbol)"
+                    detail:
+                        "\(Calculator.format(conversion.amount)) \(conversion.from.symbol) = \(value) \(conversion.to.symbol)"
                 )
             case .failure(let error):
                 return .incomplete(kind: .conversion, message: error.message)

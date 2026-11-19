@@ -3,8 +3,8 @@
 // Compile-time settings: hotkeys, menu bar icon, clipboard limits, weather,
 // calendar, transit, pomodoro, usage stats, and where the workflows file is found. Edit and rebuild to change them.
 
-import Foundation
 import Carbon.HIToolbox
+import Foundation
 
 // MARK: - Configuration
 
@@ -245,14 +245,14 @@ enum Config {
             return text.isEmpty ? nil : text
         }
         #if SELFTEST
-        return nil
+            return nil
         #else
-        if let value = clean(ProcessInfo.processInfo.environment[environment]) {
-            return value
-        }
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/alfresco/\(file)")
-        return clean(try? String(contentsOf: url, encoding: .utf8))
+            if let value = clean(ProcessInfo.processInfo.environment[environment]) {
+                return value
+            }
+            let url = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".config/alfresco/\(file)")
+            return clean(try? String(contentsOf: url, encoding: .utf8))
         #endif
     }
 
@@ -298,8 +298,8 @@ enum Config {
     /// always in the self-test build.
     static func transitService() -> TransitService? {
         guard let address = userSetting(environment: "ALFRESCO_TRANSIT_URL", file: "transit-url"),
-              let url = URL(string: address), url.scheme == "https", url.host != nil,
-              let token = userSetting(environment: "ALFRESCO_TRANSIT_TOKEN", file: "transit-token")
+            let url = URL(string: address), url.scheme == "https", url.host != nil,
+            let token = userSetting(environment: "ALFRESCO_TRANSIT_TOKEN", file: "transit-token")
         else { return nil }
         return TransitService(baseURL: url, token: token)
     }

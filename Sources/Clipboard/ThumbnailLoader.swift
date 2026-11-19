@@ -172,10 +172,10 @@ final class ThumbnailLoader {
     }
 
     #if SELFTEST
-    /// Nothing queued or being decoded.
-    var isIdleForSelfTest: Bool { decoding == nil && pending.isEmpty }
-    /// The cached picture, without queueing anything.
-    func cachedImageForSelfTest(_ url: URL) -> NSImage? { cache.object(forKey: url.path as NSString) }
+        /// Nothing queued or being decoded.
+        var isIdleForSelfTest: Bool { decoding == nil && pending.isEmpty }
+        /// The cached picture, without queueing anything.
+        func cachedImageForSelfTest(_ url: URL) -> NSImage? { cache.object(forKey: url.path as NSString) }
     #endif
 }
 

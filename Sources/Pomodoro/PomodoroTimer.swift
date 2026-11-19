@@ -262,9 +262,10 @@ final class PomodoroTimer: NSObject {
             }
             let next: PomodoroPhase =
                 completedFocusSessions >= Config.pomodoroSessionsBeforeLongBreak ? .longBreak : .shortBreak
-            transition(to: autoStart
-                ? .running(next, endsAt: now().addingTimeInterval(next.duration))
-                : .paused(next, remaining: next.duration))
+            transition(
+                to: autoStart
+                    ? .running(next, endsAt: now().addingTimeInterval(next.duration))
+                    : .paused(next, remaining: next.duration))
         case .shortBreak:
             transition(to: .idle)
         case .longBreak:
@@ -329,7 +330,8 @@ final class PomodoroTimer: NSObject {
     /// its ticks line up with the countdown again.
     @objc private func systemDidWake() {
         if case .running(let phase, let endsAt) = state,
-           now().timeIntervalSince(endsAt) > lateWakeLimit(for: phase) {
+            now().timeIntervalSince(endsAt) > lateWakeLimit(for: phase)
+        {
             finish(phase, alert: false, autoStart: false, ranOutAt: endsAt)
         } else {
             tick()
@@ -343,7 +345,8 @@ final class PomodoroTimer: NSObject {
     private func lateWakeLimit(for phase: PomodoroPhase) -> TimeInterval {
         switch phase {
         case .focus:
-            let next: PomodoroPhase = completedFocusSessions + 1 >= Config.pomodoroSessionsBeforeLongBreak
+            let next: PomodoroPhase =
+                completedFocusSessions + 1 >= Config.pomodoroSessionsBeforeLongBreak
                 ? .longBreak : .shortBreak
             return next.duration
         case .shortBreak, .longBreak:
@@ -352,7 +355,7 @@ final class PomodoroTimer: NSObject {
     }
 
     #if SELFTEST
-    func tickForSelfTest() { tick() }
+        func tickForSelfTest() { tick() }
     #endif
 
     // MARK: Saving

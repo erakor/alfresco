@@ -21,13 +21,13 @@ final class PomodoroStatusItem: NSObject {
     private var shownPhase: PomodoroPhase?
 
     #if SELFTEST
-    // What the menu bar shows, for the self-test.
-    var isShown: Bool { item != nil }
-    var symbolName: String? { shownPhase?.symbolName }
-    var buttonTitle: String? { item?.button?.title }
-    var appearsDisabled: Bool { item?.button?.appearsDisabled ?? false }
-    var menuTitles: [String] { menu.items.map(\.title) }
-    var menuForSelfTest: NSMenu { menu }
+        // What the menu bar shows, for the self-test.
+        var isShown: Bool { item != nil }
+        var symbolName: String? { shownPhase?.symbolName }
+        var buttonTitle: String? { item?.button?.title }
+        var appearsDisabled: Bool { item?.button?.appearsDisabled ?? false }
+        var menuTitles: [String] { menu.items.map(\.title) }
+        var menuForSelfTest: NSMenu { menu }
     #endif
 
     init(timer: PomodoroTimer) {

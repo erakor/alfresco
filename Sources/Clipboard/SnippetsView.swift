@@ -93,8 +93,8 @@ final class SnippetsView: NSView {
     }
 
     #if SELFTEST
-    /// What the view shows, for the self-test.
-    var contentForSelfTest: SnippetsViewContent? { shown }
+        /// What the view shows, for the self-test.
+        var contentForSelfTest: SnippetsViewContent? { shown }
     #endif
 
     private func makeRow(_ row: SnippetsViewContent.Row) -> NSView {
@@ -106,10 +106,12 @@ final class SnippetsView: NSView {
         background.cornerRadius = 6
         // The suggestion list's highlighted row.
         background.fillColor = row.highlighted ? .selectedContentBackgroundColor : .clear
-        let icon = NSImageView(image: NSImage(systemSymbolName: row.symbolName, accessibilityDescription: nil) ?? NSImage())
+        let icon = NSImageView(
+            image: NSImage(systemSymbolName: row.symbolName, accessibilityDescription: nil) ?? NSImage())
         let onAccent = NSColor.alternateSelectedControlTextColor
         icon.contentTintColor = row.highlighted ? onAccent : .secondaryLabelColor
-        let name = NSTextField.areaLabel(row.name, size: 13, color: row.highlighted ? onAccent : .labelColor, weight: .semibold)
+        let name = NSTextField.areaLabel(
+            row.name, size: 13, color: row.highlighted ? onAccent : .labelColor, weight: .semibold)
         name.font = .monospacedSystemFont(ofSize: 13, weight: .semibold)
         name.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         name.setContentHuggingPriority(.required, for: .horizontal)

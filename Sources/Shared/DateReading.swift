@@ -170,15 +170,16 @@ enum DateMath {
         // ISO: 2026-12-25.
         let dashed = text.split(separator: "-", omittingEmptySubsequences: false)
         if dashed.count == 3, dashed[0].count == 4,
-           let year = number(dashed[0]), let month = number(dashed[1], digits: 1...2),
-           let day = number(dashed[2], digits: 1...2) {
+            let year = number(dashed[0]), let month = number(dashed[1], digits: 1...2),
+            let day = number(dashed[2], digits: 1...2)
+        {
             return (day, month, year)
         }
         // Day first: 25/12, 25/12/2026, 25.12.26.
         for separator in ["/", "."] where text.contains(separator) {
             let parts = text.split(separator: Character(separator), omittingEmptySubsequences: false)
             guard parts.count == 2 || parts.count == 3,
-                  let day = number(parts[0], digits: 1...2), let month = number(parts[1], digits: 1...2)
+                let day = number(parts[0], digits: 1...2), let month = number(parts[1], digits: 1...2)
             else { return nil }
             if parts.count == 2 { return (day, month, nil) }
             guard let year = fullYear(parts[2]) else { return nil }
@@ -226,8 +227,8 @@ enum DateMath {
     /// nil for a day the month doesn't have (31/2).
     private static func makeDate(year: Int, month: Int, day: Int, calendar: Calendar) -> Date? {
         guard (1...12).contains(month), (1...31).contains(day), (1...9999).contains(year),
-              let date = calendar.date(from: DateComponents(year: year, month: month, day: day)),
-              calendar.component(.day, from: date) == day, calendar.component(.month, from: date) == month
+            let date = calendar.date(from: DateComponents(year: year, month: month, day: day)),
+            calendar.component(.day, from: date) == day, calendar.component(.month, from: date) == month
         else { return nil }
         return calendar.startOfDay(for: date)
     }

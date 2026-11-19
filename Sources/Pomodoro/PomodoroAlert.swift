@@ -73,10 +73,11 @@ enum PomodoroAlert {
     }
 
     #if SELFTEST
-    static var notificationsAvailableForSelfTest: Bool { notificationsAvailable }
-    static func messageForSelfTest(ended phase: PomodoroPhase, next: PomodoroState) -> (title: String, body: String) {
-        message(ended: phase, next: next)
-    }
+        static var notificationsAvailableForSelfTest: Bool { notificationsAvailable }
+        static func messageForSelfTest(ended phase: PomodoroPhase, next: PomodoroState) -> (title: String, body: String)
+        {
+            message(ended: phase, next: next)
+        }
     #endif
 
     private static func requestAuthorization() {

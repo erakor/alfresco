@@ -70,14 +70,15 @@ final class StatsView: NSView {
     }
 
     #if SELFTEST
-    /// The report the labels show, for the self-test.
-    var reportForSelfTest: UsageReport? { shown }
+        /// The report the labels show, for the self-test.
+        var reportForSelfTest: UsageReport? { shown }
     #endif
 
     /// The icon of the app that opens the keyword's URL, as in the
     /// suggestion list; a symbol for a keyword no longer in workflows.json.
     private func commandIcon(_ entry: UsageReport.Entry, workflows: WorkflowSet) -> NSImage? {
-        let workflow = workflows.workflow(for: entry.key, withArgument: false)
+        let workflow =
+            workflows.workflow(for: entry.key, withArgument: false)
             ?? workflows.workflow(for: entry.key, withArgument: true)
         guard let workflow else { return NSImage(systemSymbolName: "command", accessibilityDescription: nil) }
         return WorkflowIcon.image(for: workflow, cache: &workflowIcons)

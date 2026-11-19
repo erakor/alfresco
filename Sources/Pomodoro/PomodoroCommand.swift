@@ -35,7 +35,8 @@ enum PomodoroCommand: Equatable, Sendable {
         case "stop": self = .stop
         default:
             guard action.allSatisfy({ $0.isASCII && $0.isNumber }), let minutes = Int(action),
-                  (1...Self.maxMinutes).contains(minutes) else { return nil }
+                (1...Self.maxMinutes).contains(minutes)
+            else { return nil }
             self = .start(minutes: minutes)
         }
     }
@@ -63,7 +64,8 @@ extension PomodoroCommand {
         of command: PomodoroCommand?, state: PomodoroState, completedFocusSessions: Int, now: Date
     ) -> Preview {
         guard let command else {
-            return Preview(text: "Type a number of minutes (1 to \(maxMinutes)), pause, resume, skip or stop", runs: false)
+            return Preview(
+                text: "Type a number of minutes (1 to \(maxMinutes)), pause, resume, skip or stop", runs: false)
         }
         if case .running(let phase, let endsAt) = state, endsAt <= now, command == .toggle || command == .pause {
             return Preview(text: "End the \(phase.noun)", runs: true)
@@ -76,7 +78,8 @@ extension PomodoroCommand {
         case (.toggle, .paused(let phase, _)), (.resume, .paused(let phase, _)):
             return Preview(text: "Resume the \(phase.noun)", runs: true)
         case (.start, .running(let phase, _)), (.start, .paused(let phase, _)):
-            return Preview(text: "Replace the \(phase.noun) with a \(command.startMinutes) min focus session", runs: true)
+            return Preview(
+                text: "Replace the \(phase.noun) with a \(command.startMinutes) min focus session", runs: true)
         case (.pause, .idle): return Preview(text: "Nothing to pause", runs: false)
         case (.pause, .paused): return Preview(text: "Already paused", runs: false)
         case (.resume, .idle): return Preview(text: "Nothing to resume", runs: false)

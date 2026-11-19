@@ -99,8 +99,8 @@ enum CalendarTests {
         let bare = #"{"keywords": ["cal"], "title": "Calendar", "url": "https://example.com/cal"}"#
         let search = #"{"keywords": ["cal"], "title": "Search", "url": "https://example.com/cal?q={query}"}"#
         guard let both = workflows(#"{"workflows": [\#(bare), \#(search)]}"#),
-              let searchOnly = workflows(#"{"workflows": [\#(search)]}"#),
-              let none = workflows(#"{"workflows": []}"#)
+            let searchOnly = workflows(#"{"workflows": [\#(search)]}"#),
+            let none = workflows(#"{"workflows": []}"#)
         else {
             check("calendar: the test workflows decode", false)
             return
@@ -154,7 +154,9 @@ enum CalendarTests {
             check("a day \(offset) days away is read from \(expected)", got == expected, "got \(got)")
         }
         check("/cal reads 3 days", CalendarProvider.fetchRangeForSelfTest(.upcoming, today: today) == "window 3")
-        check("/cal <text> reads 30 days", CalendarProvider.fetchRangeForSelfTest(.search("x"), today: today) == "window 30")
+        check(
+            "/cal <text> reads 30 days",
+            CalendarProvider.fetchRangeForSelfTest(.search("x"), today: today) == "window 30")
     }
 
     // MARK: A day's events
@@ -223,10 +225,12 @@ enum CalendarTests {
             event("standup", at(0, 10, 12), at(0, 10, 30)),
             event("review", at(0, 15, 30), at(0, 16)),
         ]
-        check("the next meeting is the first timed event still to start",
-              NextMeeting.find(in: events, now: now)?.title == "standup")
-        check("no next meeting once every event has started",
-              NextMeeting.find(in: Array(events.prefix(2)), now: now) == nil)
+        check(
+            "the next meeting is the first timed event still to start",
+            NextMeeting.find(in: events, now: now)?.title == "standup")
+        check(
+            "no next meeting once every event has started",
+            NextMeeting.find(in: Array(events.prefix(2)), now: now) == nil)
         func when(_ start: Date) -> String {
             NextMeeting.whenText(for: event("x", start, start.addingTimeInterval(1800)), now: now)
         }
@@ -242,8 +246,9 @@ enum CalendarTests {
             check("next meeting \(name) reads \(expected)", got == expected, "got \(got)")
         }
         let later = when(at(3, 9))
-        check("next meeting after tomorrow names the day", later.hasSuffix(", 09:00") && !later.hasPrefix("demain"),
-              "got \(later)")
+        check(
+            "next meeting after tomorrow names the day", later.hasSuffix(", 09:00") && !later.hasPrefix("demain"),
+            "got \(later)")
         check("next meeting within the hour is soon", NextMeeting.isSoon(events[2], now: now))
         check("next meeting later today is not", !NextMeeting.isSoon(events[3], now: now))
     }

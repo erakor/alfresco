@@ -13,14 +13,14 @@ enum WorkflowCardTests {
     }
 
     private static let json = #"""
-    {"workflows": [
-      {"keywords": ["pr"], "title": "PR", "url": "https://example.com/pr/{query}"},
-      {"keywords": ["weather"], "title": "Weather here", "url": "https://example.com/w"},
-      {"keywords": ["weather", "w"], "title": "Weather in", "url": "https://example.com/w/{query}"},
-      {"keywords": ["zz"], "title": "Sleep", "url": "alfresco://system/sleep"},
-      {"keywords": ["cf"], "title": "Contentful", "url": "https://example.com/cf/{query}"}
-    ]}
-    """#
+        {"workflows": [
+          {"keywords": ["pr"], "title": "PR", "url": "https://example.com/pr/{query}"},
+          {"keywords": ["weather"], "title": "Weather here", "url": "https://example.com/w"},
+          {"keywords": ["weather", "w"], "title": "Weather in", "url": "https://example.com/w/{query}"},
+          {"keywords": ["zz"], "title": "Sleep", "url": "alfresco://system/sleep"},
+          {"keywords": ["cf"], "title": "Contentful", "url": "https://example.com/cf/{query}"}
+        ]}
+        """#
 
     static func run() {
         guard Config.commandPrefix == "/" else {
@@ -33,25 +33,31 @@ enum WorkflowCardTests {
         }
 
         let unused = WorkflowCard.cards(from: set, usage: UsageTotals(), limit: 12)
-        check("one card per keyword, in file order when nothing was run",
-              unused.map(\.keyword) == ["pr", "weather", "zz", "cf"], "\(unused.map(\.keyword))")
+        check(
+            "one card per keyword, in file order when nothing was run",
+            unused.map(\.keyword) == ["pr", "weather", "zz", "cf"], "\(unused.map(\.keyword))")
         let weather = unused.first { $0.keyword == "weather" }
-        check("a keyword with both forms shows the bare form's title",
-              weather?.title == "Weather here", weather?.title ?? "nil")
-        check("a keyword with an argument form completes with a space",
-              unused.first?.completion == "/pr " && weather?.completion == "/weather ",
-              "\(unused.map(\.completion))")
-        check("a keyword with only the bare form completes without one",
-              unused.first { $0.keyword == "zz" }?.completion == "/zz")
+        check(
+            "a keyword with both forms shows the bare form's title",
+            weather?.title == "Weather here", weather?.title ?? "nil")
+        check(
+            "a keyword with an argument form completes with a space",
+            unused.first?.completion == "/pr " && weather?.completion == "/weather ",
+            "\(unused.map(\.completion))")
+        check(
+            "a keyword with only the bare form completes without one",
+            unused.first { $0.keyword == "zz" }?.completion == "/zz")
 
         var usage = UsageTotals()
         usage.keywords = ["zz": 3, "weather": 2, "weather …": 2, "cf …": 1, "pr": 9]
         let used = WorkflowCard.cards(from: set, usage: usage, limit: 12)
         // weather: 2 + 2; "pr" bare never ran (no such form), so pr is 0.
-        check("sorted by runs of both forms, most first, file order on ties",
-              used.map(\.keyword) == ["weather", "zz", "cf", "pr"], "\(used.map(\.keyword))")
-        check("the limit keeps the most run",
-              WorkflowCard.cards(from: set, usage: usage, limit: 2).map(\.keyword) == ["weather", "zz"])
+        check(
+            "sorted by runs of both forms, most first, file order on ties",
+            used.map(\.keyword) == ["weather", "zz", "cf", "pr"], "\(used.map(\.keyword))")
+        check(
+            "the limit keeps the most run",
+            WorkflowCard.cards(from: set, usage: usage, limit: 2).map(\.keyword) == ["weather", "zz"])
         check("a limit of 0 shows none", WorkflowCard.cards(from: set, usage: usage, limit: 0).isEmpty)
 
         launcher()
@@ -77,8 +83,9 @@ enum WorkflowCardTests {
         }
         controller.typeForSelfTest("")
         let shown = controller.cardKeywordsForSelfTest
-        check("empty input shows the cards", shown == Array(["pr", "weather", "zz", "cf"].prefix(limit)),
-              "\(shown.map { "\($0)" } ?? "nil")")
+        check(
+            "empty input shows the cards", shown == Array(["pr", "weather", "zz", "cf"].prefix(limit)),
+            "\(shown.map { "\($0)" } ?? "nil")")
         controller.typeForSelfTest("  ")
         check("spaces alone still show them", controller.cardKeywordsForSelfTest != nil)
         controller.typeForSelfTest("saf")
@@ -101,8 +108,9 @@ enum WorkflowCardTests {
         for typed in ["", "/weather lyon", "saf"] {
             controller.typeForSelfTest(typed)
             controller.clickWeatherStripForSelfTest()
-            SelfTest.check("weather strip: a click on \"\(typed)\" types \(forecast)",
-                           controller.inputForSelfTest == forecast, controller.inputForSelfTest)
+            SelfTest.check(
+                "weather strip: a click on \"\(typed)\" types \(forecast)",
+                controller.inputForSelfTest == forecast, controller.inputForSelfTest)
         }
         SelfTest.check("weather strip: and hides the cards", controller.cardKeywordsForSelfTest == nil)
 
@@ -120,11 +128,13 @@ enum WorkflowCardTests {
         }
         controller.typeForSelfTest("")
         controller.updateMeetingStripForSelfTest()
-        check("hidden without calendar access", controller.meetingStripForSelfTest == nil,
-              controller.meetingStripForSelfTest ?? "")
+        check(
+            "hidden without calendar access", controller.meetingStripForSelfTest == nil,
+            controller.meetingStripForSelfTest ?? "")
         controller.typeForSelfTest("saf")
         controller.clickMeetingStripForSelfTest()
-        check("a click without a cal workflow leaves the input", controller.inputForSelfTest == "saf",
-              controller.inputForSelfTest)
+        check(
+            "a click without a cal workflow leaves the input", controller.inputForSelfTest == "saf",
+            controller.inputForSelfTest)
     }
 }

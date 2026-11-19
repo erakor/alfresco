@@ -117,7 +117,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         if LoginItem.isSupported {
             menu.addItem(menuItem("Launch at Login", #selector(toggleLaunchAtLogin)))
         }
-        menu.addItem(NSMenuItem(title: "Quit Launcher", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(
+            NSMenuItem(title: "Quit Launcher", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
 
         statusItem = item
@@ -219,10 +220,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     }
 
     #if SELFTEST
-    /// Lets the self-test check validateMenuItem against its own timer,
-    /// without the rest of applicationDidFinishLaunching.
-    func useForSelfTest(pomodoro: PomodoroTimer) { self.pomodoro = pomodoro }
-    static let startPomodoroAction = #selector(startPomodoro)
+        /// Lets the self-test check validateMenuItem against its own timer,
+        /// without the rest of applicationDidFinishLaunching.
+        func useForSelfTest(pomodoro: PomodoroTimer) { self.pomodoro = pomodoro }
+        static let startPomodoroAction = #selector(startPomodoro)
     #endif
 
     // MARK: NSMenuDelegate
@@ -338,18 +339,19 @@ enum LauncherApp {
                 print("\(source.url.path): OK (not created yet; the app writes the default file there when it starts)")
                 exit(0)
             }
-            let files = paths.isEmpty
+            let files =
+                paths.isEmpty
                 ? [(name: source.url.path, url: source.url)]
                 : paths.map { (name: $0, url: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)) }
             exit(WorkflowCheck.run(files))
         }
 
         #if SELFTEST
-        // Never returns: runs the suite inside a real NSApplication and exits.
-        if let index = CommandLine.arguments.firstIndex(of: "--self-test") {
-            let rest = CommandLine.arguments.dropFirst(index + 1)
-            SelfTest.main(suite: rest.first ?? "unit")
-        }
+            // Never returns: runs the suite inside a real NSApplication and exits.
+            if let index = CommandLine.arguments.firstIndex(of: "--self-test") {
+                let rest = CommandLine.arguments.dropFirst(index + 1)
+                SelfTest.main(suite: rest.first ?? "unit")
+            }
         #endif
 
         // Two copies (say ./Launcher and build/Launcher.app) would fight over

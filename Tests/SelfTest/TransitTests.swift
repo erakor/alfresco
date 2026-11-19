@@ -29,21 +29,21 @@ enum TransitTests {
     /// An answer of the transit service's /subway/arrivals, with fields the
     /// board doesn't read.
     private static let answer = #"""
-    {"stop": {"id": "A32+D20", "name": "W 4 St-Wash Sq", "stops": ["A32", "D20"]},
-     "updatedAt": 1793999990,
-     "groups": [
-       {"route": "A", "name": "A", "color": "#0062CF", "textColor": "#FFFFFF", "direction": "N",
-        "headsign": "Inwood-207 St", "arrivals": [
-          {"time": 1794000240, "headsign": "Inwood-207 St", "tripId": "a1"},
-          {"time": 1794000600, "headsign": "Inwood-207 St", "tripId": "a2"}]},
-       {"route": "FX", "name": "F", "color": "#EB6800", "textColor": "#FFFFFF", "direction": "S",
-        "headsign": "Coney Island-Stillwell Av", "arrivals": [
-          {"time": 1794000030, "headsign": "Coney Island-Stillwell Av", "tripId": "f1"}]},
-       {"route": "Q", "name": "Q", "color": "#F6BC26", "textColor": "#000000", "direction": "S",
-        "headsign": "Coney Island-Stillwell Av", "arrivals": []}
-     ],
-     "unavailableFeeds": ["gtfs-bdfm"]}
-    """#
+        {"stop": {"id": "A32+D20", "name": "W 4 St-Wash Sq", "stops": ["A32", "D20"]},
+         "updatedAt": 1793999990,
+         "groups": [
+           {"route": "A", "name": "A", "color": "#0062CF", "textColor": "#FFFFFF", "direction": "N",
+            "headsign": "Inwood-207 St", "arrivals": [
+              {"time": 1794000240, "headsign": "Inwood-207 St", "tripId": "a1"},
+              {"time": 1794000600, "headsign": "Inwood-207 St", "tripId": "a2"}]},
+           {"route": "FX", "name": "F", "color": "#EB6800", "textColor": "#FFFFFF", "direction": "S",
+            "headsign": "Coney Island-Stillwell Av", "arrivals": [
+              {"time": 1794000030, "headsign": "Coney Island-Stillwell Av", "tripId": "f1"}]},
+           {"route": "Q", "name": "Q", "color": "#F6BC26", "textColor": "#000000", "direction": "S",
+            "headsign": "Coney Island-Stillwell Av", "arrivals": []}
+         ],
+         "unavailableFeeds": ["gtfs-bdfm"]}
+        """#
 
     private static func decoding() {
         guard let snapshot = TransitLoader.snapshot(from: Data(answer.utf8), fetchedAt: now) else {
@@ -51,30 +51,45 @@ enum TransitTests {
             return
         }
         check("the station's name", snapshot.stationName == "W 4 St-Wash Sq")
-        let summary = snapshot.departures.map { "\($0.route) \($0.direction.rawValue) \(Int($0.time.timeIntervalSince(now)))" }
-        check("every train, with the route's rider-facing name",
-              summary == ["A N 240", "A N 600", "F S 30"], summary.description)
-        check("line colors", snapshot.departures.first?.color == 0x0062CF && snapshot.departures.first?.textColor == 0xFFFFFF)
+        let summary = snapshot.departures.map {
+            "\($0.route) \($0.direction.rawValue) \(Int($0.time.timeIntervalSince(now)))"
+        }
+        check(
+            "every train, with the route's rider-facing name",
+            summary == ["A N 240", "A N 600", "F S 30"], summary.description)
+        check(
+            "line colors",
+            snapshot.departures.first?.color == 0x0062CF && snapshot.departures.first?.textColor == 0xFFFFFF)
         check("the age is the feed's", snapshot.updatedAt == now.addingTimeInterval(-10))
         check("failed feeds are noted", snapshot.someLinesMissing)
         let minimal = #"{"stop": {"name": "X"}, "updatedAt": null, "groups": []}"#
         let empty = TransitLoader.snapshot(from: Data(minimal.utf8), fetchedAt: now)
-        check("no trains and no feed time", empty?.departures == [] && empty?.updatedAt == now && empty?.someLinesMissing == false)
-        check("an error body isn't an answer", TransitLoader.snapshot(from: Data(#"{"error": "unknown stop"}"#.utf8), fetchedAt: now) == nil)
+        check(
+            "no trains and no feed time",
+            empty?.departures == [] && empty?.updatedAt == now && empty?.someLinesMissing == false)
+        check(
+            "an error body isn't an answer",
+            TransitLoader.snapshot(from: Data(#"{"error": "unknown stop"}"#.utf8), fetchedAt: now) == nil)
         check("a bad color falls back", TransitLoader.rgb("blue") == nil && TransitLoader.rgb("#00FF00") == 0x00FF00)
 
         let service = TransitService(baseURL: URL(string: "https://transit.example.com")!, token: "t")
         let url = TransitLoader.url(for: "A32+D20", limit: 30, service: service)?.absoluteString
-        check("the station's + is encoded and the limit capped",
-              url == "https://transit.example.com/subway/arrivals?stop=A32%2BD20&limit=10", url ?? "nil")
+        check(
+            "the station's + is encoded and the limit capped",
+            url == "https://transit.example.com/subway/arrivals?stop=A32%2BD20&limit=10", url ?? "nil")
     }
 
-    private static func departure(_ route: String, _ direction: TransitDirection, _ seconds: TimeInterval) -> TransitDeparture {
-        TransitDeparture(route: route, color: 0, textColor: 0, direction: direction, time: now.addingTimeInterval(seconds))
+    private static func departure(
+        _ route: String, _ direction: TransitDirection, _ seconds: TimeInterval
+    ) -> TransitDeparture {
+        TransitDeparture(
+            route: route, color: 0, textColor: 0, direction: direction, time: now.addingTimeInterval(seconds))
     }
 
     private static func snapshot(_ departures: [TransitDeparture], fetchedAt: Date) -> TransitSnapshot {
-        TransitSnapshot(stationName: "W 4 St", departures: departures, updatedAt: fetchedAt, fetchedAt: fetchedAt, someLinesMissing: false)
+        TransitSnapshot(
+            stationName: "W 4 St", departures: departures, updatedAt: fetchedAt, fetchedAt: fetchedAt,
+            someLinesMissing: false)
     }
 
     private static func board() {
@@ -85,22 +100,25 @@ enum TransitTests {
         ]
         let board = TransitBoard.make(from: snapshot(trains, fetchedAt: now), now: now, limit: 4)
         let north = board.north.map { "\($0.route) \(TransitBoard.countdown(to: $0.time, now: now))" }
-        check("soonest first, gone ones dropped, at most the limit",
-              north == ["E now", "A now", "F 1 min", "B 5 min"], north.description)
+        check(
+            "soonest first, gone ones dropped, at most the limit",
+            north == ["E now", "A now", "F 1 min", "B 5 min"], north.description)
         check("the other way has its own list", board.south.map(\.route) == ["M"])
-        check("counts down in whole minutes", TransitBoard.countdown(to: now.addingTimeInterval(179), now: now) == "2 min")
+        check(
+            "counts down in whole minutes", TransitBoard.countdown(to: now.addingTimeInterval(179), now: now) == "2 min"
+        )
         check("the snapshot's age", TransitBoard.age(of: now.addingTimeInterval(-25), now: now) == "25 s ago")
         check("a fresh one", TransitBoard.age(of: now, now: now) == "just now")
         check("an older one", TransitBoard.age(of: now.addingTimeInterval(-130), now: now) == "2 min ago")
     }
 
     private static let json = #"""
-    {"workflows": [
-      {"keywords": ["transit", "metro"], "title": "Trains", "url": "https://example.com/station"},
-      {"keywords": ["bus"], "title": "Not the board", "url": "https://example.com/bus"},
-      {"keywords": ["zz"], "title": "Sleep", "url": "alfresco://system/sleep"}
-    ]}
-    """#
+        {"workflows": [
+          {"keywords": ["transit", "metro"], "title": "Trains", "url": "https://example.com/station"},
+          {"keywords": ["bus"], "title": "Not the board", "url": "https://example.com/bus"},
+          {"keywords": ["zz"], "title": "Sleep", "url": "alfresco://system/sleep"}
+        ]}
+        """#
 
     private static func launcher() {
         guard Config.transitStation != nil, Config.commandPrefix == "/" else {
@@ -125,7 +143,8 @@ enum TransitTests {
         }
         check("without a service, no trains", controller.transitBoardForSelfTest == nil)
         render(controller, as: "transit-setup")
-        let soon = TransitDeparture(route: "A", color: 0, textColor: 0, direction: .north, time: Date().addingTimeInterval(200))
+        let soon = TransitDeparture(
+            route: "A", color: 0, textColor: 0, direction: .north, time: Date().addingTimeInterval(200))
         controller.setTransitSnapshotForSelfTest(snapshot([soon], fetchedAt: Date()))
         check("the snapshot's trains are on the board", controller.transitBoardForSelfTest?.north.map(\.route) == ["A"])
         controller.setTransitSnapshotForSelfTest(sampleBoard())
@@ -137,7 +156,9 @@ enum TransitTests {
         // The menu bar item shares the provider: what it fetched is on the board.
         provider.setSnapshotForSelfTest(snapshot([soon], fetchedAt: Date()))
         controller.typeForSelfTest("/transit")
-        check("the board shows the shared provider's trains", controller.transitBoardForSelfTest?.north.map(\.route) == ["A"])
+        check(
+            "the board shows the shared provider's trains",
+            controller.transitBoardForSelfTest?.north.map(\.route) == ["A"])
         for other in ["/bus", "/zz", "metro", "/", ""] {
             controller.typeForSelfTest(other)
             check("\"\(other)\" doesn't show it", !controller.showsTransitForSelfTest)
@@ -149,20 +170,20 @@ enum TransitTests {
     /// An answer of the service's /subway/alerts?stop=, with fields the menu
     /// doesn't read.
     private static let alertsAnswer = #"""
-    {"stop": {"id": "A32+D20", "name": "W 4 St-Wash Sq", "stops": ["A32", "D20"]},
-     "updatedAt": 1793999990,
-     "alerts": [
-       {"id": "lmm:alert:1", "planned": false, "category": "Delays", "priority": 26,
-        "header": "  Downtown [A][C] trains are running with delays.\n", "description": "",
-        "routes": [{"id": "A", "name": "A", "color": "#0062CF", "textColor": "#FFFFFF"},
-                   {"id": "C", "name": "C", "color": "bad", "textColor": "#FFFFFF"}],
-        "stops": [], "start": 1793999000, "end": null},
-       {"id": "lmm:planned_work:2", "planned": true, "category": null, "priority": null,
-        "header": "No [F] trains between W 4 St and Jay St.", "description": "Take the [A].",
-        "routes": [], "stops": [{"id": "D20", "name": "W 4 St", "direction": "S"}],
-        "start": 1793990000, "end": 1794010000}
-     ]}
-    """#
+        {"stop": {"id": "A32+D20", "name": "W 4 St-Wash Sq", "stops": ["A32", "D20"]},
+         "updatedAt": 1793999990,
+         "alerts": [
+           {"id": "lmm:alert:1", "planned": false, "category": "Delays", "priority": 26,
+            "header": "  Downtown [A][C] trains are running with delays.\n", "description": "",
+            "routes": [{"id": "A", "name": "A", "color": "#0062CF", "textColor": "#FFFFFF"},
+                       {"id": "C", "name": "C", "color": "bad", "textColor": "#FFFFFF"}],
+            "stops": [], "start": 1793999000, "end": null},
+           {"id": "lmm:planned_work:2", "planned": true, "category": null, "priority": null,
+            "header": "No [F] trains between W 4 St and Jay St.", "description": "Take the [A].",
+            "routes": [], "stops": [{"id": "D20", "name": "W 4 St", "direction": "S"}],
+            "start": 1793990000, "end": 1794010000}
+         ]}
+        """#
 
     private static func alertsDecoding() {
         guard let alerts = TransitAlertsLoader.alerts(from: Data(alertsAnswer.utf8), fetchedAt: now) else {
@@ -170,24 +191,30 @@ enum TransitTests {
             return
         }
         check("alerts: both, in the service's order", alerts.alerts.map(\.id) == ["lmm:alert:1", "lmm:planned_work:2"])
-        check("alerts: the header is trimmed", alerts.alerts.first?.header == "Downtown [A][C] trains are running with delays.")
-        check("alerts: routes and colors, a bad one falls back",
-              alerts.alerts.first?.routes == [
-                  TransitRoute(name: "A", color: 0x0062CF, textColor: 0xFFFFFF),
-                  TransitRoute(name: "C", color: 0x808183, textColor: 0xFFFFFF),
-              ])
+        check(
+            "alerts: the header is trimmed",
+            alerts.alerts.first?.header == "Downtown [A][C] trains are running with delays.")
+        check(
+            "alerts: routes and colors, a bad one falls back",
+            alerts.alerts.first?.routes == [
+                TransitRoute(name: "A", color: 0x0062CF, textColor: 0xFFFFFF),
+                TransitRoute(name: "C", color: 0x808183, textColor: 0xFFFFFF),
+            ])
         check("alerts: only the incident marks the icon", alerts.incidents.map(\.id) == ["lmm:alert:1"])
         check("alerts: the summary", alerts.summary == "1 service alert, 1 planned change", alerts.summary)
         check("alerts: none", TransitAlerts(alerts: [], fetchedAt: now).summary == "No service alerts")
-        check("alerts: a status, else the kind",
-              alerts.alerts.map { $0.categoryText } == ["Delays", "Planned work"])
-        check("alerts: an error body isn't an answer",
-              TransitAlertsLoader.alerts(from: Data(#"{"error": "unknown stop"}"#.utf8), fetchedAt: now) == nil)
+        check(
+            "alerts: a status, else the kind",
+            alerts.alerts.map { $0.categoryText } == ["Delays", "Planned work"])
+        check(
+            "alerts: an error body isn't an answer",
+            TransitAlertsLoader.alerts(from: Data(#"{"error": "unknown stop"}"#.utf8), fetchedAt: now) == nil)
 
         let service = TransitService(baseURL: URL(string: "https://transit.example.com")!, token: "t")
         let url = TransitAlertsLoader.url(for: "A32+D20", service: service)?.absoluteString
-        check("alerts: the station's + is encoded",
-              url == "https://transit.example.com/subway/alerts?stop=A32%2BD20", url ?? "nil")
+        check(
+            "alerts: the station's + is encoded",
+            url == "https://transit.example.com/subway/alerts?stop=A32%2BD20", url ?? "nil")
     }
 
     private static func alert(_ id: String, planned: Bool, category: String? = nil) -> TransitAlert {
@@ -227,8 +254,9 @@ enum TransitTests {
                 let middle = alpha(center.x, center.y)
                 let left = alpha(center.x - ring, center.y)
                 let below = alpha(center.x, center.y + ring)
-                check("icon with the dot: a hole for the dot and its ring",
-                      middle < 0.1 && left < 0.1 && below < 0.1, "alpha \(middle), \(left), \(below)")
+                check(
+                    "icon with the dot: a hole for the dot and its ring",
+                    middle < 0.1 && left < 0.1 && below < 0.1, "alpha \(middle), \(left), \(below)")
             }
         }
     }
@@ -240,10 +268,13 @@ enum TransitTests {
 
         check("menu bar: no dot before any alert", !item.badgeShownForSelfTest)
         check("menu bar: tool tip", item.toolTipForSelfTest == "Next trains", item.toolTipForSelfTest ?? "nil")
-        check("menu bar: alerts are checked in the background",
-              item.isAlertTimerRunningForSelfTest == (Config.transitAlertCheckInterval != nil))
+        check(
+            "menu bar: alerts are checked in the background",
+            item.isAlertTimerRunningForSelfTest == (Config.transitAlertCheckInterval != nil))
         let openTitle = "Open \(CommandInput.typed(Config.transitKeyword)) in Launcher"
-        check("menu bar: the menu", item.menuTitlesForSelfTest.contains(openTitle), item.menuTitlesForSelfTest.description)
+        check(
+            "menu bar: the menu", item.menuTitlesForSelfTest.contains(openTitle), item.menuTitlesForSelfTest.description
+        )
 
         let view = item.menuViewForSelfTest
         item.openForSelfTest()
@@ -253,49 +284,61 @@ enum TransitTests {
         render(view, as: "transit-menu-setup")
 
         provider.setSnapshotForSelfTest(sampleBoard())
-        provider.setAlertsForSelfTest(TransitAlerts(
-            alerts: [alert("1", planned: false, category: "Delays"), alert("2", planned: true, category: "Planned - Stops Skipped")],
-            fetchedAt: Date()
-        ))
+        provider.setAlertsForSelfTest(
+            TransitAlerts(
+                alerts: [
+                    alert("1", planned: false, category: "Delays"),
+                    alert("2", planned: true, category: "Planned - Stops Skipped"),
+                ],
+                fetchedAt: Date()
+            ))
         item.providerDidUpdateForSelfTest()
         check("menu bar: the board's trains", view.boardForSelfTest?.north.first?.route == "A")
-        check("menu bar: the alerts", view.alertRowsForSelfTest == ["Delays", "Planned - Stops Skipped"],
-              view.alertRowsForSelfTest.description)
-        check("menu bar: the alerts' title", view.alertsTitleForSelfTest == "1 SERVICE ALERT, 1 PLANNED CHANGE",
-              view.alertsTitleForSelfTest ?? "nil")
-        check("menu bar: the board and the alerts fit", view.frame.height > TransitView.height + 60, "\(view.frame.height)")
+        check(
+            "menu bar: the alerts", view.alertRowsForSelfTest == ["Delays", "Planned - Stops Skipped"],
+            view.alertRowsForSelfTest.description)
+        check(
+            "menu bar: the alerts' title", view.alertsTitleForSelfTest == "1 SERVICE ALERT, 1 PLANNED CHANGE",
+            view.alertsTitleForSelfTest ?? "nil")
+        check(
+            "menu bar: the board and the alerts fit", view.frame.height > TransitView.height + 60,
+            "\(view.frame.height)")
         let expectsDot = Config.transitAlertCheckInterval != nil
         check("menu bar: an incident shows the orange dot", item.badgeShownForSelfTest == expectsDot)
         if expectsDot { badgePosition(item) }
-        check("menu bar: the tool tip names it",
-              item.toolTipForSelfTest?.hasPrefix("Next trains · 1 service alert, 1 planned change\n") == true,
-              item.toolTipForSelfTest ?? "nil")
+        check(
+            "menu bar: the tool tip names it",
+            item.toolTipForSelfTest?.hasPrefix("Next trains · 1 service alert, 1 planned change\n") == true,
+            item.toolTipForSelfTest ?? "nil")
         render(view, as: "transit-menu")
 
         provider.setAlertsForSelfTest(TransitAlerts(alerts: [alert("3", planned: true)], fetchedAt: Date()))
         item.providerDidUpdateForSelfTest()
         check("menu bar: planned work alone shows no dot", !item.badgeShownForSelfTest)
 
-        provider.setAlertsForSelfTest(TransitAlerts(
-            alerts: (1...6).map { alert("\($0)", planned: false) }, fetchedAt: Date()
-        ))
+        provider.setAlertsForSelfTest(
+            TransitAlerts(
+                alerts: (1...6).map { alert("\($0)", planned: false) }, fetchedAt: Date()
+            ))
         item.providerDidUpdateForSelfTest()
         check("menu bar: at most four alerts listed", view.alertRowsForSelfTest.count == TransitMenuView.maxAlerts)
         check("menu bar: the rest counted", view.moreForSelfTest == "2 more alerts", view.moreForSelfTest ?? "nil")
         check("menu bar: a row without a status says what it is", view.alertRowsForSelfTest.first == "Service alert")
 
-        provider.setAlertsForSelfTest(TransitAlerts(
-            alerts: [alert("4", planned: false)],
-            fetchedAt: Date().addingTimeInterval(-TransitProvider.alertsShownFor - 1)
-        ))
+        provider.setAlertsForSelfTest(
+            TransitAlerts(
+                alerts: [alert("4", planned: false)],
+                fetchedAt: Date().addingTimeInterval(-TransitProvider.alertsShownFor - 1)
+            ))
         item.providerDidUpdateForSelfTest()
         check("menu bar: alerts too old are dropped", !item.badgeShownForSelfTest && view.alertsTitleForSelfTest == nil)
 
         item.screensDidSleepForSelfTest()
         check("menu bar: no checks while the screens sleep", !item.isAlertTimerRunningForSelfTest)
         item.screensDidWakeForSelfTest()
-        check("menu bar: checks again on wake",
-              item.isAlertTimerRunningForSelfTest == (Config.transitAlertCheckInterval != nil))
+        check(
+            "menu bar: checks again on wake",
+            item.isAlertTimerRunningForSelfTest == (Config.transitAlertCheckInterval != nil))
         item.closeForSelfTest()
     }
 
@@ -319,9 +362,10 @@ enum TransitTests {
         let y = bounds.height / 2 + center.y - icon.height / 2
         let color = bitmap.colorAt(x: Int(x * scale), y: Int(y * scale))?.usingColorSpace(.sRGB)
         let red = color?.redComponent ?? 0, green = color?.greenComponent ?? 0, blue = color?.blueComponent ?? 1
-        check("menu bar: the dot is orange, over the hole",
-              red > 0.8 && green > 0.3 && green < 0.75 && blue < 0.35,
-              "rgb \(red), \(green), \(blue) at \(x), \(y) in \(bounds.size)")
+        check(
+            "menu bar: the dot is orange, over the hole",
+            red > 0.8 && green > 0.3 && green < 0.75 && blue < 0.35,
+            "rgb \(red), \(green), \(blue) at \(x), \(y) in \(bounds.size)")
     }
 
     // MARK: Renders
@@ -329,8 +373,12 @@ enum TransitTests {
     /// A busy W 4 St, in the transit service's colors, for the renders.
     private static func sampleBoard() -> TransitSnapshot {
         let now = Date()
-        func train(_ route: String, _ color: UInt32, _ direction: TransitDirection, _ seconds: TimeInterval) -> TransitDeparture {
-            TransitDeparture(route: route, color: color, textColor: 0xFFFFFF, direction: direction, time: now.addingTimeInterval(seconds))
+        func train(
+            _ route: String, _ color: UInt32, _ direction: TransitDirection, _ seconds: TimeInterval
+        ) -> TransitDeparture {
+            TransitDeparture(
+                route: route, color: color, textColor: 0xFFFFFF, direction: direction,
+                time: now.addingTimeInterval(seconds))
         }
         let blue: UInt32 = 0x0062CF, orange: UInt32 = 0xEB6800
         return TransitSnapshot(

@@ -3,8 +3,8 @@
 // System-wide hotkeys through Carbon's RegisterEventHotKey, which needs no
 // Accessibility or Input Monitoring permission.
 
-import Cocoa
 import Carbon.HIToolbox
+import Cocoa
 
 // MARK: - Global hotkeys (Carbon)
 

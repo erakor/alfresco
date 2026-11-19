@@ -24,9 +24,9 @@ enum Signposts {
     /// local.launcher.selftest` shows the self-test's intervals in both forms.
     private static var subsystem: String {
         #if SELFTEST
-        return Bundle.main.bundleIdentifier ?? "local.launcher.selftest"
+            return Bundle.main.bundleIdentifier ?? "local.launcher.selftest"
         #else
-        return Bundle.main.bundleIdentifier ?? "local.launcher"
+            return Bundle.main.bundleIdentifier ?? "local.launcher"
         #endif
     }
 

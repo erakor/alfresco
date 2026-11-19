@@ -15,17 +15,17 @@ enum StatsTests {
     }
 
     private static let json = #"""
-    {"workflows": [
-      {"keywords": ["pr"], "title": "PR", "url": "https://example.com/pr/{query}"},
-      {"keywords": ["jira"], "title": "Jira", "url": "https://example.com/jira/{query}"},
-      {"keywords": ["weather"], "title": "Weather here", "url": "https://example.com/w"},
-      {"keywords": ["weather"], "title": "Weather in", "url": "https://example.com/w/{query}"},
-      {"keywords": ["cf"], "title": "Contentful", "url": "https://example.com/cf/{query}"},
-      {"keywords": ["stats"], "title": "Usage", "url": "alfresco://stats"},
-      {"keywords": ["statsx"], "title": "Not the report", "url": "alfresco://stats/other"},
-      {"keywords": ["zz"], "title": "Sleep", "url": "alfresco://system/sleep"}
-    ]}
-    """#
+        {"workflows": [
+          {"keywords": ["pr"], "title": "PR", "url": "https://example.com/pr/{query}"},
+          {"keywords": ["jira"], "title": "Jira", "url": "https://example.com/jira/{query}"},
+          {"keywords": ["weather"], "title": "Weather here", "url": "https://example.com/w"},
+          {"keywords": ["weather"], "title": "Weather in", "url": "https://example.com/w/{query}"},
+          {"keywords": ["cf"], "title": "Contentful", "url": "https://example.com/cf/{query}"},
+          {"keywords": ["stats"], "title": "Usage", "url": "alfresco://stats"},
+          {"keywords": ["statsx"], "title": "Not the report", "url": "alfresco://stats/other"},
+          {"keywords": ["zz"], "title": "Sleep", "url": "alfresco://system/sleep"}
+        ]}
+        """#
 
     private static var paris: Calendar {
         var calendar = Calendar(identifier: .gregorian)
@@ -36,7 +36,8 @@ enum StatsTests {
     /// Fresh stats on their own file, on Friday 6 November 2026, 12:00 in Paris.
     private static func makeStats(_ name: String) -> (TestClock, UsageStats) {
         let clock = TestClock(ISO8601DateFormatter().date(from: "2026-11-06T11:00:00Z")!)
-        let stats = UsageStats.makeForSelfTest(fileURL: SelfTest.scratchFile(name), now: { clock.date }, calendar: paris)
+        let stats = UsageStats.makeForSelfTest(
+            fileURL: SelfTest.scratchFile(name), now: { clock.date }, calendar: paris)
         return (clock, stats)
     }
 
@@ -71,9 +72,13 @@ enum StatsTests {
         clock.date = today
 
         for _ in 0..<2 { stats.recordLaunch(.workflow(keyword: "pr", withArgument: false), input: "/pr", keywords: []) }
-        for _ in 0..<3 { stats.recordLaunch(.workflow(keyword: "pr", withArgument: true), input: "/pr 1", keywords: []) }
+        for _ in 0..<3 {
+            stats.recordLaunch(.workflow(keyword: "pr", withArgument: true), input: "/pr 1", keywords: [])
+        }
         stats.recordLaunch(.workflow(keyword: "jira", withArgument: true), input: "/jira a-1", keywords: [])
-        for _ in 0..<4 { stats.recordLaunch(.workflow(keyword: "stats", withArgument: false), input: "/stats", keywords: []) }
+        for _ in 0..<4 {
+            stats.recordLaunch(.workflow(keyword: "stats", withArgument: false), input: "/stats", keywords: [])
+        }
         stats.recordAppOpened(bundleID: "com.apple.Safari")
         stats.recordAppOpened(bundleID: "com.apple.Safari")
         stats.recordAppOpened(bundleID: "com.example.Notes")
@@ -84,40 +89,49 @@ enum StatsTests {
         stats.record(.pomodoroFocusCompleted, on: daysAgo(Config.usageRetentionDays + 10))
         stats.record(.pomodoroFocusCompleted, on: clock.date.addingTimeInterval(86_400))
 
-        check("a day older than the kept ones records nothing",
-              stats.dayKeys == ["2026-10-27", "2026-10-28", "2026-11-04", "2026-11-06"], "\(stats.dayKeys)")
-        check("a day after today counts as today",
-              stats.merged(days: 1).counts[UsageCounter.pomodoroFocusCompleted.rawValue] == 1)
+        check(
+            "a day older than the kept ones records nothing",
+            stats.dayKeys == ["2026-10-27", "2026-10-28", "2026-11-04", "2026-11-06"], "\(stats.dayKeys)")
+        check(
+            "a day after today counts as today",
+            stats.merged(days: 1).counts[UsageCounter.pomodoroFocusCompleted.rawValue] == 1)
 
         let names = ["com.apple.Safari": "Safari", "com.example.Notes": "Notes"]
         let report = UsageReport.make(from: stats, workflows: set, days: 7, appName: { names[$0] ?? $0 })
         let commands = report.topCommands.map { "\($0.name) \($0.count)" }
-        check("both forms of a keyword make one line, most run first",
-              commands == ["/pr 5", "/stats 4", "/jira 1"], "\(commands)")
+        check(
+            "both forms of a keyword make one line, most run first",
+            commands == ["/pr 5", "/stats 4", "/jira 1"], "\(commands)")
         check("a line keeps the keyword as stored, for its icon", report.topCommands.first?.key == "pr")
         check("commands run counts every run of the week", report.commandsRun == 10, "\(report.commandsRun)")
         let apps = report.topApps.map { "\($0.name) \($0.count)" }
-        check("apps by name, an app without a bundle ID left out of the list",
-              apps == ["Safari 2", "Notes 1"], "\(apps)")
+        check(
+            "apps by name, an app without a bundle ID left out of the list",
+            apps == ["Safari 2", "Notes 1"], "\(apps)")
         check("apps opened counts them all", report.appsOpened == 4, "\(report.appsOpened)")
         check("clips restored", report.clipsRestored == 3, "\(report.clipsRestored)")
-        check("focus sessions of the week only (2 days ago, and the one dated tomorrow)",
-              report.focusSessions == 2, "\(report.focusSessions)")
-        check("never run: over every kept day, in file order, the report itself left out",
-              report.unusedCommands == ["/weather", "/statsx", "/zz"], "\(report.unusedCommands)")
+        check(
+            "focus sessions of the week only (2 days ago, and the one dated tomorrow)",
+            report.focusSessions == 2, "\(report.focusSessions)")
+        check(
+            "never run: over every kept day, in file order, the report itself left out",
+            report.unusedCommands == ["/weather", "/statsx", "/zz"], "\(report.unusedCommands)")
         check("the week is covered: no 'since'", report.countingSince == nil)
-        check("counting started 10 days ago, so 'never run' reaches back to then",
-              report.unusedSince == paris.startOfDay(for: daysAgo(10)), "\(String(describing: report.unusedSince))")
+        check(
+            "counting started 10 days ago, so 'never run' reaches back to then",
+            report.unusedSince == paris.startOfDay(for: daysAgo(10)), "\(String(describing: report.unusedSince))")
     }
 
     private static func empty(_ set: WorkflowSet) {
         let (clock, stats) = makeStats("usage-stats-empty")
         let report = UsageReport.make(from: stats, workflows: set, days: 7, appName: { $0 })
         let figures = [report.commandsRun, report.appsOpened, report.clipsRestored, report.focusSessions]
-        check("nothing recorded: empty", figures == [0, 0, 0, 0] && report.topCommands.isEmpty && report.topApps.isEmpty)
+        check(
+            "nothing recorded: empty", figures == [0, 0, 0, 0] && report.topCommands.isEmpty && report.topApps.isEmpty)
         check("nothing recorded: counting starts today", report.countingSince == paris.startOfDay(for: clock.date))
-        check("nothing recorded: every command is unused",
-              report.unusedCommands == ["/pr", "/jira", "/weather", "/cf", "/statsx", "/zz"], "\(report.unusedCommands)")
+        check(
+            "nothing recorded: every command is unused",
+            report.unusedCommands == ["/pr", "/jira", "/weather", "/cf", "/statsx", "/zz"], "\(report.unusedCommands)")
     }
 
     private static func text() {
@@ -167,8 +181,9 @@ enum StatsTests {
         )
         controller.typeForSelfTest("/stats")
         check("/stats shows the report", controller.statsForSelfTest != nil)
-        check("its hint says what Enter does", controller.hintForSelfTest == "↩ Last 30 days in detail",
-              controller.hintForSelfTest)
+        check(
+            "its hint says what Enter does", controller.hintForSelfTest == "↩ Last 30 days in detail",
+            controller.hintForSelfTest)
         check("over Config.usageReportDays", controller.statsForSelfTest?.days == Config.usageReportDays)
         controller.typeForSelfTest("/stats ")
         check("a trailing space still shows it", controller.statsForSelfTest != nil)

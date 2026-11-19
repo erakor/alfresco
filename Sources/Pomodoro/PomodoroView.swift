@@ -50,7 +50,8 @@ struct PomodoroViewContent: Equatable {
         switch state.phase {
         case nil, .focus?:
             tag = "\(PomodoroPhase.focus.name) \(session) of \(total)".uppercased()
-            detail = session >= total
+            detail =
+                session >= total
                 ? "Then a \(PomodoroPhase.longBreak.minutes) min long break"
                 : "Then a \(PomodoroPhase.shortBreak.minutes) min break"
         case .shortBreak?:
@@ -171,8 +172,8 @@ final class PomodoroView: NSView {
     }
 
     #if SELFTEST
-    /// What the labels read, for the self-test.
-    var contentForSelfTest: PomodoroViewContent? { shown }
+        /// What the labels read, for the self-test.
+        var contentForSelfTest: PomodoroViewContent? { shown }
     #endif
 
     private func build() {

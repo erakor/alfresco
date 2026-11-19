@@ -15,7 +15,9 @@ import Cocoa
 import UniformTypeIdentifiers
 
 @MainActor
-final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, NSTableViewDataSource,
+    NSTableViewDelegate
+{
     private enum Layout {
         static let size = NSSize(width: 820, height: 480)
         static let headerHeight: CGFloat = 60
@@ -65,7 +67,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     private var awaitedPreview: (url: URL, fallback: NSImage?)?
 
     /// Shown in the preview for an image clip whose file can't be decoded.
-    private static let brokenImage = NSImage(systemSymbolName: "photo", accessibilityDescription: "Image can't be shown")?
+    private static let brokenImage = NSImage(
+        systemSymbolName: "photo", accessibilityDescription: "Image can't be shown")?
         .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 64, weight: .light))
 
     /// The search, which reuses work between keystrokes.
@@ -165,7 +168,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         endNaming()
         searchField.stringValue = ""
         reload(keepingSelection: false)
-        Signposts.signposter.endInterval("clipboard.open", signpost, "items=\(self.store.items.count, privacy: .public)")
+        Signposts.signposter.endInterval(
+            "clipboard.open", signpost, "items=\(self.store.items.count, privacy: .public)")
     }
 
     override func didHide() {
@@ -196,7 +200,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
         let query = currentQuery
         let filtering = signposter.beginInterval(
-            "clipboard.filter", "items=\(self.store.items.count, privacy: .public) queryLength=\(query.count, privacy: .public)"
+            "clipboard.filter",
+            "items=\(self.store.items.count, privacy: .public) queryLength=\(query.count, privacy: .public)"
         )
         visibleItems = filter.items(matching: query, in: store.items)
         signposter.endInterval("clipboard.filter", filtering, "matches=\(self.visibleItems.count, privacy: .public)")
@@ -243,14 +248,16 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
 
     private func updateLabels(query: String) {
         let hours = Int((Config.clipboardRetention / 3600).rounded())
-        emptyLabel.stringValue = query.isEmpty
+        emptyLabel.stringValue =
+            query.isEmpty
             ? "Nothing copied in the last \(hours) hours"
             : "No matches"
         emptyLabel.isHidden = !visibleItems.isEmpty
 
         let total = store.items.count
         let noun = total == 1 ? "item" : "items"
-        var count = query.isEmpty || visibleItems.count == total
+        var count =
+            query.isEmpty || visibleItems.count == total
             ? "\(total) \(noun)"
             : "\(visibleItems.count) of \(total) \(noun)"
         // Only for the whole list: next to "3 of 40", the pinned total of all
@@ -264,7 +271,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             return
         }
         let pin = selectedItem?.pinned == true ? "⌘P unpin" : "⌘P pin"
-        hintLabel.stringValue = visibleItems.isEmpty
+        hintLabel.stringValue =
+            visibleItems.isEmpty
             ? "esc to close"
             : "↩ paste · ⌘↩ copy · ⌘1–9 pick · \(pin) · ⌘S name · ⌘⌫ delete · esc close"
     }
@@ -326,7 +334,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             // Some older apps only read TIFF. It is uncompressed (about 60 MB
             // for a 5K screenshot), so only smaller images get a copy.
             if image.pixelWidth * image.pixelHeight <= 4_000_000,
-               let tiff = NSBitmapImageRep(data: png)?.tiffRepresentation {
+                let tiff = NSBitmapImageRep(data: png)?.tiffRepresentation
+            {
                 item.setData(tiff, forType: .tiff)
                 bytes += tiff.count
             }
@@ -334,7 +343,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             pasteboard.writeObjects([item])
 
         case .files(let paths):
-            let urls = paths
+            let urls =
+                paths
                 .filter { FileManager.default.fileExists(atPath: $0) }
                 .map { URL(fileURLWithPath: $0) }
             guard !urls.isEmpty else { return false }
@@ -533,7 +543,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = tableView.makeView(withIdentifier: ClipCellView.identifier, owner: self) as? ClipCellView
+        let cell =
+            tableView.makeView(withIdentifier: ClipCellView.identifier, owner: self) as? ClipCellView
             ?? ClipCellView(frame: .zero)
         let item = visibleItems[row]
 
@@ -546,7 +557,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         switch item.content {
         case .text(let text):
             cell.title.stringValue = ClipContent.singleLine(text)
-            cell.icon.image = item.sourceBundleID.flatMap { appIcon(bundleID: $0) }
+            cell.icon.image =
+                item.sourceBundleID.flatMap { appIcon(bundleID: $0) }
                 ?? NSImage(systemSymbolName: item.content.symbolName, accessibilityDescription: nil)
             let lines = text.utf8.lazy.filter { $0 == UInt8(ascii: "\n") }.count + 1
             if lines > 1 { details.append("\(lines) lines") }
@@ -554,7 +566,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         case .image(let image):
             cell.title.stringValue = item.content.summary
             // The symbol until the thumbnail is decoded (rowThumbnailLoaded).
-            cell.icon.image = rowThumbnails.image(for: store.imageURL(for: image))
+            cell.icon.image =
+                rowThumbnails.image(for: store.imageURL(for: image))
                 ?? NSImage(systemSymbolName: item.content.symbolName, accessibilityDescription: nil)
             details.append(Self.byteCount(image.byteCount))
 
@@ -619,7 +632,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
             info.append(Self.byteCount(image.byteCount))
 
         case .files(let paths):
-            let location = paths.count == 1
+            let location =
+                paths.count == 1
                 ? Self.abbreviated(paths[0])
                 : "\(Self.abbreviated(paths[0])) and \(paths.count - 1) more"
             preview.showImage(filePreview(paths), path: location)
@@ -652,7 +666,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     private func fileState(_ path: String) -> FileState {
         if let state = fileStates[path] { return state }
         var isDirectory: ObjCBool = false
-        let state: FileState = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+        let state: FileState =
+            FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
             ? (isDirectory.boolValue ? .folder : .file)
             : .missing
         fileStates[path] = state
@@ -668,8 +683,8 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
         guard panel.isVisible, let image else { return }
         for row in visibleItems.indices {
             guard case .image(let clip) = visibleItems[row].content,
-                  store.imageURL(for: clip).path == url.path,
-                  let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? ClipCellView
+                store.imageURL(for: clip).path == url.path,
+                let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? ClipCellView
             else { continue }
             cell.icon.image = image
         }
@@ -735,32 +750,32 @@ final class ClipboardController: FloatingPanelController, NSTextFieldDelegate, N
     }
 
     #if SELFTEST
-    /// Puts `text` in the search field as typing it would.
-    func typeForSelfTest(_ text: String) {
-        searchField.stringValue = text
-        controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: searchField))
-    }
-
-    /// Selects a row as ↑ / ↓ would (the preview follows).
-    func selectForSelfTest(row: Int) { select(row: row) }
-
-    var visibleCountForSelfTest: Int { visibleItems.count }
-
-    /// The rows that show image clips.
-    var imageRowsForSelfTest: [Int] {
-        visibleItems.indices.filter {
-            if case .image = visibleItems[$0].content { return true }
-            return false
+        /// Puts `text` in the search field as typing it would.
+        func typeForSelfTest(_ text: String) {
+            searchField.stringValue = text
+            controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: searchField))
         }
-    }
 
-    /// Whether the preview is still waiting for its picture to be decoded.
-    var isAwaitingPreviewForSelfTest: Bool { awaitedPreview != nil }
+        /// Selects a row as ↑ / ↓ would (the preview follows).
+        func selectForSelfTest(row: Int) { select(row: row) }
 
-    /// What picking an item writes, to any pasteboard (not only the system one).
-    func writeForSelfTest(_ content: ClipContent, to pasteboard: NSPasteboard) -> Bool {
-        write(content, to: pasteboard)
-    }
+        var visibleCountForSelfTest: Int { visibleItems.count }
+
+        /// The rows that show image clips.
+        var imageRowsForSelfTest: [Int] {
+            visibleItems.indices.filter {
+                if case .image = visibleItems[$0].content { return true }
+                return false
+            }
+        }
+
+        /// Whether the preview is still waiting for its picture to be decoded.
+        var isAwaitingPreviewForSelfTest: Bool { awaitedPreview != nil }
+
+        /// What picking an item writes, to any pasteboard (not only the system one).
+        func writeForSelfTest(_ content: ClipContent, to pasteboard: NSPasteboard) -> Bool {
+            write(content, to: pasteboard)
+        }
     #endif
 
     // MARK: Setup
@@ -951,10 +966,12 @@ private final class ClipCellView: NSTableCellView {
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
             let emphasized = backgroundStyle == .emphasized
-            detail.textColor = emphasized
+            detail.textColor =
+                emphasized
                 ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.75)
                 : .secondaryLabelColor
-            shortcut.textColor = emphasized
+            shortcut.textColor =
+                emphasized
                 ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.6)
                 : .tertiaryLabelColor
             pin.contentTintColor = shortcut.textColor

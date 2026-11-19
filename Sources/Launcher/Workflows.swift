@@ -81,7 +81,8 @@ enum ArgumentTransform: Decodable, Sendable {
         default:
             throw DecodingError.dataCorruptedError(
                 in: container,
-                debugDescription: "unknown transform \"\(raw)\" (use uppercase, lowercase, trim, stripPrefix:<text> or stripSuffix:<text>)"
+                debugDescription:
+                    "unknown transform \"\(raw)\" (use uppercase, lowercase, trim, stripPrefix:<text> or stripSuffix:<text>)"
             )
         }
     }
@@ -148,7 +149,8 @@ struct Workflow: Decodable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        keywords = try container.decodeIfPresent([String].self, forKey: .keywords)?
+        keywords =
+            try container.decodeIfPresent([String].self, forKey: .keywords)?
             .map { CommandInput.stored($0.trimmingCharacters(in: .whitespaces).lowercased()) } ?? []
         title = try container.decode(String.self, forKey: .title)
         url = try container.decode(String.self, forKey: .url)
@@ -202,7 +204,7 @@ struct Workflow: Decodable, Sendable {
         guard let colon = template.firstIndex(of: ":") else { return nil }
         let scheme = template[..<colon]
         guard let first = scheme.first, first.isASCII, first.isLetter,
-              scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+-.".contains($0)) })
+            scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+-.".contains($0)) })
         else { return nil }
         return scheme.lowercased()
     }
@@ -288,7 +290,7 @@ struct WorkflowSet: Decodable, Sendable {
     /// Enter does nothing then, and the hint shows the workflow's help instead.
     func workflowAwaitingArgument(_ input: String) -> Workflow? {
         guard let input = CommandInput.body(of: input), !input.isEmpty,
-              workflow(for: input, withArgument: false) == nil
+            workflow(for: input, withArgument: false) == nil
         else { return nil }
         return workflow(for: input, withArgument: true)
     }
@@ -297,7 +299,7 @@ struct WorkflowSet: Decodable, Sendable {
     /// or `/help` while no workflow uses that keyword. Never with no prefix.
     func listsAllCommands(_ input: String) -> Bool {
         guard let prefix = Config.commandPrefix, !prefix.isEmpty,
-              let body = CommandInput.body(of: input)?.lowercased()
+            let body = CommandInput.body(of: input)?.lowercased()
         else { return false }
         return body.isEmpty || (body == Config.commandListKeyword.lowercased() && !keywords.contains(body))
     }
@@ -320,9 +322,10 @@ struct WorkflowSet: Decodable, Sendable {
         let matches = workflows.indices.compactMap { index -> Suggestion? in
             let workflow = workflows[index]
             let usable = workflow.keywords.filter { keyword in
-                keyword.hasPrefix(prefix) && workflows.firstIndex {
-                    $0.keywords.contains(keyword) && $0.takesArgument == workflow.takesArgument
-                } == index
+                keyword.hasPrefix(prefix)
+                    && workflows.firstIndex {
+                        $0.keywords.contains(keyword) && $0.takesArgument == workflow.takesArgument
+                    } == index
             }
             let keyword = usable.contains(prefix) ? prefix : usable.first
             return keyword.map { Suggestion(keyword: $0, workflow: workflow) }
@@ -417,7 +420,8 @@ final class WorkflowStore {
             return "\(context.debugDescription)\(location(context))"
         case .dataCorrupted(let context):
             if let underlying = context.underlyingError as NSError?,
-               let detail = underlying.userInfo[NSDebugDescriptionErrorKey] as? String {
+                let detail = underlying.userInfo[NSDebugDescriptionErrorKey] as? String
+            {
                 return detail
             }
             return "\(context.debugDescription)\(location(context))"
@@ -472,7 +476,7 @@ enum CommandParser {
     static func fallbackCommand(_ raw: String, using set: WorkflowSet) -> Command? {
         let input = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty, let fallback = set.fallback,
-              let url = expand(fallback.url, with: fallback.prepare(input))
+            let url = expand(fallback.url, with: fallback.prepare(input))
         else { return nil }
         return Command(url: url, label: fallback.title, source: .fallback)
     }
@@ -501,7 +505,8 @@ enum CommandParser {
                 )
             }
         } else if parts.count == 1, let workflow = set.workflow(for: keyword, withArgument: false),
-                  let url = URL(string: workflow.url) {
+            let url = URL(string: workflow.url)
+        {
             return Command(
                 url: url, label: workflow.title,
                 source: .workflow(keyword: workflow.keywords.first ?? keyword.lowercased(), withArgument: false),

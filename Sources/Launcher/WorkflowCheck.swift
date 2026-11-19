@@ -37,8 +37,10 @@ struct WorkflowCheck: Sendable {
             self.init(set: nil, problems: [Problem(severity: .error, message: WorkflowStore.describe(error))])
             return
         }
-        self.init(set: set, problems: set.refused.map { Problem(severity: .error, message: "refused \($0)") }
-            + WorkflowCheck.shadowedKeywords(in: set).map { Problem(severity: .warning, message: $0) })
+        self.init(
+            set: set,
+            problems: set.refused.map { Problem(severity: .error, message: "refused \($0)") }
+                + WorkflowCheck.shadowedKeywords(in: set).map { Problem(severity: .warning, message: $0) })
     }
 
     init(fileURL: URL) {
@@ -46,7 +48,9 @@ struct WorkflowCheck: Sendable {
         do {
             data = try Data(contentsOf: fileURL)
         } catch {
-            self.init(set: nil, problems: [Problem(severity: .error, message: "cannot read the file: \(error.localizedDescription)")])
+            self.init(
+                set: nil,
+                problems: [Problem(severity: .error, message: "cannot read the file: \(error.localizedDescription)")])
             return
         }
         self.init(data: data)
@@ -73,7 +77,9 @@ struct WorkflowCheck: Sendable {
                 if first == index {
                     messages.append("keyword \"\(keyword)\" is listed twice in \"\(workflow.title)\"")
                 } else {
-                    messages.append("keyword \"\(keyword)\" \(form) is used by \"\(set.workflows[first].title)\" and \"\(workflow.title)\"; only the first runs")
+                    messages.append(
+                        "keyword \"\(keyword)\" \(form) is used by \"\(set.workflows[first].title)\" and \"\(workflow.title)\"; only the first runs"
+                    )
                 }
             }
         }
@@ -93,7 +99,8 @@ struct WorkflowCheck: Sendable {
             if warnings > 0 { details.append(count(warnings, "warning")) }
             lines.append("\(name): OK (\(details.joined(separator: ", ")))")
         } else {
-            lines.append("\(name): FAILED (\(count(errors, "error"))\(warnings > 0 ? ", " + count(warnings, "warning") : ""))")
+            lines.append(
+                "\(name): FAILED (\(count(errors, "error"))\(warnings > 0 ? ", " + count(warnings, "warning") : ""))")
         }
         return lines
     }

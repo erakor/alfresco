@@ -17,7 +17,7 @@ enum HTTPSession {
     /// counting as written: where a token may go.
     static func sameOrigin(_ a: URL, _ b: URL) -> Bool {
         guard let scheme = a.scheme?.lowercased(), scheme == b.scheme?.lowercased(),
-              let host = a.host?.lowercased(), !host.isEmpty, host == b.host?.lowercased()
+            let host = a.host?.lowercased(), !host.isEmpty, host == b.host?.lowercased()
         else { return false }
         return port(of: a) == port(of: b)
     }
@@ -35,7 +35,8 @@ enum HTTPSession {
     /// https, and only to the same origin when it carries a credential header.
     static func allowsRedirect(from original: URLRequest?, to redirect: URLRequest) -> Bool {
         guard let target = redirect.url, target.scheme?.lowercased() == "https" else { return false }
-        let carriesCredential = credentialHeaders.contains { redirect.value(forHTTPHeaderField: $0) != nil }
+        let carriesCredential =
+            credentialHeaders.contains { redirect.value(forHTTPHeaderField: $0) != nil }
             || credentialHeaders.contains { original?.value(forHTTPHeaderField: $0) != nil }
         guard carriesCredential else { return true }
         guard let source = original?.url else { return false }
