@@ -1,0 +1,3 @@
+# The one-time reformat of Sources and Tests with swift-format (erakor/toolchain's shared style).
+# GitHub skips it in blame; locally: git config blame.ignoreRevsFile .git-blame-ignore-revs
+b820b9de97046ff27929018c1573adfebd605a78
