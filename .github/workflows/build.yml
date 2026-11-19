@@ -25,6 +25,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Style, from .swift-format (a copy of erakor/toolchain's). Not strict yet: the code has not
+  # been through swift-format, so this reports only. Set `strict: true` once the output is empty.
+  # Pinned to a toolchain commit.
+  swift-format:
+    uses: erakor/toolchain/.github/workflows/swift-checks.yml@822ecaf4610254a1e55074923f2c46f0d2b54a5b
+    with:
+      paths: Sources Tests
+      strict: false
+
   build:
     runs-on: macos-15
     steps:
@@ -35,12 +44,6 @@ jobs:
 
       - name: Compile
         run: swiftc -O -parse-as-library -swift-version 6 -target "$(uname -m)-apple-macos12.0" $(find Sources -name '*.swift') -o Launcher
-
-      # Style, from .swift-format (copied from erakor/toolchain). Not --strict
-      # yet: the code has not been through swift-format, so this reports only.
-      # Make it strict once the lint output is empty.
-      - name: swift-format lint
-        run: xcrun swift-format lint --recursive Sources Tests
 
       - name: Build .app bundle
         run: ./build.sh
