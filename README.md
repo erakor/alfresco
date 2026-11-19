@@ -96,6 +96,9 @@ screenshot of it, or with any vector editor.
 `./Launcher --check workflows.json` checks a workflows file and exits (see
 [Checking the file](Sources/Launcher/README.md#checking-the-file)).
 
+Code style is checked with `xcrun swift-format lint --recursive Sources Tests`; the
+settings are in `.swift-format`, shared with the other erakor repos.
+
 ## Measuring performance
 
 The app marks its slow-prone work with signpost intervals (subsystem
